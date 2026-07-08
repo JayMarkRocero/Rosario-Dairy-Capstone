@@ -202,8 +202,7 @@ export function AdminSettings() {
   return (
     <div className="p-6 space-y-5">
       <div>
-        <h2 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>Settings</h2>
-        <p className="text-sm mt-0.5" style={{color:C.muted}}>System configuration and preferences</p>
+        <h2 className="text-lg font-bold" style={{color:C.muted}}>System configuration and preferences</h2>
       </div>
 
       <div className="flex gap-6" style={{minHeight:520}}>

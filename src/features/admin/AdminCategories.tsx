@@ -78,8 +78,7 @@ export function AdminCategories() {
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>Categories</h2>
-          <p className="text-sm mt-0.5" style={{color:C.muted}}>Organize products by type</p>
+          <h2 className="text-lg font-bold" style={{color:C.muted}}>Organize products by type</h2>
         </div>
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Category

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Eye, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, Btn, Modal, Drawer, ConfirmDialog, EnhancedTable, StatusBadge } from "../../components";
@@ -12,6 +12,8 @@ const inputStyle = { borderColor:C.border, color:C.text, backgroundColor:"#F8FAF
 interface FormState { name:string; phone:string; email:string }
 const EMPTY:FormState = { name:"", phone:"", email:"" };
 
+const SEGMENTS = ["All", "First-time", "Repeat"];
+
 function Avatar({ name, size=8 }: { name:string; size?:number }) {
   const initials = name.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase();
   return (
@@ -24,6 +26,7 @@ function Avatar({ name, size=8 }: { name:string; size?:number }) {
 
 export function AdminCustomers() {
   const list = customersService.getAll();
+  const [segFilter,  setSegFilter]  = useState("All");
   const [addOpen,    setAddOpen]    = useState(false);
   const [editOpen,   setEditOpen]   = useState(false);
   const [viewOpen,   setViewOpen]   = useState(false);
@@ -31,6 +34,13 @@ export function AdminCustomers() {
   const [selected,   setSelected]   = useState<Customer | null>(null);
   const [form,       setForm]       = useState<FormState>(EMPTY);
   const [loading,    setLoading]    = useState(false);
+
+  // ── Filtered data (segment filter applied before the table's own search/sort/paginate) ──
+  const filteredList = useMemo(() => {
+    if (segFilter === "First-time") return list.filter(c => c.orders === 1);
+    if (segFilter === "Repeat")     return list.filter(c => c.orders >= 2);
+    return list;
+  }, [list, segFilter]);
 
   const openView = (c:Customer) => { setSelected(c); setViewOpen(true); };
   const openEdit = (c:Customer) => { setSelected(c); setForm({name:c.name,phone:c.phone,email:c.email}); setEditOpen(true); };
@@ -60,7 +70,7 @@ export function AdminCustomers() {
   );
 
   const columns: Column<Customer>[] = [
-    { key:"name", header:"Customer", sortKey:r=>r.name,
+    { key:"name", header:"Customer", width:"28%", sortKey:r=>r.name,
       render:r=>(
         <div className="flex items-center gap-2.5">
           <Avatar name={r.name} size={9}/>
@@ -70,17 +80,17 @@ export function AdminCustomers() {
           </div>
         </div>
       )},
-    { key:"phone", header:"Phone",
+    { key:"phone", header:"Phone", align:"center", width:"16%",
       render:r=><span className="text-sm" style={{color:C.muted}}>{r.phone}</span> },
-    { key:"orders", header:"Orders", align:"right", sortKey:r=>r.orders,
+    { key:"orders", header:"Orders", align:"center", width:"12%", sortKey:r=>r.orders,
       render:r=><span className="font-semibold text-sm" style={{color:C.text}}>{r.orders}</span> },
-    { key:"total", header:"Lifetime Value", align:"right", sortKey:r=>r.total,
+    { key:"total", header:"Lifetime Value", align:"center", width:"16%", sortKey:r=>r.total,
       render:r=><span className="font-bold text-sm" style={{color:C.green}}>₱{r.total.toLocaleString()}</span> },
-    { key:"last", header:"Last Order", sortKey:r=>r.last,
+    { key:"last", header:"Last Order", align:"center", width:"14%", sortKey:r=>r.last,
       render:r=><span className="text-xs" style={{color:C.muted}}>{r.last}</span> },
-    { key:"actions", header:"",
+    { key:"actions", header:"Actions", align:"center", width:"14%",
       render:r=>(
-        <div className="flex gap-1" onClick={e=>e.stopPropagation()}>
+        <div className="flex gap-1 justify-center" onClick={e=>e.stopPropagation()}>
           <button onClick={()=>openView(r)} className="p-1.5 rounded-lg hover:bg-blue-50" style={{color:C.blue}}><Eye size={13}/></button>
           <button onClick={()=>openEdit(r)} className="p-1.5 rounded-lg hover:bg-gray-100" style={{color:C.muted}}><Edit size={13}/></button>
           <button onClick={()=>{setSelected(r);setDeleteOpen(true);}} className="p-1.5 rounded-lg hover:bg-red-50" style={{color:C.red}}><Trash2 size={13}/></button>
@@ -89,18 +99,17 @@ export function AdminCustomers() {
   ];
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full gap-4 p-6 overflow-hidden">
+      <div className="flex items-center justify-between flex-shrink-0">
         <div>
-          <h2 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>Customers</h2>
-          <p className="text-sm mt-0.5" style={{color:C.muted}}>Manage customer accounts and purchase history</p>
+          <h2 className="text-lg font-bold" style={{color:C.muted}}>Manage customer accounts and purchase history</h2>
         </div>
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Customer
         </Btn>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4 flex-shrink-0">
         {[
           {l:"Total Customers", v:list.length,                                              color:C.blue  },
           {l:"Total Revenue",   v:`₱${list.reduce((a,c)=>a+c.total,0).toLocaleString()}`, color:C.green },
@@ -117,10 +126,29 @@ export function AdminCustomers() {
       </div>
 
       <Card className="p-5">
-        <EnhancedTable columns={columns} data={list} rowKey={r=>r.id}
-          searchable searchKeys={r=>[r.name,r.email,r.phone]}
-          searchPlaceholder="Search customers…" onRowClick={openView}
-          emptyTitle="No customers yet" emptyDesc="Add your first customer to get started."/>
+        <EnhancedTable
+          columns={columns}
+          data={filteredList}
+          rowKey={r=>r.id}
+          pageSize={4}
+          searchable
+          searchKeys={r=>[r.name,r.email,r.phone]}
+          searchPlaceholder="Search customers…"
+          onRowClick={openView}
+          emptyTitle="No customers yet"
+          emptyDesc="Add your first customer to get started."
+          showExport={false}
+          extraControls={
+            <select
+              value={segFilter}
+              onChange={e => setSegFilter(e.target.value)}
+              className="px-3 py-2 rounded-xl text-sm outline-none border"
+              style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+            >
+              {SEGMENTS.map(s => <option key={s} value={s}>{s === "All" ? "All Customers" : s}</option>)}
+            </select>
+          }
+        />
       </Card>
 
       <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="Add Customer" size="sm"

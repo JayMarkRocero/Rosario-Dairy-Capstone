@@ -93,10 +93,10 @@ export function EnhancedTable<T>({
   const showControlsBar = searchable || !!extraControls || showCount || showExport;
 
   return (
-    <div>
+    <div className="flex flex-col h-full">
       {/* Controls bar */}
       {showControlsBar && (
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mb-4 flex-shrink-0">
           {searchable && (
             <div
               className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border flex-1 max-w-xs"
@@ -194,7 +194,7 @@ export function EnhancedTable<T>({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4 px-1">
+        <div className="flex items-center justify-between mt-4 px-1 flex-shrink-0">
           <span className="text-xs" style={{ color: C.muted }}>
             Page {safePage} of {totalPages} ({sorted.length} results)
           </span>

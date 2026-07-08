@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Eye, Edit, Trash2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Card, StatusBadge, Btn, Modal, Drawer, ConfirmDialog, EnhancedTable } from "../../components";
@@ -17,7 +17,10 @@ const SUMMARY = [
   { label:"Inactive",       value:"1", color:C.muted },
 ];
 
+const ROLES = ["Administrator", "Staff"];
+
 export function AdminUserManagement() {
+  const [roleFilter,  setRoleFilter]  = useState("All");
   const [viewOpen,    setViewOpen]    = useState(false);
   const [addOpen,     setAddOpen]     = useState(false);
   const [editOpen,    setEditOpen]    = useState(false);
@@ -27,6 +30,12 @@ export function AdminUserManagement() {
   const [loading,     setLoading]     = useState(false);
   const [role,        setRole]        = useState<"Administrator"|"Staff">("Staff");
 
+  // ── Filtered data (role filter applied before the table's own search/sort/paginate) ──
+  const filteredUsers = useMemo(() => {
+    if (roleFilter === "All") return systemUsers;
+    return systemUsers.filter(u => u.role === roleFilter);
+  }, [roleFilter]);
+
   const openView = (u:SystemUser) => { setSelected(u); setViewOpen(true); };
   const run = (action:string, close:()=>void) => {
     setLoading(true);
@@ -34,7 +43,7 @@ export function AdminUserManagement() {
   };
 
   const columns: Column<SystemUser>[] = [
-    { key:"name", header:"User", sortKey:r=>r.name,
+    { key:"name", header:"User", width:"28%", sortKey:r=>r.name,
       render:r=>(
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold"
@@ -47,20 +56,23 @@ export function AdminUserManagement() {
           </div>
         </div>
       )},
-    { key:"role", header:"Role", sortKey:r=>r.role,
+    { key:"role", header:"Role", align:"center", width:"18%", sortKey:r=>r.role,
       render:r=>(
-        <span className="text-xs px-2.5 py-1 rounded-full font-medium"
-          style={{backgroundColor:r.role==="Administrator"?C.navy+"15":C.blue+"15",
-            color:r.role==="Administrator"?C.navy:C.blue}}>
-          {r.role}
-        </span>
+        <div className="flex justify-center">
+          <span className="text-xs px-2.5 py-1 rounded-full font-medium"
+            style={{backgroundColor:r.role==="Administrator"?C.navy+"15":C.blue+"15",
+              color:r.role==="Administrator"?C.navy:C.blue}}>
+            {r.role}
+          </span>
+        </div>
       )},
-    { key:"status", header:"Status", render:r=><StatusBadge status={r.status}/> },
-    { key:"last", header:"Last Login", sortKey:r=>r.last,
+    { key:"status", header:"Status", align:"center", width:"16%",
+      render:r=><div className="flex justify-center"><StatusBadge status={r.status}/></div> },
+    { key:"last", header:"Last Login", align:"center", width:"18%", sortKey:r=>r.last,
       render:r=><span className="text-xs" style={{color:C.muted}}>{r.last}</span> },
-    { key:"actions", header:"",
+    { key:"actions", header:"Actions", align:"center", width:"20%",
       render:r=>(
-        <div className="flex gap-1" onClick={e=>e.stopPropagation()}>
+        <div className="flex gap-1 justify-center" onClick={e=>e.stopPropagation()}>
           <button onClick={()=>openView(r)} className="p-1.5 rounded-lg hover:bg-blue-50" style={{color:C.blue}}><Eye size={13}/></button>
           <button onClick={()=>{setSelected(r);setEditOpen(true);}} className="p-1.5 rounded-lg hover:bg-gray-100" style={{color:C.muted}}><Edit size={13}/></button>
           <button onClick={()=>{setSelected(r);setResetOpen(true);}} className="p-1.5 rounded-lg hover:bg-yellow-50" style={{color:C.orange}}><Lock size={13}/></button>
@@ -102,16 +114,15 @@ export function AdminUserManagement() {
   );
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full gap-4 p-6 overflow-hidden">
+      <div className="flex items-center justify-between flex-shrink-0">
         <div>
-          <h2 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>User Management</h2>
-          <p className="text-sm mt-0.5" style={{color:C.muted}}>Manage administrator and staff accounts</p>
+          <h2 className="text-lg font-bold" style={{color:C.muted}}>Manage administrator and staff accounts</h2>
         </div>
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>setAddOpen(true)}>Add User</Btn>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-4 flex-shrink-0">
         {SUMMARY.map(s=>(
           <Card key={s.label} className="p-4 flex items-center gap-3">
             <div className="w-2 h-10 rounded-full" style={{backgroundColor:s.color}}/>
@@ -124,9 +135,28 @@ export function AdminUserManagement() {
       </div>
 
       <Card className="p-5">
-        <EnhancedTable columns={columns} data={systemUsers} rowKey={r=>r.id}
-          searchable searchKeys={r=>[r.name,r.email,r.role]}
-          searchPlaceholder="Search users…" onRowClick={openView}/>
+        <EnhancedTable
+          columns={columns}
+          data={filteredUsers}
+          rowKey={r=>r.id}
+          pageSize={4}
+          searchable
+          searchKeys={r=>[r.name,r.email,r.role]}
+          searchPlaceholder="Search users…"
+          onRowClick={openView}
+          showExport={false}
+          extraControls={
+            <select
+              value={roleFilter}
+              onChange={e => setRoleFilter(e.target.value)}
+              className="px-3 py-2 rounded-xl text-sm outline-none border"
+              style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+            >
+              <option value="All">All Roles</option>
+              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          }
+        />
       </Card>
 
       {/* View Drawer */}

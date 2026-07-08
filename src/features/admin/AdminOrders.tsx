@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Eye, Edit, XCircle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Card, StatusBadge, Btn, Modal, Drawer, ConfirmDialog, EnhancedTable } from "../../components";
@@ -15,6 +15,7 @@ const inputStyle = { borderColor: C.border, color: C.text, backgroundColor:"#F8F
 
 export function AdminOrders() {
   const orders = ordersService.getAll();
+  const [statusFilter, setStatusFilter] = useState("All");
   const [viewOpen,   setViewOpen]   = useState(false);
   const [editOpen,   setEditOpen]   = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -22,6 +23,12 @@ export function AdminOrders() {
   const [selected,   setSelected]   = useState<Order | null>(null);
   const [status,     setStatus]     = useState("");
   const [loading,    setLoading]    = useState(false);
+
+  // ── Filtered data (status filter applied before the table's own search/sort/paginate) ──
+  const filteredOrders = useMemo(() => {
+    if (statusFilter === "All") return orders;
+    return orders.filter(o => o.status === statusFilter);
+  }, [orders, statusFilter]);
 
   const openView = (o: Order) => { setSelected(o); setViewOpen(true); };
   const openEdit = (o: Order) => { setSelected(o); setStatus(o.status); setEditOpen(true); };
@@ -44,20 +51,21 @@ export function AdminOrders() {
   ];
 
   const columns: Column<Order>[] = [
-    { key:"id",       header:"Order ID",  sortKey:r=>r.id,
+    { key:"id",       header:"Order ID", width:"14%", sortKey:r=>r.id,
       render:r=><span className="font-mono text-xs" style={{color:C.muted}}>{r.id}</span> },
-    { key:"customer", header:"Customer",  sortKey:r=>r.customer,
+    { key:"customer", header:"Customer", width:"20%", sortKey:r=>r.customer,
       render:r=><span className="font-semibold text-sm" style={{color:C.text}}>{r.customer}</span> },
-    { key:"status",   header:"Status",    render:r=><StatusBadge status={r.status}/> },
-    { key:"staff",    header:"Staff",     sortKey:r=>r.staff,
+    { key:"status",   header:"Status", align:"center", width:"14%",
+      render:r=><div className="flex justify-center"><StatusBadge status={r.status}/></div> },
+    { key:"staff",    header:"Staff", align:"center", width:"14%", sortKey:r=>r.staff,
       render:r=><span className="text-xs" style={{color:C.muted}}>{r.staff}</span> },
-    { key:"pickup",   header:"Pickup",
+    { key:"pickup",   header:"Pickup", align:"center", width:"14%",
       render:r=><span className="text-xs" style={{color:C.muted}}>{r.pickup}</span> },
-    { key:"total",    header:"Total", align:"right", sortKey:r=>r.total,
+    { key:"total",    header:"Total", align:"center", width:"14%", sortKey:r=>r.total,
       render:r=><span className="font-bold text-sm" style={{color:C.text}}>₱{r.total.toLocaleString()}</span> },
-    { key:"actions",  header:"",
+    { key:"actions",  header:"Actions", align:"center", width:"10%",
       render:r=>(
-        <div className="flex gap-1" onClick={e=>e.stopPropagation()}>
+        <div className="flex gap-1 justify-center" onClick={e=>e.stopPropagation()}>
           <button onClick={()=>openView(r)} className="p-1.5 rounded-lg hover:bg-blue-50" style={{color:C.blue}}>
             <Eye size={13}/>
           </button>
@@ -73,16 +81,15 @@ export function AdminOrders() {
   ];
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full gap-4 p-6 overflow-hidden">
+      <div className="flex items-center justify-between flex-shrink-0">
         <div>
-          <h2 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>Orders</h2>
-          <p className="text-sm mt-0.5" style={{color:C.muted}}>Manage and track all customer orders</p>
+          <h2 className="text-lg font-bold" style={{color:C.muted}}>Manage and track all customer orders</h2>
         </div>
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>setNewOpen(true)}>New Order</Btn>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-4 flex-shrink-0">
         {SUMMARY.map(s => (
           <Card key={s.label} className="p-4 flex items-center gap-3">
             <div className="w-2 h-10 rounded-full flex-shrink-0" style={{backgroundColor:s.color}}/>
@@ -95,10 +102,30 @@ export function AdminOrders() {
       </div>
 
       <Card className="p-5">
-        <EnhancedTable columns={columns} data={orders} rowKey={r=>r.id}
-          searchable searchKeys={r=>[r.id,r.customer,r.staff]}
-          searchPlaceholder="Search orders…" onRowClick={openView}
-          emptyTitle="No orders found" emptyDesc="Create your first order to get started."/>
+        <EnhancedTable
+          columns={columns}
+          data={filteredOrders}
+          rowKey={r=>r.id}
+          pageSize={4}
+          searchable
+          searchKeys={r=>[r.id,r.customer,r.staff]}
+          searchPlaceholder="Search orders…"
+          onRowClick={openView}
+          emptyTitle="No orders found"
+          emptyDesc="Create your first order to get started."
+          showExport={false}
+          extraControls={
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="px-3 py-2 rounded-xl text-sm outline-none border"
+              style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+            >
+              <option value="All">All Statuses</option>
+              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          }
+        />
       </Card>
 
       {/* View Drawer */}

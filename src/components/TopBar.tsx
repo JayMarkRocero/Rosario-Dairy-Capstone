@@ -118,13 +118,6 @@ function NotificationBell() {
               );
             })}
           </div>
-
-          <button
-            className="w-full py-2.5 text-xs font-semibold hover:bg-gray-50 transition-colors"
-            style={{ color: C.blue, borderTop: `1px solid ${C.border}` }}
-          >
-            View all notifications
-          </button>
         </div>
       )}
     </div>

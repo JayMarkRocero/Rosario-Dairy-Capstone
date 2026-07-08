@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Eye, Edit, Trash2, AlertTriangle, Download } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Plus, Eye, Edit, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   Card, StatusBadge, Btn, Modal, Drawer, ConfirmDialog, EnhancedTable,
@@ -71,7 +71,7 @@ function ProductDetail({ p }: { p: InventoryItem }) {
     { label:"FEFO Status",   value: p.low ? "Low Stock" : "Adequate" },
   ];
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 p-6">
       <div
         className="rounded-2xl p-4 text-center"
         style={{ backgroundColor: C.blue + "08", border:`1px solid ${C.blue}20` }}
@@ -82,7 +82,7 @@ function ProductDetail({ p }: { p: InventoryItem }) {
         <div className="font-bold text-base" style={{ color:C.text,fontFamily:"Poppins,sans-serif" }}>{p.name}</div>
         <div className="mt-1"><StatusBadge status={p.low ? "Low" : "Active"}/></div>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-5 p-6">
         {rows.map(r => (
           <div key={r.label} className="flex justify-between py-2" style={{borderBottom:`1px solid ${C.border}`}}>
             <span className="text-sm" style={{color:C.muted}}>{r.label}</span>
@@ -105,6 +105,7 @@ function ProductDetail({ p }: { p: InventoryItem }) {
 export function AdminInventory() {
   const items = inventoryService.getAll();
 
+  const [catFilter,   setCatFilter]  = useState("All");
   const [addOpen,     setAddOpen]    = useState(false);
   const [editOpen,    setEditOpen]   = useState(false);
   const [deleteOpen,  setDeleteOpen] = useState(false);
@@ -112,6 +113,12 @@ export function AdminInventory() {
   const [selected,    setSelected]   = useState<InventoryItem | null>(null);
   const [form,        setForm]       = useState<FormState>(EMPTY_FORM);
   const [loading,     setLoading]    = useState(false);
+
+  // ── Filtered data (category filter applied before the table's own search/sort/paginate) ──
+  const filteredItems = useMemo(() => {
+    if (catFilter === "All") return items;
+    return items.filter(i => i.cat === catFilter);
+  }, [items, catFilter]);
 
   const openEdit = (p: InventoryItem) => {
     setSelected(p);
@@ -144,9 +151,9 @@ export function AdminInventory() {
   };
 
   // ── Columns ────────────────────────────────────────────────────────────────
-  const columns: Column<InventoryItem>[] = [
+const columns: Column<InventoryItem>[] = [
     {
-      key:"name", header:"Product",
+      key:"name", header:"Product", width:"26%",
       sortKey: r => r.name,
       render: r => (
         <div>
@@ -156,7 +163,7 @@ export function AdminInventory() {
       ),
     },
     {
-      key:"cat", header:"Category",
+      key:"cat", header:"Category", width:"12%",
       sortKey: r => r.cat,
       render: r => (
         <span className="text-xs px-2.5 py-1 rounded-full font-medium"
@@ -164,28 +171,28 @@ export function AdminInventory() {
       ),
     },
     {
-      key:"price", header:"Price", align:"right",
+      key:"price", header:"Price", align:"center", width:"12%",
       sortKey: r => r.price,
       render: r => <span className="font-semibold text-sm" style={{color:C.text}}>₱{r.price}</span>,
     },
     {
-      key:"stock", header:"Stock", align:"right",
+      key:"stock", header:"Stock", align:"center", width:"12%",
       sortKey: r => r.stock,
       render: r => (
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex items-center justify-center gap-1.5">
           <span className="font-semibold text-sm" style={{color:r.low?C.red:C.text}}>{r.stock}</span>
           {r.low && <AlertTriangle size={12} style={{color:C.orange}}/>}
         </div>
       ),
     },
-    { key:"expiry", header:"Expiry", sortKey: r => r.expiry,
+    { key:"expiry", header:"Expiry", align:"center", width:"14%", sortKey: r => r.expiry,
       render: r => <span className="text-xs" style={{color:C.muted}}>{r.expiry}</span> },
-    { key:"status", header:"Status",
-      render: r => <StatusBadge status={r.low?"Low":"Active"}/> },
+    { key:"status", header:"Status", align:"center", width:"14%",
+      render: r => <div className="flex justify-center"><StatusBadge status={r.low?"Low":"Active"}/></div> },
     {
-      key:"actions", header:"",
+      key:"actions", header:"Actions", align:"center", width:"10%",
       render: r => (
-        <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+        <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
           <button onClick={() => openView(r)}
             className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors" style={{color:C.blue}}>
             <Eye size={13}/>
@@ -202,7 +209,6 @@ export function AdminInventory() {
       ),
     },
   ];
-
   const formFooter = (mode: "add"|"edit") => (
     <>
       <Btn variant="secondary" onClick={() => mode==="add"?setAddOpen(false):setEditOpen(false)}>
@@ -215,14 +221,11 @@ export function AdminInventory() {
   );
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="flex flex-col h-full gap-4 p-6 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-shrink-0">
         <div>
-          <h2 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>
-            Inventory Management
-          </h2>
-          <p className="text-sm mt-0.5" style={{color:C.muted}}>FEFO-based dairy product inventory</p>
+          <h2 className="text-lg font-bold" style={{color:C.muted}}>FEFO-based dairy product inventory</h2>
         </div>
         <div className="flex gap-2">
           <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={() => { setForm(EMPTY_FORM); setAddOpen(true); }}>
@@ -232,7 +235,7 @@ export function AdminInventory() {
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-4 flex-shrink-0">
         {[
           { label:"Total Products",  value:"12",       color:C.blue   },
           { label:"Low Stock",       value:"4",        color:C.orange },
@@ -255,14 +258,27 @@ export function AdminInventory() {
       <Card className="p-5">
         <EnhancedTable
           columns={columns}
-          data={items}
+          data={filteredItems}
           rowKey={r => r.id}
+          pageSize={4}
           searchable
           searchKeys={r => [r.name, r.cat]}
           searchPlaceholder="Search products…"
           onRowClick={openView}
           emptyTitle="No products found"
           emptyDesc="Add your first product to get started."
+          showExport={false}
+          extraControls={
+            <select
+              value={catFilter}
+              onChange={e => setCatFilter(e.target.value)}
+              className="px-3 py-2 rounded-xl text-sm outline-none border"
+              style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+            >
+              <option value="All">All Categories</option>
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          }
         />
       </Card>
 
