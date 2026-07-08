@@ -33,11 +33,11 @@ export function ForecastChart() {
   return (
     <Card className="p-5">
       {/* Header */}
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="font-semibold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
-              Machine Learning Sales Forecast
+              Sales Forecast
             </h2>
             <span
               className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
@@ -50,12 +50,12 @@ export function ForecastChart() {
             SARIMA Time-Series Forecast — Confidence Interval 95%
           </p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1">
           {PERIODS.map(([v, l]) => (
             <button
               key={v}
               onClick={() => setPeriod(v)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              className="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
               style={{
                 backgroundColor: period === v ? C.navy : "transparent",
                 color:           period === v ? "#fff" : C.muted,
@@ -69,10 +69,10 @@ export function ForecastChart() {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mb-4 mt-2">
+      <div className="flex items-center flex-wrap gap-x-4 gap-y-1.5 mb-4 mt-2">
         {LEGEND_ITEMS.map(l => (
           <div key={l.label} className="flex items-center gap-1.5 text-xs" style={{ color: C.muted }}>
-            <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: l.color }} />
+            <span className="w-3 h-3 rounded-sm inline-block shrink-0" style={{ backgroundColor: l.color }} />
             {l.label}
           </div>
         ))}

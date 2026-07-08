@@ -17,7 +17,7 @@ const SEGMENTS = ["All", "First-time", "Repeat"];
 function Avatar({ name, size=8 }: { name:string; size?:number }) {
   const initials = name.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase();
   return (
-    <div className={`w-${size} h-${size} rounded-xl flex items-center justify-center text-white font-bold text-xs flex-shrink-0`}
+    <div className="rounded-xl flex items-center justify-center text-white font-bold text-xs flex-shrink-0"
       style={{backgroundColor:C.blue, width:`${size*4}px`, height:`${size*4}px`, fontSize:size<10?"10px":"12px"}}>
       {initials}
     </div>
@@ -35,7 +35,6 @@ export function AdminCustomers() {
   const [form,       setForm]       = useState<FormState>(EMPTY);
   const [loading,    setLoading]    = useState(false);
 
-  // ── Filtered data (segment filter applied before the table's own search/sort/paginate) ──
   const filteredList = useMemo(() => {
     if (segFilter === "First-time") return list.filter(c => c.orders === 1);
     if (segFilter === "Repeat")     return list.filter(c => c.orders >= 2);
@@ -99,27 +98,27 @@ export function AdminCustomers() {
   ];
 
   return (
-    <div className="flex flex-col h-full gap-4 p-6 overflow-hidden">
-      <div className="flex items-center justify-between flex-shrink-0">
-        <div>
-          <h2 className="text-lg font-bold" style={{color:C.muted}}>Manage customer accounts and purchase history</h2>
-        </div>
-        <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
+    <div className="flex flex-col min-h-full gap-4 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
+        <h2 className="text-lg font-bold" style={{color:C.muted}}>
+          Manage customer accounts and purchase history
+        </h2>
+        <Btn variant="primary" size="sm" icon={<Plus size={13}/>} fullWidth onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Customer
         </Btn>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 flex-shrink-0">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 flex-shrink-0">
         {[
           {l:"Total Customers", v:list.length,                                              color:C.blue  },
           {l:"Total Revenue",   v:`₱${list.reduce((a,c)=>a+c.total,0).toLocaleString()}`, color:C.green },
           {l:"Avg. Order Value",v:`₱${Math.round(list.reduce((a,c)=>a+c.total,0)/list.reduce((a,c)=>a+c.orders,0)).toLocaleString()}`, color:C.navy },
         ].map(s=>(
           <Card key={s.l} className="p-4 flex items-center gap-3">
-            <div className="w-2 h-10 rounded-full" style={{backgroundColor:s.color}}/>
-            <div>
-              <div className="font-bold text-lg" style={{color:s.color,fontFamily:"Poppins,sans-serif"}}>{s.v}</div>
-              <div className="text-xs" style={{color:C.muted}}>{s.l}</div>
+            <div className="w-2 h-10 rounded-full flex-shrink-0" style={{backgroundColor:s.color}}/>
+            <div className="min-w-0">
+              <div className="font-bold text-lg truncate" style={{color:s.color,fontFamily:"Poppins,sans-serif"}}>{s.v}</div>
+              <div className="text-xs truncate" style={{color:C.muted}}>{s.l}</div>
             </div>
           </Card>
         ))}
@@ -171,12 +170,12 @@ export function AdminCustomers() {
           <div className="space-y-5">
             <div className="flex items-center gap-4 p-4 rounded-2xl" style={{backgroundColor:C.bg}}>
               <Avatar name={selected.name} size={16}/>
-              <div>
-                <h3 className="font-bold text-lg" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
-                <p className="text-sm" style={{color:C.muted}}>{selected.email}</p>
+              <div className="min-w-0">
+                <h3 className="font-bold text-lg truncate" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
+                <p className="text-sm truncate" style={{color:C.muted}}>{selected.email}</p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
                 {l:"Total Orders",    v:selected.orders,                          color:C.blue  },
                 {l:"Total Spent",     v:`₱${selected.total.toLocaleString()}`,    color:C.green },
@@ -189,9 +188,9 @@ export function AdminCustomers() {
               ))}
             </div>
             {[{l:"Phone",v:selected.phone},{l:"Email",v:selected.email}].map(r=>(
-              <div key={r.l} className="flex justify-between py-2" style={{borderBottom:`1px solid ${C.border}`}}>
-                <span className="text-sm" style={{color:C.muted}}>{r.l}</span>
-                <span className="text-sm font-semibold" style={{color:C.text}}>{r.v}</span>
+              <div key={r.l} className="flex justify-between py-2 gap-2" style={{borderBottom:`1px solid ${C.border}`}}>
+                <span className="text-sm flex-shrink-0" style={{color:C.muted}}>{r.l}</span>
+                <span className="text-sm font-semibold truncate" style={{color:C.text}}>{r.v}</span>
               </div>
             ))}
           </div>

@@ -88,7 +88,7 @@ export function AdminReports() {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
           <h2 className="text-lg font-bold" style={{color:C.muted}}>Generate and export business intelligence reports</h2>
         </div>

@@ -26,7 +26,7 @@ export function FEFOMonitor() {
   return (
     <Card className="p-5">
       {/* Header */}
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
         <div>
           <h2 className="font-semibold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
             FEFO Inventory Monitor
@@ -35,7 +35,7 @@ export function FEFOMonitor() {
             First Expired, First Out — Priority Queue
           </p>
         </div>
-        <div className="flex gap-3 text-xs" style={{ color: C.muted }}>
+        <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs" style={{ color: C.muted }}>
           {[
             { c: "red",    l: "Critical" },
             { c: "orange", l: "High"     },
@@ -50,11 +50,11 @@ export function FEFOMonitor() {
       </div>
 
       {/* Summary stats */}
-      <div className="flex gap-3 mb-4 mt-3">
+      <div className="grid grid-cols-2 sm:flex gap-3 mb-4 mt-3">
         {SUMMARY_STATS.map(m => (
           <div
             key={m.label}
-            className="flex-1 rounded-xl px-3 py-2.5 text-center"
+            className="sm:flex-1 rounded-xl px-3 py-2.5 text-center"
             style={{ backgroundColor: m.bg }}
           >
             <div className="font-bold text-base" style={{ color: m.color }}>{m.value}</div>
@@ -87,10 +87,10 @@ export function FEFOMonitor() {
                 style={{ borderBottom: `1px solid ${C.border}` }}
               >
                 <td className="py-2.5 px-2"><FEFODot st={item.st} /></td>
-                <td className="py-2.5 px-2 font-medium" style={{ color: C.text }}>{item.product}</td>
-                <td className="py-2.5 px-2 font-mono"   style={{ color: C.muted }}>{item.batch}</td>
+                <td className="py-2.5 px-2 font-medium whitespace-nowrap" style={{ color: C.text }}>{item.product}</td>
+                <td className="py-2.5 px-2 font-mono whitespace-nowrap"   style={{ color: C.muted }}>{item.batch}</td>
                 <td className="py-2.5 px-2 font-medium" style={{ color: C.text }}>{item.qty}</td>
-                <td className="py-2.5 px-2"             style={{ color: C.text }}>{item.expiry}</td>
+                <td className="py-2.5 px-2 whitespace-nowrap"             style={{ color: C.text }}>{item.expiry}</td>
                 <td
                   className="py-2.5 px-2 font-semibold"
                   style={{ color: item.days <= 3 ? C.red : item.days <= 7 ? C.orange : C.muted }}
@@ -98,7 +98,7 @@ export function FEFOMonitor() {
                   {item.days}d
                 </td>
                 <td className="py-2.5 px-2"><StatusBadge status={item.priority} /></td>
-                <td className="py-2.5 px-2">
+                <td className="py-2.5 px-2 whitespace-nowrap">
                   <span className="font-medium text-xs" style={{ color: STATUS_COLOR[item.st] }}>
                     {STATUS_LABEL[item.st]}
                   </span>

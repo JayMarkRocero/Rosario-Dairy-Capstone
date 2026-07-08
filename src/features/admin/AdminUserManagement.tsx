@@ -30,7 +30,6 @@ export function AdminUserManagement() {
   const [loading,     setLoading]     = useState(false);
   const [role,        setRole]        = useState<"Administrator"|"Staff">("Staff");
 
-  // ── Filtered data (role filter applied before the table's own search/sort/paginate) ──
   const filteredUsers = useMemo(() => {
     if (roleFilter === "All") return systemUsers;
     return systemUsers.filter(u => u.role === roleFilter);
@@ -114,21 +113,23 @@ export function AdminUserManagement() {
   );
 
   return (
-    <div className="flex flex-col h-full gap-4 p-6 overflow-hidden">
-      <div className="flex items-center justify-between flex-shrink-0">
-        <div>
-          <h2 className="text-lg font-bold" style={{color:C.muted}}>Manage administrator and staff accounts</h2>
-        </div>
-        <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>setAddOpen(true)}>Add User</Btn>
+    <div className="flex flex-col min-h-full gap-4 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
+        <h2 className="text-base sm:text-lg font-bold leading-snug" style={{color:C.muted}}>
+          Manage administrator and staff accounts
+        </h2>
+        <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>setAddOpen(true)}>
+          Add User
+        </Btn>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 flex-shrink-0">
         {SUMMARY.map(s=>(
           <Card key={s.label} className="p-4 flex items-center gap-3">
-            <div className="w-2 h-10 rounded-full" style={{backgroundColor:s.color}}/>
-            <div>
+            <div className="w-2 h-10 rounded-full flex-shrink-0" style={{backgroundColor:s.color}}/>
+            <div className="min-w-0">
               <div className="font-bold text-2xl" style={{color:s.color,fontFamily:"Poppins,sans-serif"}}>{s.value}</div>
-              <div className="text-xs" style={{color:C.muted}}>{s.label}</div>
+              <div className="text-xs truncate" style={{color:C.muted}}>{s.label}</div>
             </div>
           </Card>
         ))}

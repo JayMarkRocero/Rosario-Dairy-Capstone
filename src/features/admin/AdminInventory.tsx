@@ -15,6 +15,7 @@ interface FormState {
 }
 const EMPTY_FORM: FormState = { name:"", cat:"Milk", price:"", stock:"", expiry:"" };
 const CATEGORIES = ["Milk","Cheese","Butter","Yogurt","Cream","Ice Cream"];
+const STATUSES = ["Active", "Low Stock"];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -31,8 +32,8 @@ function ProductForm({ form, onChange }: { form: FormState; onChange: (f: FormSt
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...form, [k]: e.target.value });
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <div className="col-span-2">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="sm:col-span-2">
         <Field label="Product Name">
           <input className={inputClass} style={inputStyle} value={form.name}
             onChange={set("name")} placeholder="e.g. Fresh Whole Milk 1L"/>
@@ -105,7 +106,8 @@ function ProductDetail({ p }: { p: InventoryItem }) {
 export function AdminInventory() {
   const items = inventoryService.getAll();
 
-  const [catFilter,   setCatFilter]  = useState("All");
+  const [catFilter,    setCatFilter]    = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [addOpen,     setAddOpen]    = useState(false);
   const [editOpen,    setEditOpen]   = useState(false);
   const [deleteOpen,  setDeleteOpen] = useState(false);
@@ -114,11 +116,16 @@ export function AdminInventory() {
   const [form,        setForm]       = useState<FormState>(EMPTY_FORM);
   const [loading,     setLoading]    = useState(false);
 
-  // ── Filtered data (category filter applied before the table's own search/sort/paginate) ──
+  // ── Filtered data (category + status filters applied before the table's own search/sort/paginate) ──
   const filteredItems = useMemo(() => {
-    if (catFilter === "All") return items;
-    return items.filter(i => i.cat === catFilter);
-  }, [items, catFilter]);
+    return items.filter(i => {
+      const matchesCat = catFilter === "All" || i.cat === catFilter;
+      const matchesStatus =
+        statusFilter === "All" ||
+        (statusFilter === "Low Stock" ? i.low : !i.low);
+      return matchesCat && matchesStatus;
+    });
+  }, [items, catFilter, statusFilter]);
 
   const openEdit = (p: InventoryItem) => {
     setSelected(p);
@@ -221,65 +228,78 @@ const columns: Column<InventoryItem>[] = [
   );
 
   return (
-    <div className="flex flex-col h-full gap-4 p-6 overflow-hidden">
+    <div className="flex flex-col min-h-full gap-4 p-4 sm:p-6 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between flex-shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
-          <h2 className="text-lg font-bold" style={{color:C.muted}}>FEFO-based dairy product inventory</h2>
+          <h2 className="text-lg font-bold" style={{color:C.muted}}>Expiry-Based Inventory</h2>
         </div>
         <div className="flex gap-2">
-          <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={() => { setForm(EMPTY_FORM); setAddOpen(true); }}>
+          <Btn variant="primary" size="sm" icon={<Plus size={13}/>} fullWidth onClick={() => { setForm(EMPTY_FORM); setAddOpen(true); }}>
             Add Product
           </Btn>
         </div>
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-4 gap-4 flex-shrink-0">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 flex-shrink-0">
         {[
           { label:"Total Products",  value:"12",       color:C.blue   },
           { label:"Low Stock",       value:"4",        color:C.orange },
           { label:"Near Expiry",     value:"5",        color:C.red    },
           { label:"Total Value",     value:"₱187,400", color:C.green  },
         ].map(s => (
-          <Card key={s.label} className="p-4 flex items-center gap-3">
+          <Card key={s.label} className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-2 h-10 rounded-full flex-shrink-0" style={{backgroundColor:s.color}}/>
-            <div>
-              <div className="font-bold text-lg" style={{color:s.color,fontFamily:"Poppins,sans-serif"}}>
+            <div className="min-w-0">
+              <div className="font-bold text-base sm:text-lg truncate" style={{color:s.color,fontFamily:"Poppins,sans-serif"}}>
                 {s.value}
               </div>
-              <div className="text-xs" style={{color:C.muted}}>{s.label}</div>
+              <div className="text-xs truncate" style={{color:C.muted}}>{s.label}</div>
             </div>
           </Card>
         ))}
       </div>
 
       {/* Table */}
-      <Card className="p-5">
-        <EnhancedTable
-          columns={columns}
-          data={filteredItems}
-          rowKey={r => r.id}
-          pageSize={4}
-          searchable
-          searchKeys={r => [r.name, r.cat]}
-          searchPlaceholder="Search products…"
-          onRowClick={openView}
-          emptyTitle="No products found"
-          emptyDesc="Add your first product to get started."
-          showExport={false}
-          extraControls={
-            <select
-              value={catFilter}
-              onChange={e => setCatFilter(e.target.value)}
-              className="px-3 py-2 rounded-xl text-sm outline-none border"
-              style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
-            >
-              <option value="All">All Categories</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          }
-        />
+      <Card className="p-5 overflow-hidden">
+        <div className="overflow-x-auto">
+          <EnhancedTable
+            columns={columns}
+            data={filteredItems}
+            rowKey={r => r.id}
+            pageSize={4}
+            searchable
+            searchKeys={r => [r.name, r.cat]}
+            searchPlaceholder="Search products…"
+            onRowClick={openView}
+            emptyTitle="No products found"
+            emptyDesc="Add your first product to get started."
+            showExport={false}
+            extraControls={
+              <div className="flex flex-wrap gap-2">
+                <select
+                  value={catFilter}
+                  onChange={e => setCatFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl text-sm outline-none border"
+                  style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+                >
+                  <option value="All">All Categories</option>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl text-sm outline-none border"
+                  style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+                >
+                  <option value="All">All Statuses</option>
+                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            }
+          />
+        </div>
       </Card>
 
       {/* Add Modal */}

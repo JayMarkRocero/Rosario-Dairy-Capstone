@@ -64,9 +64,9 @@ export function StaffOrders() {
   ];
 
   return (
-    <div className="p-6 flex flex-col h-full gap-4 overflow-hidden">
+    <div className="p-6 flex flex-col min-h-full gap-4 overflow-hidden">
       {/* Header - fixed */}
-      <div className="flex items-center justify-between flex-shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
           <h3 style={{color:C.muted}}>View and update today's orders</h3>
         </div>

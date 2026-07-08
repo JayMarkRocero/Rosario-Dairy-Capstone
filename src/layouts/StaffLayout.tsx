@@ -21,13 +21,26 @@ interface Props { onLogout: () => void }
 
 export function StaffLayout({ onLogout }: Props) {
   const [page, setPage] = useState<StaffPage>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const isPOS = page === "pos";
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: C.bg }}>
-      <StaffSidebar active={page} onChange={setPage} onLogout={onLogout} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar title={PAGE_TITLES[page]} userName="Juan dela Cruz" role="Staff" onLogout={onLogout} />
+      <StaffSidebar
+        active={page}
+        onChange={setPage}
+        onLogout={onLogout}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <TopBar
+          title={PAGE_TITLES[page]}
+          userName="Juan dela Cruz"
+          role="Staff"
+          onLogout={onLogout}
+          onMenuClick={() => setSidebarOpen(true)}
+        />
         <main className={`flex-1 ${isPOS ? "overflow-hidden flex" : "overflow-y-auto"}`}>
           {page === "dashboard" && <StaffDashboard onNavigate={setPage} />}
           {page === "pos"       && <StaffPOS />}

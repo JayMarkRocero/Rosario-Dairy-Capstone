@@ -24,7 +24,6 @@ export function AdminOrders() {
   const [status,     setStatus]     = useState("");
   const [loading,    setLoading]    = useState(false);
 
-  // ── Filtered data (status filter applied before the table's own search/sort/paginate) ──
   const filteredOrders = useMemo(() => {
     if (statusFilter === "All") return orders;
     return orders.filter(o => o.status === statusFilter);
@@ -81,21 +80,23 @@ export function AdminOrders() {
   ];
 
   return (
-    <div className="flex flex-col h-full gap-4 p-6 overflow-hidden">
-      <div className="flex items-center justify-between flex-shrink-0">
-        <div>
-          <h2 className="text-lg font-bold" style={{color:C.muted}}>Manage and track all customer orders</h2>
-        </div>
-        <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>setNewOpen(true)}>New Order</Btn>
+    <div className="flex flex-col min-h-full gap-4 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
+        <h2 className="text-base sm:text-lg font-bold leading-snug" style={{color:C.muted}}>
+          Manage and track all customer orders
+        </h2>
+        <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>setNewOpen(true)}>
+          New Order
+        </Btn>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 flex-shrink-0">
         {SUMMARY.map(s => (
           <Card key={s.label} className="p-4 flex items-center gap-3">
             <div className="w-2 h-10 rounded-full flex-shrink-0" style={{backgroundColor:s.color}}/>
-            <div>
+            <div className="min-w-0">
               <div className="font-bold text-2xl" style={{color:s.color,fontFamily:"Poppins,sans-serif"}}>{s.value}</div>
-              <div className="text-xs" style={{color:C.muted}}>{s.label}</div>
+              <div className="text-xs truncate" style={{color:C.muted}}>{s.label}</div>
             </div>
           </Card>
         ))}
@@ -138,16 +139,16 @@ export function AdminOrders() {
         </>}>
         {selected && (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 {l:"Order ID",  v:selected.id         },
                 {l:"Customer",  v:selected.customer   },
                 {l:"Pickup",    v:selected.pickup      },
                 {l:"Staff",     v:selected.staff       },
               ].map(r=>(
-                <div key={r.l} className="p-3 rounded-xl" style={{backgroundColor:C.bg}}>
+                <div key={r.l} className="p-3 rounded-xl min-w-0" style={{backgroundColor:C.bg}}>
                   <div className="text-xs" style={{color:C.muted}}>{r.l}</div>
-                  <div className="font-semibold text-sm mt-0.5" style={{color:C.text}}>{r.v}</div>
+                  <div className="font-semibold text-sm mt-0.5 truncate" style={{color:C.text}}>{r.v}</div>
                 </div>
               ))}
             </div>
@@ -159,7 +160,7 @@ export function AdminOrders() {
               <div className="font-semibold text-sm mb-2" style={{color:C.text}}>Items Ordered</div>
               <div className="space-y-2 rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>
                 {ORDER_ITEMS.map((item,i)=>(
-                  <div key={i} className="flex items-center justify-between px-3 py-2 text-sm"
+                  <div key={i} className="flex flex-wrap items-center justify-between gap-x-2 px-3 py-2 text-sm"
                     style={{backgroundColor:i%2===0?"#fff":"#FAFBFC",borderBottom:i<ORDER_ITEMS.length-1?`1px solid ${C.border}`:undefined}}>
                     <span style={{color:C.text}}>{item.split(" — ")[0]}</span>
                     <span style={{color:C.muted}}>{item.split(" — ").slice(1).join(" — ")}</span>
@@ -167,7 +168,7 @@ export function AdminOrders() {
                 ))}
               </div>
             </div>
-            <div className="flex justify-between items-center p-4 rounded-2xl"
+            <div className="flex flex-wrap justify-between items-center gap-2 p-4 rounded-2xl"
               style={{backgroundColor:C.navy+"08",border:`1px solid ${C.navy}15`}}>
               <span className="font-semibold" style={{color:C.text}}>Order Total</span>
               <span className="font-bold text-xl" style={{color:C.blue,fontFamily:"Poppins,sans-serif"}}>

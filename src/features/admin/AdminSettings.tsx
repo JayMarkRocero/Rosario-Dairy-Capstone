@@ -20,7 +20,7 @@ const inputStyle = { borderColor:C.border, color:C.text, backgroundColor:"#F8FAF
 
 function Field({ label, children, span=false }:{ label:string; children:React.ReactNode; span?:boolean }) {
   return (
-    <div className={span?"col-span-2":""}>
+    <div className={span?"sm:col-span-2":""}>
       <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>{label}</label>
       {children}
     </div>
@@ -29,8 +29,8 @@ function Field({ label, children, span=false }:{ label:string; children:React.Re
 
 function Toggle({ label, desc, value, onChange }:{ label:string; desc:string; value:boolean; onChange:(v:boolean)=>void }) {
   return (
-    <div className="flex items-center justify-between p-3.5 rounded-xl" style={{border:`1px solid ${C.border}`}}>
-      <div>
+    <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl" style={{border:`1px solid ${C.border}`}}>
+      <div className="min-w-0">
         <div className="text-sm font-medium" style={{color:C.text}}>{label}</div>
         <div className="text-xs mt-0.5" style={{color:C.muted}}>{desc}</div>
       </div>
@@ -47,7 +47,7 @@ function Toggle({ label, desc, value, onChange }:{ label:string; desc:string; va
 function GeneralTab() {
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="System Name" span>
           <input className={inputClass} style={inputStyle} defaultValue="Rosario Dairy Management System"/>
         </Field>
@@ -73,7 +73,7 @@ function GeneralTab() {
 
 function BusinessTab() {
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <Field label="Business Name" span>
         <input className={inputClass} style={inputStyle} defaultValue="Rosario Dairy"/>
       </Field>
@@ -117,7 +117,7 @@ function NotificationsTab() {
 function FEFOTab() {
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Low Stock Threshold (units)">
           <input className={inputClass} style={inputStyle} type="number" defaultValue="20"/>
         </Field>
@@ -152,7 +152,7 @@ function AccountTab() {
       </Field>
       <Field label="Profile Photo">
         <div className="flex items-center gap-3 mt-1">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-lg"
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
             style={{backgroundColor:C.navy}}>A</div>
           <Btn variant="secondary" size="sm">Change Photo</Btn>
         </div>
@@ -200,18 +200,21 @@ export function AdminSettings() {
   };
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-5">
       <div>
         <h2 className="text-lg font-bold" style={{color:C.muted}}>System configuration and preferences</h2>
       </div>
 
-      <div className="flex gap-6" style={{minHeight:520}}>
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
         {/* Sidebar tabs */}
-        <div className="w-48 flex-shrink-0">
-          <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>
+        <div className="lg:w-48 flex-shrink-0">
+          <div
+            className="bg-white rounded-2xl overflow-x-auto lg:overflow-hidden flex lg:block no-scrollbar"
+            style={{border:`1px solid ${C.border}`}}
+          >
             {TABS.map(t=>(
               <button key={t.id} onClick={()=>setTab(t.id)}
-                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left transition-colors"
+                className="flex-shrink-0 lg:w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left whitespace-nowrap transition-colors"
                 style={{
                   color:         tab===t.id?"#fff":C.muted,
                   backgroundColor:tab===t.id?C.navy:"transparent",
@@ -224,14 +227,14 @@ export function AdminSettings() {
         </div>
 
         {/* Content */}
-        <div className="flex-1">
-          <div className="bg-white rounded-2xl p-6" style={{border:`1px solid ${C.border}`}}>
+        <div className="flex-1 min-w-0">
+          <div className="bg-white rounded-2xl p-4 sm:p-6" style={{border:`1px solid ${C.border}`}}>
             <h3 className="font-bold text-base mb-5" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>
               {TABS.find(t=>t.id===tab)?.label}
             </h3>
             {TAB_CONTENT[tab]}
             <div className="flex justify-end mt-6 pt-4" style={{borderTop:`1px solid ${C.border}`}}>
-              <Btn variant="primary" onClick={save} disabled={loading}>
+              <Btn variant="primary" onClick={save} disabled={loading} fullWidth>
                 {loading ? "Saving…" : "Save Changes"}
               </Btn>
             </div>

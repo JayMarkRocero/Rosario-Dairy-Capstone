@@ -19,19 +19,19 @@ export function RevenueChart() {
 
   return (
     <Card className="p-5">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <div>
           <h2 className="font-semibold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
             Revenue Analytics
           </h2>
           <p className="text-xs mt-0.5" style={{ color: C.muted }}>Total revenue over time</p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1">
           {(["daily", "weekly", "monthly", "yearly"] as Period[]).map(p => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all"
+              className="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all"
               style={{
                 backgroundColor: period === p ? C.blue : "transparent",
                 color:           period === p ? "#fff" : C.muted,

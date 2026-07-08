@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  Bell, ChevronDown, User, Lock, LogOut,
+  Menu, Bell, ChevronDown, User, Lock, LogOut,
   AlertTriangle, Package, ClipboardList, TrendingUp, CheckCircle, FileText,
 } from "lucide-react";
 import { C } from "../constants/colors";
@@ -45,7 +45,7 @@ function NotificationBell() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(v => !v)}
-        className="relative w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors"
+        className="relative w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors flex-shrink-0"
         style={{ border: `1px solid ${C.border}`, color: C.muted }}
       >
         <Bell size={16} />
@@ -60,65 +60,66 @@ function NotificationBell() {
       </button>
 
       {open && (
-        <div
-          className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl z-50 overflow-hidden"
-          style={{ border: `1px solid ${C.border}`, top: "100%" }}
-        >
-          {/* Header */}
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderBottom: `1px solid ${C.border}` }}
-          >
-            <span className="font-semibold text-sm" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
-              Notifications
-            </span>
-            <span
-              className="text-xs font-medium px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: C.blue + "15", color: C.blue }}
-            >
-              {unreadCount} new
-            </span>
-          </div>
+        <>
+          {/* Mobile backdrop - taps outside to close, also dims page for a proper sheet feel */}
+          <div className="sm:hidden fixed inset-0 bg-black/20 z-40" onClick={() => setOpen(false)} />
 
-          {/* List */}
-          <div className="max-h-72 overflow-y-auto">
-            {NOTIFICATIONS.map(n => {
-              const cfg = NOTIF_COLORS[n.type] ?? NOTIF_COLORS.info;
-              return (
-                <div
-                  key={n.id}
-                  className="flex gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
-                  style={{
-                    borderBottom: `1px solid ${C.border}`,
-                    backgroundColor: n.unread ? C.blue + "06" : undefined,
-                  }}
-                >
+          <div
+            className="fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2
+              w-auto sm:w-80 bg-white rounded-2xl shadow-2xl z-50 overflow-hidden"
+            style={{ border: `1px solid ${C.border}` }}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-3"
+              style={{ borderBottom: `1px solid ${C.border}` }}
+            >
+              <span className="font-semibold text-sm" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
+                Notifications
+              </span>
+              <span
+                className="text-xs font-medium px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: C.blue + "15", color: C.blue }}
+              >
+                {unreadCount} new
+              </span>
+            </div>
+
+            <div className="max-h-[60vh] sm:max-h-72 overflow-y-auto">
+              {NOTIFICATIONS.map(n => {
+                const cfg = NOTIF_COLORS[n.type] ?? NOTIF_COLORS.info;
+                return (
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-                    style={{ backgroundColor: cfg.bg, color: cfg.color }}
+                    key={n.id}
+                    className="flex gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                    style={{
+                      borderBottom: `1px solid ${C.border}`,
+                      backgroundColor: n.unread ? C.blue + "06" : undefined,
+                    }}
                   >
-                    {n.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span
-                        className="text-xs font-semibold"
-                        style={{ color: C.text }}
-                      >
-                        {n.title}
-                      </span>
-                      <span className="text-xs ml-2 flex-shrink-0" style={{ color: C.muted }}>{n.time}</span>
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: cfg.bg, color: cfg.color }}
+                    >
+                      {n.icon}
                     </div>
-                    <p className="text-xs mt-0.5 truncate" style={{ color: C.muted }}>{n.body}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold truncate" style={{ color: C.text }}>
+                          {n.title}
+                        </span>
+                        <span className="text-xs flex-shrink-0" style={{ color: C.muted }}>{n.time}</span>
+                      </div>
+                      <p className="text-xs mt-0.5 truncate" style={{ color: C.muted }}>{n.body}</p>
+                    </div>
+                    {n.unread && (
+                      <span className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: C.blue }} />
+                    )}
                   </div>
-                  {n.unread && (
-                    <span className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: C.blue }} />
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -140,24 +141,17 @@ function ProfileDropdown({ userName, role }: ProfileProps) {
   return (
     <div className="flex items-center gap-3 px-2 py-1.5">
       <div
-        className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm"
+        className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
         style={{ backgroundColor: C.navy }}
       >
         {initials}
       </div>
 
       <div className="hidden md:block">
-        <div
-          className="text-sm font-semibold"
-          style={{ color: C.text }}
-        >
+        <div className="text-sm font-semibold" style={{ color: C.text }}>
           {userName}
         </div>
-
-        <div
-          className="text-xs"
-          style={{ color: C.muted }}
-        >
+        <div className="text-xs" style={{ color: C.muted }}>
           {role}
         </div>
       </div>
@@ -171,9 +165,10 @@ interface TopBarProps {
   userName: string;
   role: string;
   onLogout?: () => void;
+  onMenuClick?: () => void;
 }
 
-export function TopBar({ title, userName, role, onLogout }: TopBarProps) {
+export function TopBar({ title, userName, role, onLogout, onMenuClick }: TopBarProps) {
   const now     = new Date();
   const dateStr = now.toLocaleDateString("en-PH", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
   const [time, setTime] = useState(now.toLocaleTimeString("en-PH", { hour:"2-digit", minute:"2-digit", second:"2-digit" }));
@@ -187,23 +182,27 @@ export function TopBar({ title, userName, role, onLogout }: TopBarProps) {
 
   return (
     <header
-      className="flex items-center justify-between px-6 bg-white flex-shrink-0"
+      className="flex items-center justify-between px-4 md:px-6 bg-white flex-shrink-0"
       style={{ borderBottom: `1px solid ${C.border}`, height: 64 }}
     >
-      {/* Left: Title + date */}
-      <div>
-        <h1
-          className="font-bold text-base"
-          style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
+      <div className="flex items-center gap-3 min-w-0">
+        <button
+          onClick={onMenuClick}
+          className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors flex-shrink-0"
+          style={{ border: `1px solid ${C.border}`, color: C.muted }}
         >
-          {title}
-        </h1>
-        <p className="text-xs" style={{ color: C.muted }}>{dateStr}</p>
+          <Menu size={18} />
+        </button>
+
+        <div className="min-w-0">
+          <h1 className="font-bold text-base truncate" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
+            {title}
+          </h1>
+          <p className="text-xs hidden sm:block truncate" style={{ color: C.muted }}>{dateStr}</p>
+        </div>
       </div>
 
-      {/* Right: Time, Notifications, Profile */}
-      <div className="flex items-center gap-3">
-        {/* Live clock */}
+      <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
         <div
           className="hidden md:flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl"
           style={{ backgroundColor: C.navy + "08", color: C.navy, border: `1px solid ${C.navy}18` }}

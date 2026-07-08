@@ -29,12 +29,25 @@ interface Props { onLogout: () => void }
 
 export function AdminLayout({ onLogout }: Props) {
   const [page, setPage] = useState<AdminPage>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: C.bg }}>
-      <AdminSidebar active={page} onChange={setPage} onLogout={onLogout} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar title={PAGE_TITLES[page]} userName="Admin Rosario" role="Administrator" onLogout={onLogout} />
+      <AdminSidebar
+        active={page}
+        onChange={setPage}
+        onLogout={onLogout}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <TopBar
+          title={PAGE_TITLES[page]}
+          userName="Admin Rosario"
+          role="Administrator"
+          onLogout={onLogout}
+          onMenuClick={() => setSidebarOpen(true)}
+        />
         <main className="flex-1 overflow-y-auto">
           {page === "dashboard"  && <AdminDashboard />}
           {page === "inventory"  && <AdminInventory />}

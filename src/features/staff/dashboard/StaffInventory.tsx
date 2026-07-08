@@ -54,7 +54,7 @@ export function StaffInventory() {
   ];
 
   return (
-    <div className="p-6 flex flex-col h-full gap-4 overflow-hidden">
+    <div className="p-6 flex flex-col min-h-full gap-4 overflow-hidden">
       {/* Header + notice - fixed */}
       <div className="flex-shrink-0 space-y-4">
         {/* Read-only notice */}
