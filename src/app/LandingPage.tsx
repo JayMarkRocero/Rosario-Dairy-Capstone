@@ -63,8 +63,16 @@ function useCountUp(target: number, active: boolean, duration = 1400) {
 /* ------------------------------------------------------------------ */
 
 function NavBar({ onLogin }: { onLogin?: () => void }) {
-  const [scrolled, setScrolled] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [scrolled, setScrolled]           = useState(false);
+  const [mobileOpen, setMobileOpen]       = useState(false);
+  const [activeSection, setActiveSection] = useState("home");
+
+  const links = [
+    { label: "Home", id: "home" },
+    { label: "Features", id: "features" },
+    { label: "About", id: "about" },
+    { label: "Contact", id: "contact" },
+  ];
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -73,12 +81,33 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const links = [
-    { label: "Home", id: "home" },
-    { label: "Features", id: "features" },
-    { label: "About", id: "about" },
-    { label: "Contact", id: "contact" },
-  ];
+  // ── Scroll-spy: highlight whichever section is currently in view ─────────
+  useEffect(() => {
+    const sections = links
+      .map(l => document.getElementById(l.id))
+      .filter((el): el is HTMLElement => !!el);
+
+    if (sections.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      entries => {
+        const visible = entries
+          .filter(e => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+
+        if (visible.length > 0) {
+          setActiveSection(visible[0].target.id);
+        }
+      },
+      {
+        rootMargin: "-30% 0px -60% 0px",
+        threshold: [0, 0.25, 0.5, 0.75, 1],
+      }
+    );
+
+    sections.forEach(s => observer.observe(s));
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <header
@@ -89,21 +118,21 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
     >
       <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 sm:h-[72px] flex items-center justify-between">
         {/* Logo */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div
             className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-white font-bold text-base shrink-0"
             style={{ backgroundColor: C.navy }}
           >
             RD
           </div>
-          <div className="leading-tight">
+          <div className="leading-tight min-w-0">
             <p
-              className="font-bold text-sm sm:text-base"
+              className="font-bold text-sm sm:text-base truncate"
               style={{ color: C.navy, fontFamily: "Poppins, sans-serif" }}
             >
               Rosario Dairy
             </p>
-            <p className="text-[11px] sm:text-xs" style={{ color: C.muted }}>
+            <p className="text-[11px] sm:text-xs truncate" style={{ color: C.muted }}>
               Integrated Inventory &amp; POS System
             </p>
           </div>
@@ -111,19 +140,29 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
 
         {/* Desktop links */}
         <nav className="hidden md:flex items-center gap-8">
-          {links.map((l) => (
-            <button
-              key={l.id}
-              onClick={() => scrollToId(l.id)}
-              className="text-sm font-medium transition-colors hover:opacity-80"
-              style={{ color: C.text }}
-            >
-              {l.label}
-            </button>
-          ))}
+          {links.map((l) => {
+            const isActive = activeSection === l.id;
+            return (
+              <button
+                key={l.id}
+                onClick={() => scrollToId(l.id)}
+                className="relative text-sm font-medium transition-colors hover:opacity-80 py-1.5"
+                style={{ color: isActive ? C.blue : C.text }}
+              >
+                {l.label}
+                <span
+                  className="absolute left-0 -bottom-0.5 h-0.5 rounded-full transition-all duration-300"
+                  style={{
+                    width: isActive ? "100%" : "0%",
+                    backgroundColor: C.blue,
+                  }}
+                />
+              </button>
+            );
+          })}
         </nav>
 
-        <div className="hidden md:block">
+        <div className="hidden md:block flex-shrink-0">
           <button
             onClick={onLogin}
             className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5"
@@ -135,7 +174,7 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
 
         {/* Mobile toggle */}
         <button
-          className="md:hidden p-2 rounded-lg"
+          className="md:hidden p-2 rounded-lg flex-shrink-0"
           style={{ color: C.navy }}
           onClick={() => setMobileOpen((v) => !v)}
           aria-label="Toggle menu"
@@ -155,23 +194,29 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
             className="md:hidden overflow-hidden"
             style={{ backgroundColor: C.white, borderTop: `1px solid ${C.border}` }}
           >
-            <div className="px-5 py-4 flex flex-col gap-3">
-              {links.map((l) => (
-                <button
-                  key={l.id}
-                  onClick={() => {
-                    scrollToId(l.id);
-                    setMobileOpen(false);
-                  }}
-                  className="text-left text-sm font-medium py-1.5"
-                  style={{ color: C.text }}
-                >
-                  {l.label}
-                </button>
-              ))}
+            <div className="px-5 py-4 flex flex-col gap-1">
+              {links.map((l) => {
+                const isActive = activeSection === l.id;
+                return (
+                  <button
+                    key={l.id}
+                    onClick={() => {
+                      scrollToId(l.id);
+                      setMobileOpen(false);
+                    }}
+                    className="text-left text-sm font-medium py-2.5 px-3 rounded-lg transition-colors"
+                    style={{
+                      color: isActive ? C.blue : C.text,
+                      backgroundColor: isActive ? C.blue + "0D" : "transparent",
+                    }}
+                  >
+                    {l.label}
+                  </button>
+                );
+              })}
               <button
                 onClick={onLogin}
-                className="mt-1 px-5 py-2.5 rounded-xl text-sm font-semibold text-white w-full"
+                className="mt-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white w-full"
                 style={{ backgroundColor: C.blue }}
               >
                 Login
@@ -200,7 +245,6 @@ function DashboardShowcase() {
       className="relative w-full max-w-md rounded-2xl overflow-hidden"
       style={{ backgroundColor: C.white, border: `1px solid ${C.border}`, boxShadow: "0 20px 60px -20px rgba(23,55,94,0.25)" }}
     >
-      {/* window bar */}
       <div
         className="flex items-center justify-between px-4 py-3"
         style={{ backgroundColor: C.bg, borderBottom: `1px solid ${C.border}` }}
@@ -222,7 +266,6 @@ function DashboardShowcase() {
       </div>
 
       <div className="p-4 space-y-3">
-        {/* KPI row */}
         <div className="grid grid-cols-3 gap-2">
           {[
             { label: "Stock Value", value: "₱482K", icon: <Boxes size={13} /> },
@@ -247,7 +290,6 @@ function DashboardShowcase() {
           ))}
         </div>
 
-        {/* Revenue + Forecast */}
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-xl p-3" style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}>
             <p className="text-[10px] font-semibold mb-2" style={{ color: C.muted }}>
@@ -288,7 +330,6 @@ function DashboardShowcase() {
           </div>
         </div>
 
-        {/* Inventory summary */}
         <div className="rounded-xl p-3" style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}>
           <p className="text-[10px] font-semibold mb-2" style={{ color: C.muted }}>
             INVENTORY SUMMARY
@@ -318,7 +359,6 @@ function DashboardShowcase() {
           </div>
         </div>
 
-        {/* Recent orders */}
         <div className="rounded-xl p-3" style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}>
           <p className="text-[10px] font-semibold mb-2" style={{ color: C.muted }}>
             RECENT ORDERS
@@ -910,7 +950,7 @@ function Footer() {
 
 export default function LandingPage({ onLogin }: LandingPageProps) {
   return (
-    <div className="min-h-screen w-full overflow-x-hidden" style={{ backgroundColor: C.bg }}>
+    <div className="min-h-screen w-full " style={{ backgroundColor: C.bg }}>
       <NavBar onLogin={onLogin} />
       <HeroSection onLogin={onLogin} />
       <FeaturesSection />

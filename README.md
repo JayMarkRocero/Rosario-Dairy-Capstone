@@ -1,7 +1,7 @@
 
-  # App development assistance
+  # Rosario Dairy System
 
-  This is a code bundle for App development assistance. The original project is available at https://www.figma.com/design/wnGKSCvM1ik3DEb0G7wg3x/App-development-assistance.
+  This is a code is made for Rosario Dairy 
 
   ## Running the code
 

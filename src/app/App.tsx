@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Toaster } from "sonner";
 import LandingPage from "./LandingPage";
-import { RoleSelector } from "./RoleSelector";
+import { Login } from "./login";
 import { AdminLayout }  from "../layouts/AdminLayout";
 import { StaffLayout }  from "../layouts/StaffLayout";
 
 type Role = "admin" | "staff" | null;
-type View = "landing" | "roleSelect";
+type View = "landing" | "Login";
 
 export default function App() {
   const [role, setRole] = useState<Role>(null);
@@ -14,7 +14,7 @@ export default function App() {
 
   const handleLogout = () => {
     setRole(null);
-    setView("landing");
+    setView("Login");
   };
 
   return (
@@ -27,8 +27,8 @@ export default function App() {
         }}
         richColors
       />
-      {!role && view === "landing"    && <LandingPage onLogin={() => setView("roleSelect")} />}
-      {!role && view === "roleSelect" && <RoleSelector onSelect={setRole} />}
+      {!role && view === "landing"    && <LandingPage onLogin={() => setView("Login")} />}
+      {!role && view === "Login" && <Login onSelect={setRole} onBack={() => setView("landing")} />}
       {role === "admin" && <AdminLayout onLogout={handleLogout} />}
       {role === "staff" && <StaffLayout onLogout={handleLogout} />}
     </>
