@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Plus, Eye, Edit, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -13,8 +13,7 @@ import type { InventoryItem } from "../../types/inventory";
 interface FormState {
   name: string; cat: string; price: string; stock: string; expiry: string;
 }
-const EMPTY_FORM: FormState = { name:"", cat:"Milk", price:"", stock:"", expiry:"" };
-const CATEGORIES = ["Milk","Cheese","Butter","Yogurt","Cream","Ice Cream"];
+const EMPTY_FORM: FormState = { name:"", cat:"", price:"", stock:"", expiry:"" };
 const STATUSES = ["Active", "Low Stock"];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -28,7 +27,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputClass = `w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100`;
 const inputStyle = { borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" };
 
-function ProductForm({ form, onChange }: { form: FormState; onChange: (f: FormState) => void }) {
+function ProductForm({ form, onChange, categories }: {
+  form: FormState;
+  onChange: (f: FormState) => void;
+  categories: { id: number; name: string }[];
+}) {
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...form, [k]: e.target.value });
   return (
@@ -41,7 +44,8 @@ function ProductForm({ form, onChange }: { form: FormState; onChange: (f: FormSt
       </div>
       <Field label="Category">
         <select className={inputClass} style={inputStyle} value={form.cat} onChange={set("cat")}>
-          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          <option value="">Select a category</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </Field>
       <Field label="Unit Price (₱)">
@@ -104,7 +108,24 @@ function ProductDetail({ p }: { p: InventoryItem }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function AdminInventory() {
-  const items = inventoryService.getAll();
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(true);
+  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
+
+  const loadItems = () => {
+    setItemsLoading(true);
+    inventoryService.getAll()
+      .then(setItems)
+      .catch(() => toast.error("Failed to load inventory."))
+      .finally(() => setItemsLoading(false));
+  };
+
+  useEffect(() => {
+    loadItems();
+    inventoryService.getCategoriesRaw()
+      .then(setCategories)
+      .catch(() => toast.error("Failed to load categories."));
+  }, []);
 
   const [catFilter,    setCatFilter]    = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -127,34 +148,79 @@ export function AdminInventory() {
     });
   }, [items, catFilter, statusFilter]);
 
+  const stats = useMemo(() => {
+  const totalProducts = items.length;
+  const lowStock = items.filter(i => i.low).length;
+  const nearExpiry = items.filter(i => {
+    if (!i.expiry) return false;
+    const days = Math.ceil((new Date(i.expiry).getTime() - new Date().setHours(0,0,0,0)) / (1000*60*60*24));
+    return days <= 7;
+  }).length;
+  const totalValue = items.reduce((sum, i) => sum + (i.price * i.stock), 0);
+
+  return { totalProducts, lowStock, nearExpiry, totalValue };
+}, [items]);
+
   const openEdit = (p: InventoryItem) => {
     setSelected(p);
-    setForm({ name:p.name, cat:p.cat, price:String(p.price), stock:String(p.stock), expiry:"2026-07-20" });
+    const matchedCat = categories.find(c => c.name === p.cat);
+    setForm({ name:p.name, cat: matchedCat ? String(matchedCat.id) : "", price:String(p.price), stock:String(p.stock), expiry: p.expiry || "" });
     setEditOpen(true);
   };
   const openDelete = (p: InventoryItem) => { setSelected(p); setDeleteOpen(true); };
   const openView   = (p: InventoryItem) => { setSelected(p); setViewOpen(true); };
 
   const handleSave = (mode: "add"|"edit") => {
-    if (!form.name || !form.price || !form.stock) {
+    if (!form.name || !form.price || !form.stock || !form.cat) {
       toast.error("Please fill in all required fields."); return;
     }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      mode === "add" ? setAddOpen(false) : setEditOpen(false);
-      setForm(EMPTY_FORM);
-      toast.success(mode === "add" ? "Product added successfully!" : "Product updated successfully!");
-    }, 800);
+
+    if (mode === "add") {
+      inventoryService.createProduct({
+        name: form.name,
+        categoryId: Number(form.cat),
+        price: Number(form.price),
+        stock: Number(form.stock),
+        expiry: form.expiry,
+      })
+        .then(() => {
+          toast.success("Product added successfully!");
+          setAddOpen(false);
+          setForm(EMPTY_FORM);
+          loadItems();
+        })
+        .catch(() => toast.error("Failed to add product."))
+        .finally(() => setLoading(false));
+    } else {
+      if (!selected) { setLoading(false); return; }
+      inventoryService.updateProduct(selected.id, {
+        name: form.name,
+        categoryId: Number(form.cat),
+        price: Number(form.price),
+      })
+        .then(() => {
+          toast.success("Product updated successfully!");
+          setEditOpen(false);
+          setForm(EMPTY_FORM);
+          loadItems();
+        })
+        .catch(() => toast.error("Failed to update product."))
+        .finally(() => setLoading(false));
+    }
   };
 
   const handleDelete = () => {
+    if (!selected) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setDeleteOpen(false);
-      toast.success(`${selected?.name} removed from inventory.`);
-    }, 600);
+    inventoryService.deleteProduct(selected.id)
+      .then(() => {
+        toast.success(`${selected.name} removed from inventory.`);
+        setDeleteOpen(false);
+        loadItems();
+      })
+      .catch(() => toast.error("Failed to delete product."))
+      .finally(() => setLoading(false));
   };
 
   // ── Columns ────────────────────────────────────────────────────────────────
@@ -242,13 +308,13 @@ const columns: Column<InventoryItem>[] = [
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 flex-shrink-0">
-        {[
-          { label:"Total Products",  value:"12",       color:C.blue   },
-          { label:"Low Stock",       value:"4",        color:C.orange },
-          { label:"Near Expiry",     value:"5",        color:C.red    },
-          { label:"Total Value",     value:"₱187,400", color:C.green  },
-        ].map(s => (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 flex-shrink-0">
+    {[
+       { label:"Total Products",  value:String(stats.totalProducts), color:C.blue   },
+       { label:"Low Stock",       value:String(stats.lowStock),      color:C.orange },
+       { label:"Near Expiry",     value:String(stats.nearExpiry),    color:C.red    },
+       { label:"Total Value",     value:`₱${stats.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, color:C.green  },
+         ].map(s => (
           <Card key={s.label} className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-2 h-10 rounded-full flex-shrink-0" style={{backgroundColor:s.color}}/>
             <div className="min-w-0">
@@ -273,8 +339,8 @@ const columns: Column<InventoryItem>[] = [
             searchKeys={r => [r.name, r.cat]}
             searchPlaceholder="Search products…"
             onRowClick={openView}
-            emptyTitle="No products found"
-            emptyDesc="Add your first product to get started."
+            emptyTitle={itemsLoading ? "Loading inventory…" : "No products found"}
+            emptyDesc={itemsLoading ? "Fetching data from the server." : "Add your first product to get started."}
             showExport={false}
             extraControls={
               <div className="flex flex-wrap gap-2">
@@ -285,7 +351,7 @@ const columns: Column<InventoryItem>[] = [
                   style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
                 >
                   <option value="All">All Categories</option>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
                 <select
                   value={statusFilter}
@@ -306,14 +372,14 @@ const columns: Column<InventoryItem>[] = [
       <Modal open={addOpen} onClose={() => setAddOpen(false)}
         title="Add New Product" subtitle="Fill in the product details below"
         footer={formFooter("add")}>
-        <ProductForm form={form} onChange={setForm}/>
+        <ProductForm form={form} onChange={setForm} categories={categories}/>
       </Modal>
 
       {/* Edit Modal */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)}
         title="Edit Product" subtitle={selected?.name}
         footer={formFooter("edit")}>
-        <ProductForm form={form} onChange={setForm}/>
+        <ProductForm form={form} onChange={setForm} categories={categories}/>
       </Modal>
 
       {/* View Drawer */}

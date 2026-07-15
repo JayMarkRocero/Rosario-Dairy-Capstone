@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Edit, Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { Card, StatusBadge, Btn, Modal, ConfirmDialog, Drawer } from "../../components";
@@ -17,7 +17,21 @@ interface FormState { name: string; desc: string; active: boolean }
 const EMPTY: FormState = { name:"", desc:"", active:true };
 
 export function AdminCategories() {
-  const cats = inventoryService.getCategories();
+  const [cats, setCats] = useState<Category[]>([]);
+  const [catsLoading, setCatsLoading] = useState(true);
+
+  const loadCategories = () => {
+    setCatsLoading(true);
+    inventoryService.getCategories()
+      .then(setCats)
+      .catch(() => toast.error("Failed to load categories."))
+      .finally(() => setCatsLoading(false));
+  };
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
   const [addOpen,    setAddOpen]    = useState(false);
   const [editOpen,   setEditOpen]   = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -33,12 +47,26 @@ export function AdminCategories() {
   const save = (mode:"add"|"edit") => {
     if (!form.name) { toast.error("Category name is required."); return; }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      mode==="add" ? setAddOpen(false) : setEditOpen(false);
-      setForm(EMPTY);
-      toast.success(mode==="add" ? "Category added!" : "Category updated!");
-    }, 700);
+
+    if (mode === "add") {
+      inventoryService.createCategory(form)
+        .then(() => {
+          toast.success("Category added!");
+          setAddOpen(false);
+          setForm(EMPTY);
+          loadCategories();
+        })
+        .catch(() => toast.error("Failed to add category."))
+        .finally(() => setLoading(false));
+    } else {
+      // Edit still fake for now — wire to a real PATCH call next.
+      setTimeout(() => {
+        setLoading(false);
+        setEditOpen(false);
+        setForm(EMPTY);
+        toast.success("Category updated!");
+      }, 700);
+    }
   };
 
   const handleDelete = () => {
@@ -84,6 +112,10 @@ export function AdminCategories() {
           Add Category
         </Btn>
       </div>
+
+      {catsLoading && (
+        <p className="text-sm" style={{color:C.muted}}>Loading categories…</p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {cats.map(cat => (
