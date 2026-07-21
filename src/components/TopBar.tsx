@@ -1,19 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  Menu, Bell, ChevronDown, User, Lock, LogOut,
-  AlertTriangle, Package, ClipboardList, TrendingUp, CheckCircle, FileText,
+  Menu, Bell, AlertTriangle, Package, ClipboardList, CheckCircle,
 } from "lucide-react";
 import { C } from "../constants/colors";
+import { notificationsService, type AppNotification } from "../services/notifications.service";
 
-// ─── Notifications data ───────────────────────────────────────────────────────
-const NOTIFICATIONS = [
-  { id:1, type:"warning", icon:<AlertTriangle size={14}/>, title:"Low Stock Alert",         body:"4 products are below minimum stock",  time:"5m ago",  unread:true  },
-  { id:2, type:"danger",  icon:<Package size={14}/>,       title:"Expiry Warning",           body:"Mozzarella expires in 3 days",         time:"12m ago", unread:true  },
-  { id:3, type:"info",    icon:<TrendingUp size={14}/>,    title:"Forecast Alert",           body:"High demand expected on Jul 4",        time:"1h ago",  unread:true  },
-  { id:4, type:"success", icon:<ClipboardList size={14}/>, title:"2 New Orders",             body:"Orders ORD-006 and ORD-007 received", time:"2h ago",  unread:false },
-  { id:5, type:"success", icon:<CheckCircle size={14}/>,   title:"Transaction Completed",    body:"₱3,200 — Antonio Ramos",              time:"3h ago",  unread:false },
-  { id:6, type:"info",    icon:<FileText size={14}/>,      title:"Report Generated",         body:"Monthly Sales Report is ready",       time:"6h ago",  unread:false },
-];
+const NOTIF_ICON: Record<string, React.ReactNode> = {
+  warning: <AlertTriangle size={14}/>,
+  danger:  <Package size={14}/>,
+  info:    <ClipboardList size={14}/>,
+  success: <CheckCircle size={14}/>,
+};
 
 const NOTIF_COLORS: Record<string, { bg:string; color:string }> = {
   warning: { bg:"#FFF3E0", color: C.orange },
@@ -39,7 +36,17 @@ function useDropdown() {
 // ─── Notification Bell ────────────────────────────────────────────────────────
 function NotificationBell() {
   const { open, setOpen, ref } = useDropdown();
-  const unreadCount = NOTIFICATIONS.filter(n => n.unread).length;
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    notificationsService.getAll()
+      .then(setNotifications)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const unreadCount = notifications.filter(n => n.unread).length;
 
   return (
     <div ref={ref} className="relative">
@@ -61,7 +68,6 @@ function NotificationBell() {
 
       {open && (
         <>
-          {/* Mobile backdrop - taps outside to close, also dims page for a proper sheet feel */}
           <div className="sm:hidden fixed inset-0 bg-black/20 z-40" onClick={() => setOpen(false)} />
 
           <div
@@ -85,38 +91,44 @@ function NotificationBell() {
             </div>
 
             <div className="max-h-[60vh] sm:max-h-72 overflow-y-auto">
-              {NOTIFICATIONS.map(n => {
-                const cfg = NOTIF_COLORS[n.type] ?? NOTIF_COLORS.info;
-                return (
-                  <div
-                    key={n.id}
-                    className="flex gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
-                    style={{
-                      borderBottom: `1px solid ${C.border}`,
-                      backgroundColor: n.unread ? C.blue + "06" : undefined,
-                    }}
-                  >
+              {loading ? (
+                <div className="px-4 py-6 text-center text-xs" style={{ color: C.muted }}>Loading…</div>
+              ) : notifications.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs" style={{ color: C.muted }}>You're all caught up.</div>
+              ) : (
+                notifications.map(n => {
+                  const cfg = NOTIF_COLORS[n.type] ?? NOTIF_COLORS.info;
+                  return (
                     <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-                      style={{ backgroundColor: cfg.bg, color: cfg.color }}
+                      key={n.id}
+                      className="flex gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                      style={{
+                        borderBottom: `1px solid ${C.border}`,
+                        backgroundColor: n.unread ? C.blue + "06" : undefined,
+                      }}
                     >
-                      {n.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold truncate" style={{ color: C.text }}>
-                          {n.title}
-                        </span>
-                        <span className="text-xs flex-shrink-0" style={{ color: C.muted }}>{n.time}</span>
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                        style={{ backgroundColor: cfg.bg, color: cfg.color }}
+                      >
+                        {NOTIF_ICON[n.type]}
                       </div>
-                      <p className="text-xs mt-0.5 truncate" style={{ color: C.muted }}>{n.body}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold truncate" style={{ color: C.text }}>
+                            {n.title}
+                          </span>
+                          <span className="text-xs flex-shrink-0" style={{ color: C.muted }}>{n.time}</span>
+                        </div>
+                        <p className="text-xs mt-0.5 truncate" style={{ color: C.muted }}>{n.body}</p>
+                      </div>
+                      {n.unread && (
+                        <span className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: C.blue }} />
+                      )}
                     </div>
-                    {n.unread && (
-                      <span className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: C.blue }} />
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         </>

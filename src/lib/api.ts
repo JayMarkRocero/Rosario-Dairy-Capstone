@@ -18,10 +18,15 @@ export interface CurrentUser {
   role: "admin" | "staff";
 }
 
-let accessToken: string | null = null;
+let accessToken: string | null = localStorage.getItem('rosario_access_token');
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
+  if (token) {
+    localStorage.setItem('rosario_access_token', token);
+  } else {
+    localStorage.removeItem('rosario_access_token');
+  }
 }
 
 export function getAccessToken() {

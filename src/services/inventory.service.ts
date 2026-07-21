@@ -17,10 +17,12 @@ function fefoStatus(days: number): { st: FEFOItem["st"]; priority: string } {
 
 export const inventoryService = {
   getAll: async (): Promise<InventoryItem[]> => {
-    const [products, batches] = await Promise.all([
-      api.getProducts(),
-      api.getProductBatches(),
-    ]);
+  const [allProducts, batches] = await Promise.all([
+    api.getProducts(),
+    api.getProductBatches(),
+  ]);
+  const products = allProducts.filter(p => p.is_active);
+
 
     return products.map(p => {
       const productBatches = batches.filter(
@@ -45,11 +47,13 @@ export const inventoryService = {
   },
 
   getFEFO: async (): Promise<FEFOItem[]> => {
-    const batches = await api.getProductBatches();
+  const batches = await api.getProductBatches();
 
-    return batches
-      .filter(b => b.status === "available")
-      .map(b => {
+  return batches
+    .filter(b => b.status === "available" && b.product.is_active)
+    .map(b => {
+
+
         const days = daysUntil(b.expiration_date);
         const { st, priority } = fefoStatus(days);
         return {
@@ -71,18 +75,19 @@ export const inventoryService = {
   },
 
   getCategories: async (): Promise<Category[]> => {
-    const [categories, products] = await Promise.all([
-      api.getCategories(),
-      api.getProducts(),
-    ]);
-    return categories.map(c => ({
-      id: c.id,
-      name: c.name,
-      products: products.filter(p => p.category.id === c.id).length,
-      desc: c.description ?? "",
-      active: c.is_active,
-    }));
-  },
+  const [categories, allProducts] = await Promise.all([
+    api.getCategories(),
+    api.getProducts(),
+  ]);
+  const activeProducts = allProducts.filter(p => p.is_active);
+  return categories.map(c => ({
+    id: c.id,
+    name: c.name,
+    products: activeProducts.filter(p => p.category.id === c.id).length,
+    desc: c.description ?? "",
+    active: c.is_active,
+  }));
+},
 
   getLowStock: async (): Promise<InventoryItem[]> => {
     const all = await inventoryService.getAll();

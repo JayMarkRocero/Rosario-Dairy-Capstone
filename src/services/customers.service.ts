@@ -30,6 +30,7 @@ export const customersService = {
         orders: customerOrders.length,
         total,
         last: lastOrder ? lastOrder.slice(0, 10) : "—",
+        createdAt: c.created_at.slice(0, 10),
       };
     });
   },

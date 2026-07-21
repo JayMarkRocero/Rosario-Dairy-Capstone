@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TopBar }         from "../components";
 import { AdminSidebar }   from "../features/admin/AdminSidebar";
 import { AdminDashboard } from "../features/admin/dashboard/AdminDashboard";
@@ -12,6 +12,7 @@ import { AdminUserManagement } from "../features/admin/AdminUserManagement";
 import { AdminSettings }  from "../features/admin/AdminSettings";
 import { C }              from "../constants/colors";
 import type { AdminPage } from "../features/admin/AdminSidebar";
+import { api } from "../lib/api";
 
 const PAGE_TITLES: Record<AdminPage, string> = {
   dashboard:  "Dashboard",
@@ -30,6 +31,15 @@ interface Props { onLogout: () => void }
 export function AdminLayout({ onLogout }: Props) {
   const [page, setPage] = useState<AdminPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [displayName, setDisplayName] = useState("Admin");
+
+  useEffect(() => {
+    api.getCurrentUser()
+      .then(user => {
+        setDisplayName(user.username);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: C.bg }}>
@@ -42,12 +52,12 @@ export function AdminLayout({ onLogout }: Props) {
       />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <TopBar
-          title={PAGE_TITLES[page]}
-          userName="Admin Rosario"
-          role="Administrator"
-          onLogout={onLogout}
-          onMenuClick={() => setSidebarOpen(true)}
-        />
+           title={PAGE_TITLES[page]}
+           userName={displayName}
+           role="Administrator"
+           onLogout={onLogout}
+            onMenuClick={() => setSidebarOpen(true)}
+          />
         <main className="flex-1 overflow-y-auto">
           {page === "dashboard"  && <AdminDashboard />}
           {page === "inventory"  && <AdminInventory />}

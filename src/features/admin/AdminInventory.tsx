@@ -192,7 +192,8 @@ export function AdminInventory() {
   const [loading,     setLoading]    = useState(false);
 
   const filteredItems = useMemo(() => {
-    return items.filter(i => {
+  return items
+    .filter(i => {
       const matchesCat = catFilter === "All" || i.cat === catFilter;
       const status = getStatus(i);
       const matchesStatus =
@@ -202,8 +203,15 @@ export function AdminInventory() {
          statusFilter === "Expired" ? status === "Expired" :
          status === "Active");
       return matchesCat && matchesStatus;
+    })
+    // FEFO ordering: soonest expiry first. Items with no expiry date sort last.
+    .sort((a, b) => {
+      if (!a.expiry && !b.expiry) return 0;
+      if (!a.expiry) return 1;
+      if (!b.expiry) return -1;
+      return a.expiry.localeCompare(b.expiry);
     });
-  }, [items, catFilter, statusFilter]);
+}, [items, catFilter, statusFilter]);
 
   const stats = useMemo(() => {
     const totalProducts = items.length;

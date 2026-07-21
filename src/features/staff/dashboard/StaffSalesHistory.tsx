@@ -12,16 +12,14 @@ const PAYMENT_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 export function StaffSalesHistory() {
-  const [records, setRecords] = useState<Sale[]>([]);
+  const [myRecords, setMyRecords] = useState<Sale[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(true);
-  const [currentUsername, setCurrentUsername] = useState<string | null>(null);
 
   useEffect(() => {
     setRecordsLoading(true);
     Promise.all([salesService.getAll(), api.getCurrentUser()])
       .then(([sales, user]) => {
-        setRecords(sales);
-        setCurrentUsername(user.username);
+        setMyRecords(sales.filter(s => s.cashier === user.username));
       })
       .catch(() => {})
       .finally(() => setRecordsLoading(false));
@@ -32,12 +30,12 @@ export function StaffSalesHistory() {
   const [date, setDate] = useState("");
 
   const paymentOptions = useMemo(() => {
-    const unique = Array.from(new Set(records.map(r => r.payment)));
+    const unique = Array.from(new Set(myRecords.map(r => r.payment)));
     return ["All", ...unique];
-  }, [records]);
+  }, [myRecords]);
 
   const filteredRecords = useMemo(() => {
-    return records.filter(s => {
+    return myRecords.filter(s => {
       const q = search.toLowerCase();
       const matchesSearch =
         !q ||
@@ -47,21 +45,24 @@ export function StaffSalesHistory() {
       const matchesDate = !date || s.date === date;
       return matchesSearch && matchesPayment && matchesDate;
     });
-  }, [records, search, payment, date]);
+  }, [myRecords, search, payment, date]);
 
   const summary = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
-    const today = records.filter(r => r.date === todayStr);
-    const mine = currentUsername ? records.filter(r => r.cashier === currentUsername) : [];
+    const today = myRecords.filter(r => r.date === todayStr);
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 6);
+    const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+    const thisWeek = myRecords.filter(r => r.date >= weekAgoStr && r.date <= todayStr);
     return {
       todayTotal: today.reduce((s, r) => s + r.total, 0),
       todayCount: today.length,
-      allTotal: records.reduce((s, r) => s + r.total, 0),
-      allCount: records.length,
-      mineTotal: mine.reduce((s, r) => s + r.total, 0),
-      mineCount: mine.length,
+      weekTotal: thisWeek.reduce((s, r) => s + r.total, 0),
+      weekCount: thisWeek.length,
+      allTotal: myRecords.reduce((s, r) => s + r.total, 0),
+      allCount: myRecords.length,
     };
-  }, [records, currentUsername]);
+  }, [myRecords]);
 
   const columns: Column<Sale>[] = [
     { key:"receipt", header:"Receipt #", width:"18%",
@@ -105,9 +106,9 @@ export function StaffSalesHistory() {
       {/* Stat cards - fixed */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 flex-shrink-0">
         {[
-          { label: "Today",    value: `₱${summary.todayTotal.toLocaleString()}`, sub: `${summary.todayCount} transactions` },
-          { label: "All Time", value: `₱${summary.allTotal.toLocaleString()}`,   sub: `${summary.allCount} transactions`   },
-          { label: "My Sales", value: `₱${summary.mineTotal.toLocaleString()}`,  sub: `${summary.mineCount} by me`         },
+          { label: "Today",       value: `₱${summary.todayTotal.toLocaleString()}`, sub: `${summary.todayCount} transactions` },
+          { label: "Last 7 Days", value: `₱${summary.weekTotal.toLocaleString()}`,  sub: `${summary.weekCount} transactions`  },
+          { label: "All Time",    value: `₱${summary.allTotal.toLocaleString()}`,   sub: `${summary.allCount} transactions`   },
         ].map(s => (
           <Card key={s.label} className="p-4 min-w-0">
             <div className="font-bold text-xl truncate" style={{ color: C.blue, fontFamily: "Poppins, sans-serif" }}>
@@ -157,7 +158,7 @@ export function StaffSalesHistory() {
           />
 
           <span className="text-xs sm:ml-auto" style={{ color: C.muted }}>
-            {recordsLoading ? "Loading…" : `${filteredRecords.length} of ${records.length} transactions`}
+            {recordsLoading ? "Loading…" : `${filteredRecords.length} of ${myRecords.length} transactions`}
           </span>
         </div>
 

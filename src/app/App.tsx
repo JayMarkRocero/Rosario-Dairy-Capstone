@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Toaster } from "sonner";
 import LandingPage from "./LandingPage";
-import { Login } from "./login";
+import { Login } from "./Login";
 import { AdminLayout }  from "../layouts/AdminLayout";
 import { StaffLayout }  from "../layouts/StaffLayout";
+import { api, getAccessToken, setAccessToken } from "../lib/api";
 
 type Role = "admin" | "staff" | null;
 type View = "landing" | "Login";
@@ -11,11 +12,39 @@ type View = "landing" | "Login";
 export default function App() {
   const [role, setRole] = useState<Role>(null);
   const [view, setView] = useState<View>("landing");
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      setCheckingSession(false);
+      return;
+    }
+    api.getCurrentUser()
+      .then(user => {
+        setRole(user.role);
+      })
+      .catch(() => {
+        // Token invalid or expired — clear it and fall back to login.
+        setAccessToken(null);
+        setView("Login");
+      })
+      .finally(() => setCheckingSession(false));
+  }, []);
 
   const handleLogout = () => {
+    setAccessToken(null);
     setRole(null);
     setView("Login");
   };
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-sm text-gray-400">Loading…</p>
+      </div>
+    );
+  }
 
   return (
     <>

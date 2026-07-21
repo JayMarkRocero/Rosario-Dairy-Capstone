@@ -6,4 +6,5 @@ export interface Customer {
   orders: number;
   total: number;
   last: string;
+  createdAt: string;
 }
