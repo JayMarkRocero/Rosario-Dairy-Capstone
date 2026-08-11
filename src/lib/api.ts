@@ -1,4 +1,14 @@
-const API_URL = import.meta.env.VITE_API_URL;
+function getApiBase(): string {
+  const { hostname, protocol } = window.location;
+  const match = hostname.match(/^([a-z0-9]+)-(\d+)\.(asse\.devtunnels\.ms)$/);
+  if (match) {
+    const [, id, , domain] = match;
+    return `${protocol}//${id}-8000.${domain}`;
+  }
+  return import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+}
+
+const API_URL = getApiBase();
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 export interface LoginPayload {

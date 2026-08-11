@@ -1,14 +1,50 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Eye } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, Milk, IceCreamCone, CupSoda, Droplet, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Card, StatusBadge, Btn, Modal, ConfirmDialog, Drawer } from "../../components";
 import { C } from "../../constants/colors";
 import { inventoryService } from "../../services/inventory.service";
 import type { Category } from "../../types/inventory";
 
-const EMOJI: Record<string, string> = {
-  Milk:"🥛", Cheese:"🧀", Butter:"🧈", Yogurt:"🍶", "Ice Cream":"🍨", Cream:"🍦",
+// Lucide has no exact icon for every dairy category (e.g. Cheese, Butter) —
+// those fall back to a neutral package icon rather than forcing a bad match.
+
+function CheeseIcon({ size = 18, style }: { size?: number; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
+      <path d="M2 17 12 3l10 14a1 1 0 0 1-1 1.5H3A1 1 0 0 1 2 17Z" />
+      <circle cx="9" cy="14" r="1" fill="currentColor" stroke="none" />
+      <circle cx="14" cy="11" r="1" fill="currentColor" stroke="none" />
+      <circle cx="13" cy="16" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function ButterIcon({ size = 18, style }: { size?: number; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
+      <rect x="3" y="9" width="18" height="10" rx="1.5" />
+      <path d="M3 9V7a2 2 0 0 1 2-2h4l3 4" />
+      <path d="M12 9v10" />
+    </svg>
+  );
+}
+
+const CATEGORY_ICON: Record<string, React.ComponentType<{ size?: number; style?: React.CSSProperties }>> = {
+  Milk: Milk,
+  Yogurt: CupSoda,
+  "Ice Cream": IceCreamCone,
+  Cream: Droplet,
+  Cheese: CheeseIcon,
+  Butter: ButterIcon,
 };
+
+function CategoryIcon({ name, size = 18, color }: { name: string; size?: number; color: string }) {
+  const Icon = CATEGORY_ICON[name] ?? Package;
+  return <Icon size={size} style={{ color }} />;
+}
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
 const inputStyle = { borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" };
@@ -163,9 +199,9 @@ export function AdminCategories() {
                   style={{borderBottom:`1px solid ${C.border}`}}>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                         style={{backgroundColor:C.blue+"12"}}>
-                        {EMOJI[cat.name]??"📦"}
+                        <CategoryIcon name={cat.name} size={18} color={C.blue}/>
                       </div>
                       <span className="font-semibold" style={{color:C.text, fontFamily:"Poppins,sans-serif"}}>
                         {cat.name}
@@ -228,7 +264,10 @@ export function AdminCategories() {
         {selected && (
           <div className="space-y-4">
             <div className="text-center py-6">
-              <div className="text-5xl mb-3">{EMOJI[selected.name]??"📦"}</div>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                style={{backgroundColor:C.blue+"12"}}>
+                <CategoryIcon name={selected.name} size={28} color={C.blue}/>
+              </div>
               <h3 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
               <p className="text-sm mt-1" style={{color:C.muted}}>{selected.desc}</p>
             </div>

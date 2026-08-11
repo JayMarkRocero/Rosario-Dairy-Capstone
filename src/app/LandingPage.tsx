@@ -899,10 +899,10 @@ function Footer() {
             </p>
             <div className="flex flex-col gap-2.5 text-sm" style={{ color: "#CBD5E1" }}>
               <div className="flex items-center gap-2">
-                <Mail size={14} /> support@rosariodairy.ph
+                <Mail size={14} /> rocerojaymark31@gmail.com
               </div>
               <div className="flex items-center gap-2">
-                <Phone size={14} /> +63 917 000 0000
+                <Phone size={14} /> 09125096057
               </div>
               <div className="flex items-center gap-2">
                 <MapPin size={14} /> Rosario, Batangas, Philippines
