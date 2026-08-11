@@ -12,3 +12,4 @@ export { ConfirmDialog }  from "./ConfirmDialog";
 export { EmptyState }     from "./EmptyState";
 export { EnhancedTable }  from "./EnhancedTable";
 export type { Column }    from "./EnhancedTable";
+export { CategoryIcon }   from "./CategoryIcon";
