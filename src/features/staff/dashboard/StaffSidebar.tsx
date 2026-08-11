@@ -1,5 +1,37 @@
-import { LayoutDashboard, ShoppingCart, ClipboardList, Package, BarChart2, LogOut } from "lucide-react";
+import { useState } from "react";
+import { LayoutDashboard, ShoppingCart, ClipboardList, Package, BarChart2, LogOut, Milk } from "lucide-react";
 import { C } from "../../../constants/colors";
+
+const LOGO_SRC = "assets/images/logo.jpg";
+
+function BrandMark({ size = 36 }: { size?: number }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (!imgFailed) {
+    return (
+      <div
+        className="rounded-full bg-white flex items-center justify-center flex-shrink-0 overflow-hidden"
+        style={{ width: size, height: size }}
+      >
+        <img
+          src={LOGO_SRC}
+          alt="Rosario Dairy logo"
+          onError={() => setImgFailed(true)}
+          className="w-full h-full object-cover"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex items-center justify-center rounded-full flex-shrink-0"
+      style={{ width: size, height: size, backgroundColor: C.blue }}
+    >
+      <Milk size={size * 0.55} className="text-white" aria-hidden="true" />
+    </div>
+  );
+}
 
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard",     icon: LayoutDashboard },
@@ -43,12 +75,7 @@ export function StaffSidebar({ active, onChange, onLogout, isOpen, onClose }: Pr
           className="flex items-center gap-3 px-5 py-5"
           style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}
         >
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white text-sm flex-shrink-0"
-            style={{ backgroundColor: C.blue }}
-          >
-            RD
-          </div>
+          <BrandMark size={36} />
           <div>
             <div
               className="text-white font-semibold text-sm leading-tight"
