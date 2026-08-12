@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Plus, Eye, Edit, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
-  Card, StatusBadge, Btn, Modal, Drawer, ConfirmDialog, EnhancedTable,
+  Card, StatusBadge, Btn, Modal, Drawer, ConfirmDialog, EnhancedTable, CategoryIcon,
 } from "../../components";
 import type { Column } from "../../components";
 import { C } from "../../constants/colors";
@@ -121,8 +121,11 @@ function ProductDetail({ p }: { p: InventoryItem }) {
         className="rounded-2xl p-4 text-center"
         style={{ backgroundColor: accentColor + "08", border:`1px solid ${accentColor}20` }}
       >
-        <div className="text-4xl mb-2">
-          {p.cat==="Milk"?"🥛":p.cat==="Cheese"?"🧀":p.cat==="Butter"?"🧈":p.cat==="Yogurt"?"🍶":p.cat==="Ice Cream"?"🍨":"🍦"}
+        <div
+          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
+          style={{ backgroundColor: accentColor + "12" }}
+        >
+          <CategoryIcon name={p.cat} size={30} color={accentColor} />
         </div>
         <div className="font-bold text-base" style={{ color:C.text,fontFamily:"Poppins,sans-serif" }}>{p.name}</div>
         <div className="mt-1"><StatusBadge status={status}/></div>
@@ -290,9 +293,17 @@ export function AdminInventory() {
       key:"name", header:"Product", width:"24%",
       sortKey: r => r.name,
       render: r => (
-        <div>
-          <div className="font-semibold text-sm" style={{color:C.text}}>{r.name}</div>
-          <div className="text-xs mt-0.5" style={{color:C.muted}}>PRD-{String(r.id).padStart(3,"0")}</div>
+        <div className="flex items-center gap-3">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: C.blue + "12" }}
+          >
+            <CategoryIcon name={r.cat} size={16} color={C.blue} />
+          </div>
+          <div>
+            <div className="font-semibold text-sm" style={{color:C.text}}>{r.name}</div>
+            <div className="text-xs mt-0.5" style={{color:C.muted}}>PRD-{String(r.id).padStart(3,"0")}</div>
+          </div>
         </div>
       ),
     },

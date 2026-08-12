@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Search, ShoppingCart, AlertTriangle, Banknote, Smartphone, Printer, Check, X } from "lucide-react";
 import { toast } from "sonner";
-import { Modal } from "../../../components";
+import { Modal, CategoryIcon } from "../../../components";
 import { C } from "../../../constants/colors";
 import { inventoryService } from "../../../services/inventory.service";
 import { checkoutService } from "../../../services/checkout.service";
@@ -9,10 +9,6 @@ import type { InventoryItem } from "../../../types/inventory";
 
 type PayMethod  = "Cash" | "GCash";
 interface CartItem { id:number; name:string; price:number; qty:number; stock:number }
-
-const EMOJI: Record<string,string> = {
-  Milk:"🥛", Cheese:"🧀", Butter:"🧈", Yogurt:"🍶", "Ice Cream":"🍨", Cream:"🍦",
-};
 
 const LOW_STOCK_THRESHOLD = 20;
 
@@ -107,9 +103,9 @@ function ProductCard({ prod, qtyInCart, onAdd }:{
         </div>
       )}
 
-      <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-xl sm:text-2xl mb-2.5 sm:mb-3"
+      <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center mb-2.5 sm:mb-3"
         style={{ backgroundColor: C.blue + "10" }}>
-        {EMOJI[prod.cat] ?? "📦"}
+        <CategoryIcon name={prod.cat} size={20} color={C.blue} />
       </div>
 
       <div
