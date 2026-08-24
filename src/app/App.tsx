@@ -1,44 +1,33 @@
-import { useState, useEffect } from "react";
-import { Toaster } from "sonner";
+// src/app/App.tsx
+import { useEffect, useState } from "react";
+import { Toaster, toast } from "sonner";
 import LandingPage from "./LandingPage";
 import { Login } from "./Login";
-import { AdminLayout }  from "../layouts/AdminLayout";
-import { StaffLayout }  from "../layouts/StaffLayout";
-import { api, getAccessToken, setAccessToken } from "../lib/api";
+import { AdminLayout } from "../layouts/AdminLayout";
+import { StaffLayout } from "../layouts/StaffLayout";
+import { AuthProvider, useAuth } from "../contexts/AuthContext";
 
-type Role = "admin" | "staff" | null;
 type View = "landing" | "Login";
 
-export default function App() {
-  const [role, setRole] = useState<Role>(null);
+function AppShell() {
+  const { user, loading, sessionExpired, logout, clearSessionExpiredFlag } = useAuth();
   const [view, setView] = useState<View>("landing");
-  const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) {
-      setCheckingSession(false);
-      return;
+    if (sessionExpired) {
+      toast.error("Your session has expired. Please log in again.");
+      setView("Login");
+      clearSessionExpiredFlag();
     }
-    api.getCurrentUser()
-      .then(user => {
-        setRole(user.role);
-      })
-      .catch(() => {
-        // Token invalid or expired — clear it and fall back to login.
-        setAccessToken(null);
-        setView("Login");
-      })
-      .finally(() => setCheckingSession(false));
-  }, []);
+  }, [sessionExpired, clearSessionExpiredFlag]);
 
   const handleLogout = () => {
-    setAccessToken(null);
-    setRole(null);
+    logout();
     setView("Login");
   };
 
-  if (checkingSession) {
+  // Never render admin/staff/login simultaneously with an unresolved session check.
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-sm text-gray-400">Loading…</p>
@@ -56,10 +45,18 @@ export default function App() {
         }}
         richColors
       />
-      {!role && view === "landing"    && <LandingPage onLogin={() => setView("Login")} />}
-      {!role && view === "Login" && <Login onSelect={setRole} onBack={() => setView("landing")} />}
-      {role === "admin" && <AdminLayout onLogout={handleLogout} />}
-      {role === "staff" && <StaffLayout onLogout={handleLogout} />}
+      {!user && view === "landing" && <LandingPage onLogin={() => setView("Login")} />}
+      {!user && view === "Login" && <Login onBack={() => setView("landing")} />}
+      {user?.role === "admin" && <AdminLayout onLogout={handleLogout} />}
+      {user?.role === "staff" && <StaffLayout onLogout={handleLogout} />}
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }

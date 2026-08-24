@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { TopBar }          from "../components";
 import { StaffSidebar }    from "../features/staff/dashboard/StaffSidebar";
 import { StaffDashboard }  from "../features/staff/dashboard/StaffDashboard";
@@ -8,7 +8,7 @@ import { StaffInventory }  from "../features/staff/dashboard/StaffInventory";
 import { StaffSalesHistory } from "../features/staff/dashboard/StaffSalesHistory";
 import { C }               from "../constants/colors";
 import type { StaffPage }  from "../features/staff/dashboard/StaffSidebar";
-import { api } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 
 const PAGE_TITLES: Record<StaffPage, string> = {
   dashboard: "Dashboard",
@@ -23,16 +23,8 @@ interface Props { onLogout: () => void }
 export function StaffLayout({ onLogout }: Props) {
   const [page, setPage] = useState<StaffPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [displayName, setDisplayName] = useState("Staff");
+  const { user } = useAuth();
   const isPOS = page === "pos";
-
-  useEffect(() => {
-    api.getCurrentUser()
-      .then(user => {
-        setDisplayName(user.username);
-      })
-      .catch(() => {});
-  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: C.bg }}>
@@ -46,7 +38,7 @@ export function StaffLayout({ onLogout }: Props) {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <TopBar
           title={PAGE_TITLES[page]}
-          userName={displayName}
+          userName={user?.username ?? "Staff"}
           role="Staff"
           onLogout={onLogout}
           onMenuClick={() => setSidebarOpen(true)}

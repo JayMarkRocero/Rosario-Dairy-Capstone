@@ -1,3 +1,4 @@
+// src/lib/api.ts
 function getApiBase(): string {
   const { hostname, protocol } = window.location;
   const match = hostname.match(/^([a-z0-9]+)-(\d+)\.(asse\.devtunnels\.ms)$/);
@@ -9,6 +10,29 @@ function getApiBase(): string {
 }
 
 const API_URL = getApiBase();
+
+// ─── Typed API error ──────────────────────────────────────────────────────
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+// ─── 401 subscription (lets AuthProvider react without api.ts importing React) ──
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
+function notifyUnauthorized() {
+  unauthorizedListeners.forEach(l => l());
+}
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 export interface LoginPayload {
@@ -246,16 +270,37 @@ export interface DjangoSalesByCategory {
 }
 
 // ─── Error parsing helper ──────────────────────────────────────────────────────
-async function throwParsedError(res: Response): Promise<never> {
+/**
+ * `isAuthenticatedRequest` distinguishes a request that carried (or should
+ * carry) an existing session token from one that doesn't, like login.
+ * A 401 on an authenticated request means "your session died" — a 401 on
+ * login just means "wrong credentials." Conflating the two was causing
+ * failed logins to incorrectly show "session expired."
+ */
+async function throwParsedError(res: Response, isAuthenticatedRequest: boolean): Promise<never> {
   const errText = await res.text();
   let message = `Request failed (${res.status})`;
   try {
     const parsed = JSON.parse(errText);
     message = parsed.error || parsed.detail || Object.values(parsed).flat().join(" ") || message;
   } catch {
-    // errText wasn't valid JSON — keep the generic message
+    // errText wasn't valid JSON — keep the generic message. Never surface
+    // raw HTML/stack-trace bodies (e.g. Django DEBUG pages) to the user.
   }
-  throw new Error(message);
+
+  if (res.status === 401) {
+    if (isAuthenticatedRequest) {
+      // A previously-valid session's token is now missing/expired/invalid.
+      setAccessToken(null);
+      notifyUnauthorized();
+      throw new ApiError(401, "Your session has expired. Please log in again.");
+    }
+    // Unauthenticated request (e.g. login) rejected — this is a credentials
+    // problem, not a session-expiry problem. Do not touch session state.
+    throw new ApiError(401, message || "Invalid username or password.");
+  }
+
+  throw new ApiError(res.status, message);
 }
 
 // ─── Core fetch helpers ───────────────────────────────────────────────────────
@@ -263,7 +308,7 @@ async function apiFetch<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
   });
-  if (!res.ok) return throwParsedError(res);
+  if (!res.ok) return throwParsedError(res, true);
   return res.json();
 }
 
@@ -276,7 +321,7 @@ async function apiPost<T>(path: string, body: unknown, authRequired = true): Pro
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) return throwParsedError(res);
+  if (!res.ok) return throwParsedError(res, authRequired);
   return res.json();
 }
 
@@ -289,7 +334,7 @@ async function apiPatch<T>(path: string, body: unknown): Promise<T> {
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) return throwParsedError(res);
+  if (!res.ok) return throwParsedError(res, true);
   return res.json();
 }
 
@@ -298,7 +343,7 @@ async function apiDelete(path: string): Promise<void> {
     method: 'DELETE',
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
   });
-  if (!res.ok) return throwParsedError(res);
+  if (!res.ok) return throwParsedError(res, true);
 }
 
 async function apiDeleteWithBody(path: string, body: unknown): Promise<void> {
@@ -310,17 +355,15 @@ async function apiDeleteWithBody(path: string, body: unknown): Promise<void> {
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) return throwParsedError(res);
+  if (!res.ok) return throwParsedError(res, true);
 }
 
-// Some DELETE endpoints (e.g. category soft-delete) return 200 + a JSON body
-// instead of a plain 204, so we parse and hand back the result.
 async function apiDeleteWithResult<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: 'DELETE',
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
   });
-  if (!res.ok) return throwParsedError(res);
+  if (!res.ok) return throwParsedError(res, true);
   return res.json();
 }
 
@@ -371,30 +414,29 @@ export const api = {
     apiDelete(`/sales/customers/${id}/`),
 
   createOrder: (data: CreateOrderPayload) =>
-  apiPost<DjangoOrder>('/sales/orders/', data),
-confirmOrder: (id: number) =>
-  apiPost<DjangoOrder>(`/sales/orders/${id}/confirm/`, {}),
-fulfillOrder: (id: number, paymentMethod: string) =>
-  apiPost<DjangoOrder>(`/sales/orders/${id}/fulfill/`, { payment_method: paymentMethod }),
-cancelOrder: (id: number) =>
-  apiPost<DjangoOrder>(`/sales/orders/${id}/cancel/`, {}),
+    apiPost<DjangoOrder>('/sales/orders/', data),
+  confirmOrder: (id: number) =>
+    apiPost<DjangoOrder>(`/sales/orders/${id}/confirm/`, {}),
+  fulfillOrder: (id: number, paymentMethod: string) =>
+    apiPost<DjangoOrder>(`/sales/orders/${id}/fulfill/`, { payment_method: paymentMethod }),
+  cancelOrder: (id: number) =>
+    apiPost<DjangoOrder>(`/sales/orders/${id}/cancel/`, {}),
 
-checkout: (data: CheckoutPayload) =>
-  apiPost<DjangoTransaction>('/sales/checkout/', data),
+  checkout: (data: CheckoutPayload) =>
+    apiPost<DjangoTransaction>('/sales/checkout/', data),
 
-getTransactions: (params?: { start_date?: string; end_date?: string; payment_method?: string }) => {
-  const query = new URLSearchParams();
-  if (params?.start_date) query.set('start_date', params.start_date);
-  if (params?.end_date) query.set('end_date', params.end_date);
-  if (params?.payment_method) query.set('payment_method', params.payment_method);
-  const qs = query.toString();
-  return apiFetch<DjangoTransaction[]>(`/sales/transactions/${qs ? `?${qs}` : ''}`);
-},
+  getTransactions: (params?: { start_date?: string; end_date?: string; payment_method?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.start_date) query.set('start_date', params.start_date);
+    if (params?.end_date) query.set('end_date', params.end_date);
+    if (params?.payment_method) query.set('payment_method', params.payment_method);
+    const qs = query.toString();
+    return apiFetch<DjangoTransaction[]>(`/sales/transactions/${qs ? `?${qs}` : ''}`);
+  },
 
-getBestSellers: (limit = 10) =>
-  apiFetch<DjangoBestSeller[]>(`/sales/reports/best-sellers/?limit=${limit}`),
+  getBestSellers: (limit = 10) =>
+    apiFetch<DjangoBestSeller[]>(`/sales/reports/best-sellers/?limit=${limit}`),
 
-getSalesByCategory: () =>
-  apiFetch<DjangoSalesByCategory[]>('/sales/reports/sales-by-category/'),
-
+  getSalesByCategory: () =>
+    apiFetch<DjangoSalesByCategory[]>('/sales/reports/sales-by-category/'),
 };

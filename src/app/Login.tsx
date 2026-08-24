@@ -1,4 +1,4 @@
-// components/Login.tsx
+// src/app/Login.tsx
 import { useState } from "react";
 import {
   Eye,
@@ -18,22 +18,13 @@ import {
 import { toast } from "sonner";
 import { Modal } from "../components";
 import { C } from "../constants/colors";
-import { api, setAccessToken } from "../lib/api";
-
-type Role = "admin" | "staff";
+import { useAuth } from "../contexts/AuthContext";
+import { ApiError } from "../lib/api";
 
 interface Props {
-  onSelect: (role: Role) => void;
   onBack?: () => void;
 }
 
-/**
- * Save your two uploaded files into /public with these exact names
- * (or update the paths below to wherever you keep them):
- *   - /assets/images/logo.jpg   → the Rosario Dairy cooperative badge
- *   - /assets/images/bg.jpg     → the storefront photo
- * If either file is missing, everything falls back gracefully.
- */
 const LOGO_SRC = "assets/images/logo.jpg";
 const BG_SRC = "assets/images/bg.jpg";
 
@@ -216,7 +207,8 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
 /*  Login                                                                */
 /* ------------------------------------------------------------------ */
 
-export function Login({ onSelect, onBack }: Props) {
+export function Login({ onBack }: Props) {
+  const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -242,25 +234,22 @@ export function Login({ onSelect, onBack }: Props) {
 
     setLoading(true);
 
-    api
-      .login({ username: username.trim(), password })
-      .then((tokens) => {
-        setAccessToken(tokens.access);
-        return api.getCurrentUser();
-      })
+    login(username.trim(), password)
       .then((user) => {
         toast.success(`Welcome back, ${user.username}!`);
-        onSelect(user.role);
+        // No manual navigation needed — App.tsx re-renders AdminLayout/StaffLayout
+        // automatically once AuthContext's `user` state updates.
       })
       .catch((err) => {
-        // Distinguish a network/connection failure from bad credentials
-        // without assuming a specific error shape from the API layer.
         const isNetworkError =
-          err instanceof TypeError || err?.message === "Failed to fetch" || err?.code === "NETWORK_ERROR";
+          err instanceof TypeError || err?.message === "Failed to fetch";
 
         if (isNetworkError) {
           setError("Unable to connect to the server. Please try again.");
           toast.error("Unable to connect to the server.");
+        } else if (err instanceof ApiError) {
+          setError("Unable to sign in. Please check your username and password.");
+          toast.error("Login failed. Please check your credentials.");
         } else {
           setError("Unable to sign in. Please check your username and password.");
           toast.error("Login failed. Please check your credentials.");
@@ -284,8 +273,6 @@ export function Login({ onSelect, onBack }: Props) {
         className="hidden md:flex md:w-1/2 lg:w-3/5 flex-col justify-between p-10 lg:p-14 relative rd-anim-bg"
         style={{
           backgroundColor: C.navy,
-          // Darker at the edges, slightly lighter toward the center —
-          // keeps the photo recognizable while holding contrast for white text.
           backgroundImage: bgFailed
             ? undefined
             : `radial-gradient(ellipse at center, rgba(15,42,74,0.45) 0%, rgba(15,42,74,0.55) 45%, rgba(15,42,74,0.88) 100%), url(${BG_SRC})`,
@@ -294,10 +281,8 @@ export function Login({ onSelect, onBack }: Props) {
           borderRight: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        {/* hidden probe image so we know if BG_SRC actually exists */}
         <img src={BG_SRC} alt="" className="hidden" onError={() => setBgFailed(true)} />
 
-        {/* Branding */}
         <div className="relative z-10 flex items-center gap-3 rd-anim-brand">
           <BrandMark size={52} />
           <div>
@@ -316,7 +301,6 @@ export function Login({ onSelect, onBack }: Props) {
           </div>
         </div>
 
-        {/* Marketing block */}
         <div className="relative z-10 max-w-sm rd-anim-marketing">
           <h2
             className="text-2xl lg:text-[1.7rem] font-bold text-white leading-tight mb-3 tracking-tight"
@@ -342,9 +326,7 @@ export function Login({ onSelect, onBack }: Props) {
           </div>
         </div>
 
-        {/* Footer */}
-        <p className="relative z-10 text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>
-        </p>
+        <p className="relative z-10 text-xs" style={{ color: "rgba(255,255,255,0.45)" }}></p>
       </div>
 
       {/* Right / mobile-only login panel */}
@@ -368,7 +350,6 @@ export function Login({ onSelect, onBack }: Props) {
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-10 py-8">
-          {/* Mobile-only logo */}
           <div className="flex md:hidden items-center gap-3 mb-8">
             <BrandMark size={44} />
             <div>
@@ -389,7 +370,6 @@ export function Login({ onSelect, onBack }: Props) {
               boxShadow: "0 24px 60px -28px rgba(15,42,74,0.32)",
             }}
           >
-            {/* single deliberate accent bar */}
             <div style={{ height: 4, background: `linear-gradient(90deg, ${C.navy}, ${C.blue})` }} />
 
             <div className="p-7 sm:p-9">
