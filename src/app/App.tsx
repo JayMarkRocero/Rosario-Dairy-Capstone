@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { Toaster, toast } from "sonner";
 import LandingPage from "./LandingPage";
 import { Login } from "./Login";
-import { AdminLayout } from "../layouts/AdminLayout";
-import { StaffLayout } from "../layouts/StaffLayout";
-import { AuthProvider, useAuth } from "../contexts/AuthContext";
+import { AdminLayout } from "@/app/layouts/AdminLayout";
+import { StaffLayout } from "@/app/layouts/StaffLayout";
+import { AuthProvider, useAuth } from "@/features/auth/context/AuthContext";
 
 type View = "landing" | "Login";
 

@@ -20,7 +20,7 @@ import {
   Milk,
   PackageCheck,
 } from "lucide-react";
-import { C } from "../constants/colors";
+import { C } from "@/styles/tokens/colors";
 
 /* ------------------------------------------------------------------ */
 /*  Types & helpers                                                   */

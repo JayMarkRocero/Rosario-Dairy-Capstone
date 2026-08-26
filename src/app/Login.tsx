@@ -16,10 +16,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Modal } from "../components";
-import { C } from "../constants/colors";
-import { useAuth } from "../contexts/AuthContext";
-import { ApiError } from "../lib/api";
+import { Modal } from "@/components/overlays/Modal";
+import { C } from "@/styles/tokens/colors";
+import { useAuth } from "@/features/auth/context/AuthContext";
+import { ApiError } from "@/lib/api";
 
 interface Props {
   onBack?: () => void;

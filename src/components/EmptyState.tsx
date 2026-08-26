@@ -1,4 +1,4 @@
-import { C } from "../constants/colors";
+import { C } from "@/styles/tokens/colors";
 
 interface Props {
   icon?: React.ReactNode;
