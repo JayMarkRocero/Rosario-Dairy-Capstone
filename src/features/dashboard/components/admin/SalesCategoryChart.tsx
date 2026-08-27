@@ -10,10 +10,20 @@ export function SalesCategoryChart() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+
     reportsService.getSalesByCategory()
-      .then(setCategoryData)
+      .then((data) => {
+        if (active) setCategoryData(data);
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (

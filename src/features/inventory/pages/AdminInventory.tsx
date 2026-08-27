@@ -65,10 +65,11 @@ function getStatus(item: InventoryItem): "Expired" | "Low" | "Near Expiry" | "Ac
   return "Active";
 }
 
-function ProductForm({ form, onChange, categories }: {
+function ProductForm({ form, onChange, categories, mode }: {
   form: FormState;
   onChange: (f: FormState) => void;
   categories: { id: number; name: string }[];
+  mode: "add" | "edit";
 }) {
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...form, [k]: e.target.value });
@@ -91,13 +92,21 @@ function ProductForm({ form, onChange, categories }: {
           onChange={set("price")} placeholder="0.00"/>
       </Field>
       <Field label="Stock Quantity">
-        <input className={inputClass} style={inputStyle} type="number" value={form.stock}
-          onChange={set("stock")} placeholder="0"/>
+        <input className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
+          style={{...inputStyle, backgroundColor: mode === "edit" ? "#E5E7EB" : inputStyle.backgroundColor}}
+          type="number" value={form.stock} onChange={set("stock")} placeholder="0"
+          disabled={mode === "edit"}/>
       </Field>
       <Field label="Expiry Date">
-        <input className={inputClass} style={inputStyle} type="date" value={form.expiry}
-          onChange={set("expiry")}/>
+        <input className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
+          style={{...inputStyle, backgroundColor: mode === "edit" ? "#E5E7EB" : inputStyle.backgroundColor}}
+          type="date" value={form.expiry} onChange={set("expiry")} disabled={mode === "edit"}/>
       </Field>
+      {mode === "edit" && (
+        <p className="sm:col-span-2 -mt-1 text-xs" style={{color:C.muted}}>
+          Stock and Expiry Date are managed per batch and cannot be edited directly.
+        </p>
+      )}
     </div>
   );
 }
@@ -240,7 +249,7 @@ export function AdminInventory() {
   const openView   = (p: InventoryItem) => { setSelected(p); setViewOpen(true); };
 
   const handleSave = (mode: "add"|"edit") => {
-    if (!form.name || !form.price || !form.stock || !form.cat) {
+    if (!form.name || !form.price || !form.cat || (mode === "add" && !form.stock)) {
       toast.error("Please fill in all required fields."); return;
     }
     setLoading(true);
@@ -461,14 +470,14 @@ export function AdminInventory() {
       <Modal open={addOpen} onClose={() => setAddOpen(false)}
         title="Add New Product" subtitle="Fill in the product details below"
         footer={formFooter("add")}>
-        <ProductForm form={form} onChange={setForm} categories={categories}/>
+        <ProductForm form={form} onChange={setForm} categories={categories} mode="add"/>
       </Modal>
 
       {/* Edit Modal */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)}
         title="Edit Product" subtitle={selected?.name}
         footer={formFooter("edit")}>
-        <ProductForm form={form} onChange={setForm} categories={categories}/>
+        <ProductForm form={form} onChange={setForm} categories={categories} mode="edit"/>
       </Modal>
 
       {/* View Drawer */}

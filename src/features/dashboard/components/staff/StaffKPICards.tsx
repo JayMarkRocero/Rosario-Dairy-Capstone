@@ -21,6 +21,8 @@ export function StaffKPICards() {
   const [username, setUsername] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
+
     Promise.all([
       salesService.getAll(),
       ordersService.getAll(),
@@ -28,13 +30,20 @@ export function StaffKPICards() {
       api.getCurrentUser(),
     ])
       .then(([s, o, p, user]) => {
+        if (!active) return;
         setSales(s);
         setOrders(o);
         setProducts(p);
         setUsername(user.username);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const kpis = useMemo(() => {

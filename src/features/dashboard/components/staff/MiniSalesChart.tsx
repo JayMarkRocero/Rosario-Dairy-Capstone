@@ -13,13 +13,22 @@ export function MiniSalesChart() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+
     Promise.all([salesService.getAll(), api.getCurrentUser()])
       .then(([s, user]) => {
+        if (!active) return;
         setSales(s);
         setUsername(user.username);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const chartData = useMemo(() => {

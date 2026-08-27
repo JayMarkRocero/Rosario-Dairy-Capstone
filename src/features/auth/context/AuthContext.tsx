@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { api, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
+import { ApiError, api, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
 
 interface AuthState {
   user: CurrentUser | null;
@@ -34,9 +34,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     api.getCurrentUser()
       .then(setUser)
-      .catch(() => {
-        // Token invalid/expired at boot — fail safe to logged-out.
-        setAccessToken(null);
+      .catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 401) {
+          setAccessToken(null);
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -49,10 +50,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (username: string, password: string) => {
     const tokens = await api.login({ username, password });
     setAccessToken(tokens.access);
-    const currentUser = await api.getCurrentUser();
-    setUser(currentUser);
-    setSessionExpired(false);
-    return currentUser;
+    try {
+      const currentUser = await api.getCurrentUser();
+      setUser(currentUser);
+      setSessionExpired(false);
+      return currentUser;
+    } catch (error) {
+      setAccessToken(null);
+      throw error;
+    }
   }, []);
 
   const value: AuthState = {

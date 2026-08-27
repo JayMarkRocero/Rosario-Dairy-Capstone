@@ -6,7 +6,17 @@ function getApiBase(): string {
     const [, id, , domain] = match;
     return `${protocol}//${id}-8000.${domain}`;
   }
-  return import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+  const configuredUrl = import.meta.env.VITE_API_URL?.trim();
+  if (configuredUrl) {
+    const parsedUrl = new URL(configuredUrl, window.location.origin);
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      throw new Error('VITE_API_URL must use the http or https protocol.');
+    }
+    return configuredUrl.replace(/\/$/, '');
+  }
+
+  if (import.meta.env.DEV) return 'http://127.0.0.1:8000';
+  throw new Error('VITE_API_URL is required outside development.');
 }
 
 const API_URL = getApiBase();

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Eye } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
@@ -15,8 +15,8 @@ import type { Category } from "@/features/inventory/types/inventory";
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
 const inputStyle = { borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" };
 
-interface FormState { name: string; desc: string; active: boolean }
-const EMPTY: FormState = { name:"", desc:"", active:true };
+interface FormState { name: string; desc: string; is_active: boolean }
+const EMPTY: FormState = { name:"", desc:"", is_active:true };
 
 function CategoryForm({ form, setForm }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>> }) {
   return (
@@ -37,11 +37,11 @@ function CategoryForm({ form, setForm }: { form: FormState; setForm: React.Dispa
           <div className="text-xs" style={{color:C.muted}}>Category is visible to staff</div>
         </div>
         <button
-          onClick={() => setForm(f=>({...f,active:!f.active}))}
+          onClick={() => setForm(f=>({...f,is_active:!f.is_active}))}
           className="w-11 h-6 rounded-full transition-colors relative"
-          style={{backgroundColor:form.active?C.green:C.border}}>
+          style={{backgroundColor:form.is_active?C.green:C.border}}>
           <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all"
-            style={{left:form.active?"calc(100% - 22px)":"2px"}}/>
+            style={{left:form.is_active?"calc(100% - 22px)":"2px"}}/>
         </button>
       </div>
     </div>
@@ -71,9 +71,14 @@ export function AdminCategories() {
   const [selected,   setSelected]   = useState<Category | null>(null);
   const [form,       setForm]       = useState<FormState>(EMPTY);
   const [loading,    setLoading]    = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
+
+  const visibleCategories = showInactive
+    ? cats
+    : cats.filter((cat) => cat.is_active);
 
   const openEdit = (c: Category) => {
-    setSelected(c); setForm({ name:c.name, desc:c.desc, active:c.active }); setEditOpen(true);
+    setSelected(c); setForm({ name:c.name, desc:c.desc, is_active:c.is_active }); setEditOpen(true);
   };
 
   const save = (mode:"add"|"edit") => {
@@ -107,13 +112,26 @@ export function AdminCategories() {
   const handleDelete = () => {
     if (!selected) return;
     setLoading(true);
-    inventoryService.deleteCategory(selected.id)
-      .then((message) => {
-        toast.success(message || `${selected.name} deleted.`);
+    inventoryService.updateCategory(selected.id, { is_active: false })
+      .then(() => {
+        toast.success(`${selected.name} deactivated.`);
         setDeleteOpen(false);
         loadCategories();
       })
-      .catch((err) => toast.error(err.message || "Failed to delete category."))
+      .catch((err) => toast.error(err.message || "Failed to deactivate category."))
+      .finally(() => setLoading(false));
+  };
+
+  const handleReactivate = (category: Category) => {
+    setLoading(true);
+    inventoryService.updateCategory(category.id, {
+      is_active: true,
+    })
+      .then(() => {
+        toast.success(`${category.name} reactivated.`);
+        loadCategories();
+      })
+      .catch((err) => toast.error(err.message || "Failed to reactivate category."))
       .finally(() => setLoading(false));
   };
 
@@ -123,9 +141,16 @@ export function AdminCategories() {
         <div>
           <h2 className="text-lg font-bold" style={{color:C.muted}}>Organize products by type</h2>
         </div>
-        <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
-          Add Category
-        </Btn>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer" style={{color:C.muted}}>
+            <input type="checkbox" checked={showInactive}
+              onChange={e => setShowInactive(e.target.checked)} className="accent-blue-600"/>
+            Show Inactive Categories
+          </label>
+          <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
+            Add Category
+          </Btn>
+        </div>
       </div>
 
       <Card className="overflow-hidden">
@@ -149,15 +174,15 @@ export function AdminCategories() {
                 </tr>
               )}
 
-              {!catsLoading && cats.length === 0 && (
+              {!catsLoading && visibleCategories.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-5 py-10 text-center text-sm" style={{color:C.muted}}>
-                    No categories yet. Add one to get started.
+                    {showInactive ? "No categories found." : "No active categories found."}
                   </td>
                 </tr>
               )}
 
-              {!catsLoading && cats.map(cat => (
+              {!catsLoading && visibleCategories.map(cat => (
                 <tr key={cat.id} className="hover:bg-gray-50/70 transition-colors"
                   style={{borderBottom:`1px solid ${C.border}`}}>
                   <td className="px-5 py-3">
@@ -181,10 +206,17 @@ export function AdminCategories() {
                     </span>
                   </td>
                   <td className="px-5 py-3">
-                    <StatusBadge status={cat.active?"Active":"Inactive"}/>
+                    <StatusBadge status={cat.is_active?"Active":"Inactive"}/>
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex gap-1 justify-end">
+                      {!cat.is_active && (
+                        <button onClick={()=>handleReactivate(cat)} disabled={loading}
+                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-green-50 transition-colors disabled:opacity-50"
+                          style={{color:C.green}}>
+                          <RotateCcw size={13}/> Reactivate
+                        </button>
+                      )}
                       <button onClick={()=>{setSelected(cat);setViewOpen(true);}}
                         className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors" style={{color:C.blue}}>
                         <Eye size={14}/>
@@ -234,7 +266,7 @@ export function AdminCategories() {
               <h3 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
               <p className="text-sm mt-1" style={{color:C.muted}}>{selected.desc}</p>
             </div>
-            {[{l:"Total Products",v:`${selected.products}`},{l:"Status",v:selected.active?"Active":"Inactive"}].map(r=>(
+            {[{l:"Total Products",v:`${selected.products}`},{l:"Status",v:selected.is_active?"Active":"Inactive"}].map(r=>(
               <div key={r.l} className="flex justify-between py-2" style={{borderBottom:`1px solid ${C.border}`}}>
                 <span style={{color:C.muted}} className="text-sm">{r.l}</span>
                 <span className="text-sm font-semibold" style={{color:C.text}}>{r.v}</span>

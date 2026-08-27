@@ -4,6 +4,8 @@ import type { InventoryItem, FEFOItem, Category } from "@/features/inventory/typ
 function daysUntil(dateStr: string): number {
   const today = new Date();
   const target = new Date(dateStr);
+  const targetTimestamp = target.getTime();
+  if (Number.isNaN(targetTimestamp)) return 0;
   const diffMs = target.getTime() - today.setHours(0, 0, 0, 0);
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
@@ -85,7 +87,7 @@ export const inventoryService = {
     name: c.name,
     products: activeProducts.filter((p: DjangoProduct) => p.category.id === c.id).length,
     desc: c.description ?? "",
-    active: c.is_active,
+    is_active: c.is_active,
   }));
 },
 
@@ -128,24 +130,23 @@ export const inventoryService = {
     await api.createProductBatch(batchPayload);
   },
 
-  createCategory: async (input: { name: string; desc: string; active: boolean }): Promise<void> => {
+  createCategory: async (input: { name: string; desc: string; is_active: boolean }): Promise<void> => {
     const payload: CreateCategoryPayload = {
       name: input.name,
       description: input.desc || null,
-      is_active: input.active,
+      is_active: input.is_active,
     };
     await api.createCategory(payload);
   },
 
   updateCategory: async (
     categoryId: number,
-    input: { name: string; desc: string; active: boolean }
+    input: { name?: string; desc?: string; is_active?: boolean }
   ): Promise<void> => {
-    const payload: UpdateCategoryPayload = {
-      name: input.name,
-      description: input.desc || null,
-      is_active: input.active,
-    };
+    const payload: UpdateCategoryPayload = {};
+    if (input.name !== undefined) payload.name = input.name;
+    if (input.desc !== undefined) payload.description = input.desc || null;
+    if (input.is_active !== undefined) payload.is_active = input.is_active;
     await api.updateCategory(categoryId, payload);
   },
 

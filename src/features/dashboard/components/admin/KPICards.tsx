@@ -72,6 +72,8 @@ export function KPICards() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
 
   useEffect(() => {
+    let active = true;
+
     Promise.all([
       salesService.getAll(),
       ordersService.getAll(),
@@ -79,13 +81,20 @@ export function KPICards() {
       inventoryService.getAll(),
     ])
       .then(([s, o, c, i]) => {
+        if (!active) return;
         setSales(s);
         setOrders(o);
         setCustomers(c);
         setInventory(i);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const kpis: KPIConfig[] = useMemo(() => {

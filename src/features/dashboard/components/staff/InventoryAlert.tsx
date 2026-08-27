@@ -30,10 +30,20 @@ export function InventoryAlert() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+
     inventoryService.getAll()
-      .then(setItems)
+      .then((data) => {
+        if (active) setItems(data);
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const lowStockCount = items.filter(i => i.low).length;

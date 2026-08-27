@@ -26,5 +26,5 @@ export interface Category {
   name: string;
   products: number;
   desc: string;
-  active: boolean;
+  is_active: boolean;
 }

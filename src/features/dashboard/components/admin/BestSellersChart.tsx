@@ -9,10 +9,20 @@ export function BestSellersChart() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+
     reportsService.getBestSellers(6)
-      .then(setBestSellers)
+      .then((data) => {
+        if (active) setBestSellers(data);
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const maxSales = bestSellers[0]?.sales ?? 1;

@@ -35,13 +35,22 @@ export function FEFOMonitor() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+
     Promise.all([inventoryService.getAll(), inventoryService.getFEFO()])
       .then(([allItems, fefo]) => {
+        if (!active) return;
         setItems(allItems);
         setFefoItems(fefo);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const expiredCount = items.filter(i => isExpired(i.expiry)).length;

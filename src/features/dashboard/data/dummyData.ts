@@ -144,12 +144,12 @@ export const allInventory: InventoryItem[] = [
 ];
 
 export const categoriesList: Category[] = [
-  { id:1, name:"Milk",      products:3, desc:"Fresh fluid milk products",        active:true },
-  { id:2, name:"Cheese",    products:3, desc:"Aged and fresh cheese varieties",   active:true },
-  { id:3, name:"Butter",    products:2, desc:"Salted and unsalted butter",        active:true },
-  { id:4, name:"Yogurt",    products:2, desc:"Probiotic and flavored yogurts",    active:true },
-  { id:5, name:"Cream",     products:1, desc:"Heavy and whipping cream",          active:true },
-  { id:6, name:"Ice Cream", products:1, desc:"Frozen dairy desserts",             active:true },
+  { id:1, name:"Milk",      products:3, desc:"Fresh fluid milk products",        is_active:true },
+  { id:2, name:"Cheese",    products:3, desc:"Aged and fresh cheese varieties",   is_active:true },
+  { id:3, name:"Butter",    products:2, desc:"Salted and unsalted butter",        is_active:true },
+  { id:4, name:"Yogurt",    products:2, desc:"Probiotic and flavored yogurts",    is_active:true },
+  { id:5, name:"Cream",     products:1, desc:"Heavy and whipping cream",          is_active:true },
+  { id:6, name:"Ice Cream", products:1, desc:"Frozen dairy desserts",             is_active:true },
 ];
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
