@@ -1,5 +1,6 @@
 // src/app/Login.tsx
 import { useState } from "react";
+import { isAxiosError } from "axios";
 import {
   Eye,
   EyeOff,
@@ -241,8 +242,7 @@ export function Login({ onBack }: Props) {
         // automatically once AuthContext's `user` state updates.
       })
       .catch((err) => {
-        const isNetworkError =
-          err instanceof TypeError || err?.message === "Failed to fetch";
+        const isNetworkError = isAxiosError(err) && !err.response;
 
         if (isNetworkError) {
           setError("Unable to connect to the server. Please try again.");

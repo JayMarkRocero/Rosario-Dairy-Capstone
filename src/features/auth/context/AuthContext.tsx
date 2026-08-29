@@ -1,6 +1,7 @@
 // src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { ApiError, api, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
+import { ApiError, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
+import { authService } from "@/features/auth/api/auth.service";
 
 interface AuthState {
   user: CurrentUser | null;
@@ -32,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-    api.getCurrentUser()
+    authService.getCurrentUser()
       .then(setUser)
       .catch((error: unknown) => {
         if (error instanceof ApiError && error.status === 401) {
@@ -48,10 +49,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [logout]);
 
   const login = useCallback(async (username: string, password: string) => {
-    const tokens = await api.login({ username, password });
+    const tokens = await authService.login({ username, password });
     setAccessToken(tokens.access);
     try {
-      const currentUser = await api.getCurrentUser();
+      const currentUser = await authService.getCurrentUser();
       setUser(currentUser);
       setSessionExpired(false);
       return currentUser;

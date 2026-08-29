@@ -6,9 +6,11 @@ import { CategoryIcon } from "@/components/data-display/CategoryIcon";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { checkoutService } from "@/features/pos/api/checkout.service";
+import { customersService } from "@/features/customers/api/customers.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 
 type PayMethod  = "Cash" | "GCash";
+type DiscountType = "none" | "percent" | "fixed";
 interface CartItem { id:number; name:string; price:number; qty:number; stock:number }
 
 const LOW_STOCK_THRESHOLD = 20;
@@ -146,11 +148,15 @@ function ProductCard({ prod, qtyInCart, onAdd }:{
 // ─── Cart Contents (shared between desktop panel and mobile sheet) ────────────
 function CartContents({
   cart, total, subtotal, payMethod, setPayMethod, cashReceived, setCash, change,
-  updateQty, clearCart, onComplete,
+  discountType, setDiscountType,
+  discountValue, setDiscountValue, showDiscount, setShowDiscount, updateQty, clearCart, onComplete,
 }: {
   cart: CartItem[]; total: number; subtotal: number;
   payMethod: PayMethod; setPayMethod: (m: PayMethod) => void;
   cashReceived: string; setCash: (v: string) => void; change: number;
+  discountType: DiscountType; setDiscountType: (type: DiscountType) => void;
+  discountValue: string; setDiscountValue: (value: string) => void;
+  showDiscount: boolean; setShowDiscount: (show: boolean) => void;
   updateQty: (id: number, delta: number) => void; clearCart: () => void;
   onComplete: () => void;
 }) {
@@ -202,11 +208,27 @@ function CartContents({
       </div>
 
       <div className="px-5 py-4 space-y-2 flex-shrink-0" style={{borderTop:`1px solid ${C.border}`}}>
+        <div className="flex justify-between text-xs" style={{color:C.muted}}>
+          <span>Subtotal</span><span>₱{money(subtotal)}</span>
+        </div>
         <div className="flex justify-between font-bold text-base pt-2"
           style={{color:C.text}}>
           <span>Total</span>
           <span style={{color:C.blue}}>₱{money(total)}</span>
         </div>
+        {!showDiscount ? <button type="button" onClick={()=>setShowDiscount(true)} className="text-xs font-semibold text-left pt-2" style={{color:C.blue}}>+ Apply Discount</button> : <div className="grid grid-cols-2 gap-2 pt-2">
+          <select value={discountType} onChange={event => setDiscountType(event.target.value as DiscountType)}
+            className="px-3 py-2 rounded-xl text-xs outline-none border bg-gray-50" style={{borderColor:C.border,color:C.text}}>
+            <option value="none">No Discount</option>
+            <option value="percent">Percent</option>
+            <option value="fixed">Fixed Amount</option>
+          </select>
+          <input type="number" min="0" step="0.01" value={discountValue}
+            onChange={event => setDiscountValue(event.target.value)} disabled={discountType === "none"}
+            placeholder="Discount value" className="px-3 py-2 rounded-xl text-xs outline-none border disabled:opacity-50"
+            style={{borderColor:C.border,color:C.text}}/>
+          <button type="button" onClick={()=>{setShowDiscount(false);setDiscountType("none");setDiscountValue("0");}} className="col-span-2 text-xs text-left" style={{color:C.muted}}>Remove discount</button>
+        </div>}
       </div>
 
       <div className="px-5 pb-5 pt-1 space-y-3 flex-shrink-0">
@@ -219,7 +241,7 @@ function CartContents({
               className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
               style={{backgroundColor:payMethod===m?C.navy:"transparent",color:payMethod===m?"#fff":C.muted,
                 border:`1px solid ${payMethod===m?C.navy:C.border}`}}>
-              {m==="Cash"?<Banknote size={12}/>:<Smartphone size={12}/>}{m}
+              {m==="Cash"?<Banknote size={12}/>:<Smartphone size={12}/>}{m === "GCash" ? "GCash / Online" : m}
             </button>
           ))}
         </div>
@@ -252,6 +274,7 @@ function CartContents({
 // ─── Main POS ─────────────────────────────────────────────────────────────────
 export function StaffPOS() {
   const [products, setProducts] = useState<InventoryItem[]>([]);
+  const [walkInCustomerId, setWalkInCustomerId] = useState(1);
   const [productsLoading, setProductsLoading] = useState(true);
 
   useEffect(() => {
@@ -260,6 +283,12 @@ export function StaffPOS() {
       .then(setProducts)
       .catch(() => toast.error("Failed to load products."))
       .finally(() => setProductsLoading(false));
+    customersService.getAll()
+      .then(data => {
+        const walkIn = data.find(customer => customer.name.trim().toLowerCase() === "walk-in customer");
+        setWalkInCustomerId(walkIn?.id ?? 1);
+      })
+      .catch(() => toast.error("Failed to load customers."));
   }, []);
 
   const [cart,         setCart]       = useState<CartItem[]>([]);
@@ -267,6 +296,9 @@ export function StaffPOS() {
   const [search,       setSearch]     = useState("");
   const [payMethod,    setPayMethod]  = useState<PayMethod>("Cash");
   const [cashReceived, setCash]       = useState("");
+  const [discountType, setDiscountType] = useState<DiscountType>("none");
+  const [discountValue, setDiscountValue] = useState("0");
+  const [showDiscount, setShowDiscount] = useState(false);
   const [receiptOpen,  setReceiptOpen]= useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -295,7 +327,11 @@ export function StaffPOS() {
     }).filter(i=>i.qty>0));
 
   const subtotal = cart.reduce((s,i)=>s + i.price * i.qty, 0);
-  const total    = subtotal; // no tax — matches backend, which applies no tax at all
+  const parsedDiscount = Number(discountValue) || 0;
+  const discountAmount = discountType === "percent"
+    ? subtotal * parsedDiscount / 100
+    : discountType === "fixed" ? parsedDiscount : 0;
+  const total = Math.max(0, subtotal - discountAmount);
   const cashValue = parseFloat(cashReceived);
   const change   = payMethod==="Cash" && cashReceived && !isNaN(cashValue)
     ? Math.max(0, cashValue - total)
@@ -304,6 +340,9 @@ export function StaffPOS() {
 
   const handleComplete = () => {
     if (cart.length===0) { toast.error("Cart is empty."); return; }
+    if (parsedDiscount < 0 || (discountType === "percent" && parsedDiscount > 100)) {
+      toast.error("Enter a valid discount value."); return;
+    }
     if (payMethod === "Cash" && (!cashReceived || isNaN(cashValue) || cashValue < total)) {
       toast.error("Cash received must be at least the total amount.");
       return;
@@ -315,14 +354,20 @@ export function StaffPOS() {
   const handleConfirmTransaction = () => {
     setSubmitting(true);
     checkoutService.submit({
+      customerId: walkInCustomerId,
       items: cart.map(i => ({ productId: i.id, quantity: i.qty })),
       paymentMethod: payMethod,
+      discountType,
+      discountValue: discountType === "none" ? 0 : parsedDiscount,
       amountTendered: payMethod === "Cash" ? cashValue : undefined,
     })
       .then((result) => {
         setReceiptOpen(false);
         setCart([]);
         setCash("");
+        setDiscountType("none");
+        setDiscountValue("0");
+        setShowDiscount(false);
         toast.success(`Transaction complete! ₱${money(result.totalAmount)} received.`);
         inventoryService.getAll().then(setProducts).catch(() => {});
       })
@@ -395,6 +440,9 @@ export function StaffPOS() {
           cart={cart} total={total} subtotal={subtotal}
           payMethod={payMethod} setPayMethod={setPayMethod}
           cashReceived={cashReceived} setCash={setCash} change={change}
+          discountType={discountType} setDiscountType={setDiscountType}
+          discountValue={discountValue} setDiscountValue={setDiscountValue}
+          showDiscount={showDiscount} setShowDiscount={setShowDiscount}
           updateQty={updateQty} clearCart={()=>setCart([])} onComplete={handleComplete}
         />
       </div>
@@ -430,6 +478,9 @@ export function StaffPOS() {
                 cart={cart} total={total} subtotal={subtotal}
                 payMethod={payMethod} setPayMethod={setPayMethod}
                 cashReceived={cashReceived} setCash={setCash} change={change}
+                discountType={discountType} setDiscountType={setDiscountType}
+                discountValue={discountValue} setDiscountValue={setDiscountValue}
+                showDiscount={showDiscount} setShowDiscount={setShowDiscount}
                 updateQty={updateQty} clearCart={()=>setCart([])} onComplete={handleComplete}
               />
             </div>

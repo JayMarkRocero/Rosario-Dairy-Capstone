@@ -7,7 +7,7 @@ import { salesService, type Sale } from "@/features/sales/api/sales.service";
 import { ordersService } from "@/features/orders/api/orders.service";
 import { customersService } from "@/features/customers/api/customers.service";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
-import type { Order } from "@/features/orders/types/order";
+import type { OrderListItem } from "@/features/orders/types/order";
 import type { Customer } from "@/features/customers/types/customer";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 
@@ -67,7 +67,7 @@ export function KPICards() {
   const [activeKPI, setActiveKPI] = useState<KPIConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [sales, setSales] = useState<Sale[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
 
@@ -121,9 +121,8 @@ export function KPICards() {
     ).size;
 
     // ── Orders ──
-    const placedCount = orders.filter(o => o.status === "Placed").length;
-    const confirmedCount = orders.filter(o => o.status === "Confirmed").length;
     const fulfilledCount = orders.filter(o => o.status === "Fulfilled").length;
+    const cancelledCount = orders.filter(o => o.status === "Cancelled").length;
     const thisMonthOrders = orders.filter(o => o.date >= thisMonth.start && o.date <= thisMonth.end);
     const lastMonthOrders = orders.filter(o => o.date >= lastMonth.start && o.date <= lastMonth.end);
     const ordersTrend = pctChange(thisMonthOrders.length, lastMonthOrders.length);
@@ -154,7 +153,7 @@ export function KPICards() {
       {
         title: "Total Orders", value: String(orders.length), icon: <ClipboardList size={20}/>,
         trend: ordersTrend.trend, trendLabel: ordersTrend.label, color: C.navy,
-        detail: `${placedCount} placed · ${confirmedCount} confirmed · ${fulfilledCount} fulfilled`,
+        detail: `${fulfilledCount} fulfilled · ${cancelledCount} cancelled`,
         change: `vs ${lastMonthOrders.length} orders last month`,
       },
       {

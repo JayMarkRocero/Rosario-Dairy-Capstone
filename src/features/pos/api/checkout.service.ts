@@ -1,4 +1,4 @@
-import { api, type CheckoutPayload } from "@/lib/api";
+import http, { type CheckoutPayload, type DjangoTransaction } from "@/lib/api";
 
 export interface CheckoutCartItem {
   productId: number;
@@ -14,18 +14,22 @@ export interface CheckoutResult {
 
 export const checkoutService = {
   submit: async (input: {
+    customerId: number | null;
     items: CheckoutCartItem[];
     paymentMethod: "Cash" | "GCash";
+    discountType: "none" | "percent" | "fixed";
+    discountValue: number;
     amountTendered?: number;
   }): Promise<CheckoutResult> => {
     const payload: CheckoutPayload = {
+      customer_id: input.customerId,
       items: input.items.map(i => ({ product_id: i.productId, quantity: i.quantity })),
       payment_method: input.paymentMethod === "Cash" ? "cash" : "online",
-      discount_type: "none",
-      discount_value: 0,
-      amount_tendered: input.paymentMethod === "Cash" ? input.amountTendered : undefined,
+      discount_type: input.discountType,
+      discount_value: input.discountValue,
+      amount_tendered: input.paymentMethod === "Cash" ? input.amountTendered ?? null : null,
     };
-    const txn = await api.checkout(payload);
+    const { data: txn } = await http.post<DjangoTransaction>("/sales/checkout/", payload);
     return {
       id: txn.id,
       subtotal: parseFloat(txn.subtotal),

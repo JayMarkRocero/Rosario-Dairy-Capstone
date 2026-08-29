@@ -1,5 +1,6 @@
 // src/lib/errorHandling.ts
 import { toast } from "sonner";
+import { isAxiosError } from "axios";
 import { ApiError } from "./api";
 
 /**
@@ -29,7 +30,7 @@ export function getErrorMessage(err: unknown, fallback = "Something went wrong. 
         return err.message || fallback;
     }
   }
-  if (err instanceof TypeError || (err as Error)?.message === "Failed to fetch") {
+  if (isAxiosError(err) && !err.response) {
     return "Unable to connect to the server. Please check your connection.";
   }
   return fallback;

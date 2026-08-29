@@ -37,6 +37,7 @@ function CategoryForm({ form, setForm }: { form: FormState; setForm: React.Dispa
           <div className="text-xs" style={{color:C.muted}}>Category is visible to staff</div>
         </div>
         <button
+          type="button"
           onClick={() => setForm(f=>({...f,is_active:!f.is_active}))}
           className="w-11 h-6 rounded-full transition-colors relative"
           style={{backgroundColor:form.is_active?C.green:C.border}}>
@@ -81,38 +82,34 @@ export function AdminCategories() {
     setSelected(c); setForm({ name:c.name, desc:c.desc, is_active:c.is_active }); setEditOpen(true);
   };
 
-  const save = (mode:"add"|"edit") => {
+  const save = async (mode:"add"|"edit") => {
     if (!form.name) { toast.error("Category name is required."); return; }
     setLoading(true);
 
-    if (mode === "add") {
-      inventoryService.createCategory(form)
-        .then(() => {
+    try {
+      if (mode === "add") {
+        await inventoryService.createCategory(form);
           toast.success("Category added!");
           setAddOpen(false);
-          setForm(EMPTY);
-          loadCategories();
-        })
-        .catch((err) => toast.error(err.message || "Failed to add category."))
-        .finally(() => setLoading(false));
-    } else {
-      if (!selected) return;
-      inventoryService.updateCategory(selected.id, form)
-        .then(() => {
+      } else {
+        if (!selected) return;
+        await inventoryService.updateCategory(selected.id, form);
           toast.success("Category updated!");
           setEditOpen(false);
-          setForm(EMPTY);
-          loadCategories();
-        })
-        .catch((err) => toast.error(err.message || "Failed to update category."))
-        .finally(() => setLoading(false));
+      }
+      setForm(EMPTY);
+      loadCategories();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Failed to ${mode === "add" ? "add" : "update"} category.`);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDelete = () => {
     if (!selected) return;
     setLoading(true);
-    inventoryService.updateCategory(selected.id, { is_active: false })
+    inventoryService.deleteCategory(selected.id)
       .then(() => {
         toast.success(`${selected.name} deactivated.`);
         setDeleteOpen(false);
@@ -124,9 +121,7 @@ export function AdminCategories() {
 
   const handleReactivate = (category: Category) => {
     setLoading(true);
-    inventoryService.updateCategory(category.id, {
-      is_active: true,
-    })
+    inventoryService.reactivateCategory(category.id)
       .then(() => {
         toast.success(`${category.name} reactivated.`);
         loadCategories();
@@ -278,8 +273,8 @@ export function AdminCategories() {
 
       {/* Delete Confirm */}
       <ConfirmDialog open={deleteOpen} onClose={()=>setDeleteOpen(false)} onConfirm={handleDelete}
-        title="Delete Category" confirmLabel="Delete Category" variant="danger" loading={loading}
-        description={`Delete "${selected?.name}"? All associated products will need to be reassigned.`}/>
+        title="Deactivate Category" confirmLabel="Deactivate Category" variant="danger" loading={loading}
+        description={`Deactivate "${selected?.name}"? Existing product associations will be preserved.`}/>
     </div>
   );
 }

@@ -57,22 +57,6 @@ export const notificationsService = {
       });
     });
 
-    // Recently placed orders (not yet confirmed) — most recent 3
-    const placed = orders
-      .filter(o => o.status === "Placed")
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 3);
-    placed.forEach(o => {
-      notifications.push({
-        id: `order-${o.id}`,
-        type: "info",
-        title: "New Order",
-        body: `Order #${o.id} from ${o.customer} needs confirmation`,
-        time: daysAgoLabel(o.date),
-        unread: true,
-      });
-    });
-
     // Recently fulfilled orders — most recent 2, shown as read/success
     const fulfilled = orders
       .filter(o => o.status === "Fulfilled")

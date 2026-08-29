@@ -1,4 +1,4 @@
-import { api, type RegisterUserPayload, type UpdateUserPayload, type DjangoUserListItem } from "@/lib/api";
+import http, { type RegisterUserPayload, type ResetPasswordPayload, type UpdateUserPayload, type DjangoUserListItem } from "@/lib/api";
 import type { SystemUser } from "@/features/users/types/user";
 
 function toDisplayRole(role: "admin" | "staff"): "Administrator" | "Staff" {
@@ -19,7 +19,7 @@ function formatLastLogin(lastLogin: string | null): string {
 
 export const userService = {
   getAll: async (): Promise<SystemUser[]> => {
-    const users = await api.getUsers();
+    const { data: users } = await http.get<DjangoUserListItem[]>("/accounts/users/");
     return users.map((u: DjangoUserListItem) => ({
       id: u.id,
       username: u.username,
@@ -49,7 +49,7 @@ export const userService = {
       first_name: input.firstName,
       last_name: input.lastName,
     };
-    await api.registerUser(payload);
+    await http.post<{ message: string }>("/accounts/register/", payload);
   },
 
   updateUser: async (
@@ -71,14 +71,15 @@ export const userService = {
       phone_number: input.phoneNumber,
       address: input.address,
     };
-    await api.updateUser(userId, payload);
+    await http.patch<{ message: string }>(`/accounts/users/${userId}/`, payload);
   },
 
   deactivateUser: async (userId: number, reason: string): Promise<void> => {
-    await api.deactivateUser(userId, reason);
+    await http.delete(`/accounts/users/${userId}/`, { data: { reason } });
   },
 
   resetPassword: async (username: string, newPassword: string): Promise<void> => {
-    await api.resetPassword({ username, new_password: newPassword });
+    const payload: ResetPasswordPayload = { username, new_password: newPassword };
+    await http.post<{ message: string }>("/accounts/admin-reset-password/", payload);
   },
 };

@@ -1,37 +1,24 @@
-// src/lib/api.ts
-function getApiBase(): string {
-  const { hostname, protocol } = window.location;
-  const match = hostname.match(/^([a-z0-9]+)-(\d+)\.(asse\.devtunnels\.ms)$/);
-  if (match) {
-    const [, id, , domain] = match;
-    return `${protocol}//${id}-8000.${domain}`;
-  }
-  const configuredUrl = import.meta.env.VITE_API_URL?.trim();
-  if (configuredUrl) {
-    const parsedUrl = new URL(configuredUrl, window.location.origin);
-    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-      throw new Error('VITE_API_URL must use the http or https protocol.');
-    }
-    return configuredUrl.replace(/\/$/, '');
-  }
+import axios, { AxiosError } from "axios";
 
-  if (import.meta.env.DEV) return 'http://127.0.0.1:8000';
-  throw new Error('VITE_API_URL is required outside development.');
-}
+const ACCESS_TOKEN_KEY = "rosario_access_token";
 
-const API_URL = getApiBase();
+const axiosInstance = axios.create({
+  baseURL: "http://127.0.0.1:8000",
+  headers: { "Content-Type": "application/json" },
+});
 
-// ─── Typed API error ──────────────────────────────────────────────────────
+export default axiosInstance;
+
 export class ApiError extends Error {
   status: number;
+
   constructor(status: number, message: string) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
     this.status = status;
   }
 }
 
-// ─── 401 subscription (lets AuthProvider react without api.ts importing React) ──
 type UnauthorizedListener = () => void;
 const unauthorizedListeners = new Set<UnauthorizedListener>();
 
@@ -41,10 +28,69 @@ export function onUnauthorized(listener: UnauthorizedListener): () => void {
 }
 
 function notifyUnauthorized() {
-  unauthorizedListeners.forEach(l => l());
+  unauthorizedListeners.forEach((listener) => listener());
 }
 
-// ─── Auth ──────────────────────────────────────────────────────────────────
+export function setAccessToken(token: string | null) {
+  if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token);
+  else localStorage.removeItem(ACCESS_TOKEN_KEY);
+}
+
+export function getAccessToken(): string | null {
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+function appendTrailingSlash(url: string): string {
+  const [pathAndQuery, hash = ""] = url.split("#", 2);
+  const [path, query = ""] = pathAndQuery.split("?", 2);
+  const normalizedPath = path.endsWith("/") ? path : `${path}/`;
+  return `${normalizedPath}${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;
+}
+
+axiosInstance.interceptors.request.use((config) => {
+  if (config.url) config.url = appendTrailingSlash(config.url);
+
+  const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  return config;
+});
+
+function extractErrorMessage(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object") return fallback;
+
+  const payload = data as Record<string, unknown>;
+  if (typeof payload.error === "string") return payload.error;
+  if (typeof payload.detail === "string") return payload.detail;
+
+  const fieldMessages = Object.values(payload)
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .filter((value): value is string => typeof value === "string");
+
+  return fieldMessages.join(" ") || fallback;
+}
+
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    if (!error.response) return Promise.reject(error);
+
+    const status = error.response.status;
+    const requestUrl = error.config?.url ?? "";
+    const isLoginRequest = requestUrl.includes("/accounts/login/");
+    const fallback = `Request failed (${status})`;
+    let message = extractErrorMessage(error.response.data, fallback);
+
+    if (status === 401 && !isLoginRequest) {
+      setAccessToken(null);
+      notifyUnauthorized();
+      message = "Your session has expired. Please log in again.";
+    }
+
+    return Promise.reject(new ApiError(status, message));
+  }
+);
+
 export interface LoginPayload {
   username: string;
   password: string;
@@ -62,26 +108,15 @@ export interface CurrentUser {
   role: "admin" | "staff";
 }
 
-let accessToken: string | null = localStorage.getItem('rosario_access_token');
-
-export function setAccessToken(token: string | null) {
-  accessToken = token;
-  if (token) {
-    localStorage.setItem('rosario_access_token', token);
-  } else {
-    localStorage.removeItem('rosario_access_token');
-  }
-}
-
-export function getAccessToken() {
-  return accessToken;
-}
-
 export interface CreateOrderPayload {
   customer_id: number;
+  items: Array<{ product_id: number; quantity: number }>;
+  discount_type?: "none" | "percent" | "fixed";
+  discount_value?: number;
+  payment_method?: "cash" | "online";
+  amount_tendered?: number | null;
 }
 
-// ─── Django response shapes ──────────────────────────────────────────────────
 export interface DjangoCategory {
   id: number;
   name: string;
@@ -101,7 +136,7 @@ export interface DjangoProduct {
   low_stock_threshold: number;
   is_active: boolean;
   category: DjangoCategory;
-  total_stock: string | number;
+  total_stock: string;
   created_at: string;
   updated_at: string;
 }
@@ -129,7 +164,6 @@ export interface CreateProductPayload {
   unit_price: number;
   shelf_life: number;
   low_stock_threshold: number;
-  is_active: boolean;
   category_id: number;
 }
 
@@ -142,13 +176,67 @@ export interface CreateProductBatchPayload {
   quantity: number;
   expiration_date: string;
   date_received?: string;
-  status?: string;
   notes?: string | null;
 }
 
+export type UpdateProductBatchPayload = Partial<
+  Omit<CreateProductBatchPayload, "product_id" | "quantity">
+>;
+
+export interface DjangoIngredient {
+  id: number;
+  name: string;
+  unit: string;
+  low_stock_threshold: number;
+  is_active: boolean;
+  category: DjangoCategory;
+  total_stock: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateIngredientPayload {
+  name: string;
+  unit: string;
+  low_stock_threshold: number;
+  category_id: number;
+}
+
+export type UpdateIngredientPayload = Partial<CreateIngredientPayload>;
+
+export interface DjangoIngredientBatch {
+  id: number;
+  ingredient: DjangoIngredient;
+  batch_number: string;
+  grade: string | null;
+  unit_price: string | null;
+  initial_quantity: string;
+  remaining_quantity: string;
+  expiration_date: string;
+  date_received: string;
+  status: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateIngredientBatchPayload {
+  ingredient_id: number;
+  quantity: number;
+  expiration_date: string;
+  grade?: string | null;
+  unit_price?: number | null;
+  date_received?: string;
+  notes?: string | null;
+}
+
+export type UpdateIngredientBatchPayload = Partial<
+  Omit<CreateIngredientBatchPayload, "ingredient_id" | "quantity">
+>;
+
 export interface CreateCategoryPayload {
   name: string;
-  description: string | null;
+  description: string;
   is_active: boolean;
 }
 
@@ -208,7 +296,7 @@ export interface DjangoCustomer {
 export interface DjangoOrderItem {
   id: number;
   product: DjangoProduct;
-  quantity: number;
+  quantity: string;
   unit_price: string;
   subtotal: string;
 }
@@ -217,9 +305,10 @@ export interface DjangoOrder {
   id: number;
   customer: DjangoCustomer;
   handled_by: CurrentUser;
-  status: "placed" | "confirmed" | "fulfilled" | "cancelled";
-  transaction: number | null;
+  status: "fulfilled" | "cancelled";
+  transaction: DjangoTransaction;
   items: DjangoOrderItem[];
+  warning?: string;
   created_at: string;
   updated_at: string;
 }
@@ -239,11 +328,12 @@ export interface CheckoutItemPayload {
 }
 
 export interface CheckoutPayload {
+  customer_id: number | null;
   items: CheckoutItemPayload[];
   payment_method: "cash" | "online";
-  discount_type?: "none" | "percent" | "fixed";
-  discount_value?: number;
-  amount_tendered?: number;
+  discount_type: "none" | "percent" | "fixed";
+  discount_value: number;
+  amount_tendered: number | null;
 }
 
 export interface DjangoTransactionItem {
@@ -278,175 +368,3 @@ export interface DjangoSalesByCategory {
   name: string;
   value: number;
 }
-
-// ─── Error parsing helper ──────────────────────────────────────────────────────
-/**
- * `isAuthenticatedRequest` distinguishes a request that carried (or should
- * carry) an existing session token from one that doesn't, like login.
- * A 401 on an authenticated request means "your session died" — a 401 on
- * login just means "wrong credentials." Conflating the two was causing
- * failed logins to incorrectly show "session expired."
- */
-async function throwParsedError(res: Response, isAuthenticatedRequest: boolean): Promise<never> {
-  const errText = await res.text();
-  let message = `Request failed (${res.status})`;
-  try {
-    const parsed = JSON.parse(errText);
-    message = parsed.error || parsed.detail || Object.values(parsed).flat().join(" ") || message;
-  } catch {
-    // errText wasn't valid JSON — keep the generic message. Never surface
-    // raw HTML/stack-trace bodies (e.g. Django DEBUG pages) to the user.
-  }
-
-  if (res.status === 401) {
-    if (isAuthenticatedRequest) {
-      // A previously-valid session's token is now missing/expired/invalid.
-      setAccessToken(null);
-      notifyUnauthorized();
-      throw new ApiError(401, "Your session has expired. Please log in again.");
-    }
-    // Unauthenticated request (e.g. login) rejected — this is a credentials
-    // problem, not a session-expiry problem. Do not touch session state.
-    throw new ApiError(401, message || "Invalid username or password.");
-  }
-
-  throw new ApiError(res.status, message);
-}
-
-// ─── Core fetch helpers ───────────────────────────────────────────────────────
-async function apiFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  });
-  if (!res.ok) return throwParsedError(res, true);
-  return res.json();
-}
-
-async function apiPost<T>(path: string, body: unknown, authRequired = true): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(authRequired && accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) return throwParsedError(res, authRequired);
-  return res.json();
-}
-
-async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) return throwParsedError(res, true);
-  return res.json();
-}
-
-async function apiDelete(path: string): Promise<void> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'DELETE',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  });
-  if (!res.ok) return throwParsedError(res, true);
-}
-
-async function apiDeleteWithBody(path: string, body: unknown): Promise<void> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) return throwParsedError(res, true);
-}
-
-async function apiDeleteWithResult<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'DELETE',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  });
-  if (!res.ok) return throwParsedError(res, true);
-  return res.json();
-}
-
-// ─── API ──────────────────────────────────────────────────────────────────────
-export const api = {
-  login: (data: LoginPayload) =>
-    apiPost<TokenPair>('/accounts/login/', data, false),
-  getCurrentUser: () => apiFetch<CurrentUser>('/accounts/user/'),
-
-  getCategories: () => apiFetch<DjangoCategory[]>('/inventory/categories/'),
-  getProducts: () => apiFetch<DjangoProduct[]>('/inventory/products/'),
-  getProductBatches: () => apiFetch<DjangoProductBatch[]>('/inventory/product-batches/'),
-
-  createProduct: (data: CreateProductPayload) =>
-    apiPost<DjangoProduct>('/inventory/products/', data),
-  createProductBatch: (data: CreateProductBatchPayload) =>
-    apiPost<DjangoProductBatch>('/inventory/product-batches/', data),
-  createCategory: (data: CreateCategoryPayload) =>
-    apiPost<DjangoCategory>('/inventory/categories/', data),
-
-  updateProduct: (id: number, data: UpdateProductPayload) =>
-    apiPatch<DjangoProduct>(`/inventory/products/${id}/`, data),
-  deleteProduct: (id: number) =>
-    apiDelete(`/inventory/products/${id}/`),
-
-  updateCategory: (id: number, data: UpdateCategoryPayload) =>
-    apiPatch<DjangoCategory>(`/inventory/categories/${id}/`, data),
-  deleteCategory: (id: number) =>
-    apiDeleteWithResult<{ message: string }>(`/inventory/categories/${id}/`),
-
-  getUsers: () => apiFetch<DjangoUserListItem[]>('/accounts/users/'),
-  registerUser: (data: RegisterUserPayload) =>
-    apiPost<{ message: string }>('/accounts/register/', data),
-  updateUser: (id: number, data: UpdateUserPayload) =>
-    apiPatch<{ message: string }>(`/accounts/users/${id}/`, data),
-  deactivateUser: (id: number, reason: string) =>
-    apiDeleteWithBody(`/accounts/users/${id}/`, { reason }),
-  resetPassword: (data: ResetPasswordPayload) =>
-    apiPost<{ message: string }>('/accounts/admin-reset-password/', data),
-
-  getCustomers: () => apiFetch<DjangoCustomer[]>('/sales/customers/'),
-  getOrders: () => apiFetch<DjangoOrder[]>('/sales/orders/'),
-  createCustomer: (data: CreateCustomerPayload) =>
-    apiPost<DjangoCustomer>('/sales/customers/', data),
-  updateCustomer: (id: number, data: UpdateCustomerPayload) =>
-    apiPatch<DjangoCustomer>(`/sales/customers/${id}/`, data),
-  deleteCustomer: (id: number) =>
-    apiDelete(`/sales/customers/${id}/`),
-
-  createOrder: (data: CreateOrderPayload) =>
-    apiPost<DjangoOrder>('/sales/orders/', data),
-  confirmOrder: (id: number) =>
-    apiPost<DjangoOrder>(`/sales/orders/${id}/confirm/`, {}),
-  fulfillOrder: (id: number, paymentMethod: string) =>
-    apiPost<DjangoOrder>(`/sales/orders/${id}/fulfill/`, { payment_method: paymentMethod }),
-  cancelOrder: (id: number) =>
-    apiPost<DjangoOrder>(`/sales/orders/${id}/cancel/`, {}),
-
-  checkout: (data: CheckoutPayload) =>
-    apiPost<DjangoTransaction>('/sales/checkout/', data),
-
-  getTransactions: (params?: { start_date?: string; end_date?: string; payment_method?: string }) => {
-    const query = new URLSearchParams();
-    if (params?.start_date) query.set('start_date', params.start_date);
-    if (params?.end_date) query.set('end_date', params.end_date);
-    if (params?.payment_method) query.set('payment_method', params.payment_method);
-    const qs = query.toString();
-    return apiFetch<DjangoTransaction[]>(`/sales/transactions/${qs ? `?${qs}` : ''}`);
-  },
-
-  getBestSellers: (limit = 10) =>
-    apiFetch<DjangoBestSeller[]>(`/sales/reports/best-sellers/?limit=${limit}`),
-
-  getSalesByCategory: () =>
-    apiFetch<DjangoSalesByCategory[]>('/sales/reports/sales-by-category/'),
-};

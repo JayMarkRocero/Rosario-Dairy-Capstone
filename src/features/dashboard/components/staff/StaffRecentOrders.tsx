@@ -5,10 +5,10 @@ import { DataTable } from "@/components/data-display/DataTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { C } from "@/styles/tokens/colors";
 import { ordersService } from "@/features/orders/api/orders.service";
-import type { Order } from "@/features/orders/types/order";
+import type { OrderListItem } from "@/features/orders/types/order";
 
 export function StaffRecentOrders() {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

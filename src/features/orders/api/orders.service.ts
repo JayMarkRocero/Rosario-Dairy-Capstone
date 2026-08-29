@@ -1,10 +1,8 @@
-import { api, type CreateOrderPayload, type DjangoOrder, type DjangoOrderItem } from "@/lib/api";
-import type { Order, OrderStatus } from "@/features/orders/types/order";
+import http from "@/lib/api";
+import type { CreateOrderPayload, Order, OrderItem, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
 
-function toDisplayStatus(status: "placed" | "confirmed" | "fulfilled" | "cancelled"): OrderStatus {
-  const map: Record<string, OrderStatus> = {
-    placed: "Placed",
-    confirmed: "Confirmed",
+function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
+  const map: Record<Order["status"], DisplayOrderStatus> = {
     fulfilled: "Fulfilled",
     cancelled: "Cancelled",
   };
@@ -12,21 +10,29 @@ function toDisplayStatus(status: "placed" | "confirmed" | "fulfilled" | "cancell
 }
 
 export const ordersService = {
-  getAll: async (): Promise<Order[]> => {
-    const orders = await api.getOrders();
-    return orders.map((o: DjangoOrder) => {
-      const total = o.items.reduce((sum: number, item: DjangoOrderItem) => sum + parseFloat(item.subtotal), 0);
+  getAll: async (): Promise<OrderListItem[]> => {
+    const { data: orders } = await http.get<Order[]>("/sales/orders/");
+    return orders.map((o) => {
+      const total = parseFloat(o.transaction.total_amount);
       return {
         id: o.id,
         customer: o.customer.name,
         customerId: o.customer.id,
+        customerPhone: o.customer.contact_number ?? "",
+        customerEmail: o.customer.email ?? "",
         status: toDisplayStatus(o.status),
         staff: o.handled_by.username,
         date: o.created_at.slice(0, 10),
         total,
-        items: o.items.map((item: DjangoOrderItem) => ({
+        subtotal: parseFloat(o.transaction.subtotal),
+        discountAmount: parseFloat(o.transaction.discount_amount),
+        paymentMethod: o.transaction.payment_method,
+        amountTendered: o.transaction.amount_tendered ? parseFloat(o.transaction.amount_tendered) : null,
+        changeDue: o.transaction.change_due ? parseFloat(o.transaction.change_due) : null,
+        warning: o.warning,
+        items: o.items.map((item: OrderItem) => ({
           product: item.product.name,
-          quantity: item.quantity,
+          quantity: parseFloat(item.quantity),
           unitPrice: parseFloat(item.unit_price),
           subtotal: parseFloat(item.subtotal),
         })),
@@ -34,28 +40,26 @@ export const ordersService = {
     });
   },
 
-  createOrder: async (customerId: number): Promise<void> => {
-    const payload: CreateOrderPayload = { customer_id: customerId };
-    await api.createOrder(payload);
+  getById: async (orderId: number): Promise<Order> => {
+    const { data } = await http.get<Order>(`/sales/orders/${orderId}/`);
+    return data;
   },
 
-  confirmOrder: async (orderId: number): Promise<void> => {
-    await api.confirmOrder(orderId);
+  createOrder: async (payload: CreateOrderPayload): Promise<Order> => {
+    const { data } = await http.post<Order>("/sales/orders/", payload);
+    return data;
   },
 
-  fulfillOrder: async (orderId: number, paymentMethod: string): Promise<void> => {
-    await api.fulfillOrder(orderId, paymentMethod);
+  cancelOrder: async (orderId: number): Promise<Order> => {
+    const { data } = await http.post<Order>(`/sales/orders/${orderId}/cancel/`);
+    return data;
   },
 
-  cancelOrder: async (orderId: number): Promise<void> => {
-    await api.cancelOrder(orderId);
-  },
-
-  getRecent: async (limit = 5): Promise<Order[]> => {
+  getRecent: async (limit = 5): Promise<OrderListItem[]> => {
   const all = await ordersService.getAll();
   return all
     .slice()
-    .sort((a: Order, b: Order) => b.date.localeCompare(a.date))
+    .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, limit);
   },
 };

@@ -1,4 +1,20 @@
-import { api, type CreateProductPayload, type CreateProductBatchPayload, type CreateCategoryPayload, type UpdateCategoryPayload, type UpdateProductPayload, type DjangoCategory, type DjangoProduct, type DjangoProductBatch } from "@/lib/api";
+import http, {
+  type CreateCategoryPayload,
+  type CreateIngredientBatchPayload,
+  type CreateIngredientPayload,
+  type CreateProductBatchPayload,
+  type CreateProductPayload,
+  type DjangoCategory,
+  type DjangoIngredient,
+  type DjangoIngredientBatch,
+  type DjangoProduct,
+  type DjangoProductBatch,
+  type UpdateCategoryPayload,
+  type UpdateIngredientBatchPayload,
+  type UpdateIngredientPayload,
+  type UpdateProductBatchPayload,
+  type UpdateProductPayload,
+} from "@/lib/api";
 import type { InventoryItem, FEFOItem, Category } from "@/features/inventory/types/inventory";
 
 function daysUntil(dateStr: string): number {
@@ -19,10 +35,12 @@ function fefoStatus(days: number): { st: FEFOItem["st"]; priority: string } {
 
 export const inventoryService = {
   getAll: async (): Promise<InventoryItem[]> => {
-  const [allProducts, batches] = await Promise.all([
-    api.getProducts(),
-    api.getProductBatches(),
+  const [productsResponse, batchesResponse] = await Promise.all([
+    http.get<DjangoProduct[]>("/inventory/products/"),
+    http.get<DjangoProductBatch[]>("/inventory/product-batches/"),
   ]);
+  const allProducts = productsResponse.data;
+  const batches = batchesResponse.data;
   const products = allProducts.filter((p: DjangoProduct) => p.is_active);
 
 
@@ -49,7 +67,7 @@ export const inventoryService = {
   },
 
   getFEFO: async (): Promise<FEFOItem[]> => {
-  const batches = await api.getProductBatches();
+  const { data: batches } = await http.get<DjangoProductBatch[]>("/inventory/product-batches/");
 
   return batches
     .filter((b: DjangoProductBatch) => b.status === "available" && b.product.is_active)
@@ -72,15 +90,17 @@ export const inventoryService = {
   },
 
   getCategoriesRaw: async () => {
-    const categories = await api.getCategories();
+    const { data: categories } = await http.get<DjangoCategory[]>("/inventory/categories/");
     return categories.map((c: DjangoCategory) => ({ id: c.id, name: c.name }));
   },
 
   getCategories: async (): Promise<Category[]> => {
-  const [categories, allProducts] = await Promise.all([
-    api.getCategories(),
-    api.getProducts(),
+  const [categoriesResponse, productsResponse] = await Promise.all([
+    http.get<DjangoCategory[]>("/inventory/categories/", { params: { include_inactive: true } }),
+    http.get<DjangoProduct[]>("/inventory/products/", { params: { include_inactive: true } }),
   ]);
+  const categories = categoriesResponse.data;
+  const allProducts = productsResponse.data;
   const activeProducts = allProducts.filter((p: DjangoProduct) => p.is_active);
   return categories.map((c: DjangoCategory) => ({
     id: c.id,
@@ -115,28 +135,26 @@ export const inventoryService = {
       unit_price: input.price,
       shelf_life: 30,
       low_stock_threshold: 10,
-      is_active: true,
       category_id: input.categoryId,
     };
-    const product = await api.createProduct(productPayload);
+    const { data: product } = await http.post<DjangoProduct>("/inventory/products/", productPayload);
 
     const batchPayload: CreateProductBatchPayload = {
       product_id: product.id,
       quantity: input.stock,
       expiration_date: input.expiry,
       date_received: new Date().toISOString().slice(0, 10),
-      status: "available",
     };
-    await api.createProductBatch(batchPayload);
+    await http.post<DjangoProductBatch>("/inventory/product-batches/", batchPayload);
   },
 
   createCategory: async (input: { name: string; desc: string; is_active: boolean }): Promise<void> => {
     const payload: CreateCategoryPayload = {
       name: input.name,
-      description: input.desc || null,
+      description: input.desc,
       is_active: input.is_active,
     };
-    await api.createCategory(payload);
+    await http.post<DjangoCategory>("/inventory/categories/", payload);
   },
 
   updateCategory: async (
@@ -145,17 +163,22 @@ export const inventoryService = {
   ): Promise<void> => {
     const payload: UpdateCategoryPayload = {};
     if (input.name !== undefined) payload.name = input.name;
-    if (input.desc !== undefined) payload.description = input.desc || null;
+    if (input.desc !== undefined) payload.description = input.desc;
     if (input.is_active !== undefined) payload.is_active = input.is_active;
-    await api.updateCategory(categoryId, payload);
+    await http.patch<DjangoCategory>(`/inventory/categories/${categoryId}/`, payload);
   },
 
   // Note: this is a soft delete on the backend — the category's is_active
   // flag is flipped to false rather than the row being removed, so existing
   // products keep their category reference intact.
   deleteCategory: async (categoryId: number): Promise<string> => {
-    const { message } = await api.deleteCategory(categoryId);
+    const { data } = await http.delete<{ message: string }>(`/inventory/categories/${categoryId}/`);
+    const { message } = data;
     return message;
+  },
+
+  reactivateCategory: async (categoryId: number): Promise<void> => {
+    await http.post<DjangoCategory>(`/inventory/categories/${categoryId}/reactivate/`, {});
   },
 
   // Note: only updates Product-level fields (name, price, category).
@@ -167,13 +190,57 @@ export const inventoryService = {
   ): Promise<void> => {
     const productPayload: UpdateProductPayload = {
       name: input.name,
-      unit_price: input.price,
+      unit_price: String(input.price),
       category_id: input.categoryId,
     };
-    await api.updateProduct(productId, productPayload);
+    await http.patch<DjangoProduct>(`/inventory/products/${productId}/`, productPayload);
   },
 
   deleteProduct: async (productId: number): Promise<void> => {
-    await api.deleteProduct(productId);
+    await http.delete(`/inventory/products/${productId}/`);
+  },
+
+  reactivateProduct: async (productId: number): Promise<void> => {
+    await http.post<DjangoProduct>(`/inventory/products/${productId}/reactivate/`, {});
+  },
+
+  updateProductBatch: async (batchId: number, payload: UpdateProductBatchPayload): Promise<DjangoProductBatch> => {
+    const { data } = await http.patch<DjangoProductBatch>(`/inventory/product-batches/${batchId}/`, payload);
+    return data;
+  },
+
+  getIngredients: async (includeInactive = false): Promise<DjangoIngredient[]> => {
+    const { data } = await http.get<DjangoIngredient[]>("/inventory/ingredients/", {
+      params: includeInactive ? { include_inactive: true } : undefined,
+    });
+    return data;
+  },
+
+  createIngredient: async (payload: CreateIngredientPayload): Promise<DjangoIngredient> => {
+    const { data } = await http.post<DjangoIngredient>("/inventory/ingredients/", payload);
+    return data;
+  },
+
+  updateIngredient: async (ingredientId: number, payload: UpdateIngredientPayload): Promise<DjangoIngredient> => {
+    const { data } = await http.patch<DjangoIngredient>(`/inventory/ingredients/${ingredientId}/`, payload);
+    return data;
+  },
+
+  deactivateIngredient: async (ingredientId: number): Promise<void> => {
+    await http.delete(`/inventory/ingredients/${ingredientId}/`);
+  },
+
+  reactivateIngredient: async (ingredientId: number): Promise<void> => {
+    await http.post<DjangoIngredient>(`/inventory/ingredients/${ingredientId}/reactivate/`, {});
+  },
+
+  createIngredientBatch: async (payload: CreateIngredientBatchPayload): Promise<DjangoIngredientBatch> => {
+    const { data } = await http.post<DjangoIngredientBatch>("/inventory/ingredient-batches/", payload);
+    return data;
+  },
+
+  updateIngredientBatch: async (batchId: number, payload: UpdateIngredientBatchPayload): Promise<DjangoIngredientBatch> => {
+    const { data } = await http.patch<DjangoIngredientBatch>(`/inventory/ingredient-batches/${batchId}/`, payload);
+    return data;
   },
 };

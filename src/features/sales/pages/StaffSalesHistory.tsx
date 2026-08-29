@@ -4,7 +4,7 @@ import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
-import { api } from "@/lib/api";
+import { authService } from "@/features/auth/api/auth.service";
 
 const PAYMENT_STYLE: Record<string, { bg: string; color: string }> = {
   Cash:   { bg: C.green + "15", color: C.green },
@@ -17,7 +17,7 @@ export function StaffSalesHistory() {
 
   useEffect(() => {
     setRecordsLoading(true);
-    Promise.all([salesService.getAll(), api.getCurrentUser()])
+    Promise.all([salesService.getAll(), authService.getCurrentUser()])
       .then(([sales, user]) => {
         setMyRecords(sales.filter(s => s.cashier === user.username));
       })

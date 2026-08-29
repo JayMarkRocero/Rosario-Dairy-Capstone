@@ -1,4 +1,4 @@
-import { api, type CreateCustomerPayload, type UpdateCustomerPayload } from "@/lib/api";
+import http, { type CreateCustomerPayload, type DjangoCustomer, type DjangoOrder, type UpdateCustomerPayload } from "@/lib/api";
 import type { Customer } from "@/features/customers/types/customer";
 
 function orderTotal(order: { items: { subtotal: string }[] }): number {
@@ -7,10 +7,12 @@ function orderTotal(order: { items: { subtotal: string }[] }): number {
 
 export const customersService = {
   getAll: async (): Promise<Customer[]> => {
-    const [customers, orders] = await Promise.all([
-      api.getCustomers(),
-      api.getOrders(),
+    const [customersResponse, ordersResponse] = await Promise.all([
+      http.get<DjangoCustomer[]>("/sales/customers/"),
+      http.get<DjangoOrder[]>("/sales/orders/"),
     ]);
+    const customers = customersResponse.data;
+    const orders = ordersResponse.data;
 
     return customers.map(c => {
       const customerOrders = orders.filter(
@@ -35,13 +37,23 @@ export const customersService = {
     });
   },
 
-  createCustomer: async (input: { name: string; phone: string; email: string }): Promise<void> => {
+  createCustomer: async (input: { name: string; phone: string; email: string }): Promise<Customer> => {
     const payload: CreateCustomerPayload = {
       name: input.name,
       contact_number: input.phone || null,
       email: input.email || null,
     };
-    await api.createCustomer(payload);
+    const { data } = await http.post<DjangoCustomer>("/sales/customers/", payload);
+    return {
+      id: data.id,
+      name: data.name,
+      phone: data.contact_number ?? "",
+      email: data.email ?? "",
+      orders: 0,
+      total: 0,
+      last: "—",
+      createdAt: data.created_at.slice(0, 10),
+    };
   },
 
   updateCustomer: async (
@@ -53,10 +65,10 @@ export const customersService = {
       contact_number: input.phone || null,
       email: input.email || null,
     };
-    await api.updateCustomer(customerId, payload);
+    await http.patch<DjangoCustomer>(`/sales/customers/${customerId}/`, payload);
   },
 
   deleteCustomer: async (customerId: number): Promise<void> => {
-    await api.deleteCustomer(customerId);
+    await http.delete(`/sales/customers/${customerId}/`);
   },
 };

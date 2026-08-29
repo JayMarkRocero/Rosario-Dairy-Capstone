@@ -5,8 +5,8 @@ import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
 import { ordersService } from "@/features/orders/api/orders.service";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
-import { api } from "@/lib/api";
-import type { Order } from "@/features/orders/types/order";
+import { authService } from "@/features/auth/api/auth.service";
+import type { OrderListItem } from "@/features/orders/types/order";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 
 function todayStr(): string {
@@ -16,7 +16,7 @@ function todayStr(): string {
 export function StaffKPICards() {
   const [loading, setLoading] = useState(true);
   const [sales, setSales] = useState<Sale[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [products, setProducts] = useState<InventoryItem[]>([]);
   const [username, setUsername] = useState<string | null>(null);
 
@@ -27,7 +27,7 @@ export function StaffKPICards() {
       salesService.getAll(),
       ordersService.getAll(),
       inventoryService.getAll(),
-      api.getCurrentUser(),
+      authService.getCurrentUser(),
     ])
       .then(([s, o, p, user]) => {
         if (!active) return;
@@ -52,7 +52,7 @@ export function StaffKPICards() {
     const mySalesToday = sales.filter(s => s.date === today && s.cashier === username);
     const myTotalToday = mySalesToday.reduce((sum, s) => sum + s.total, 0);
 
-    const pendingOrders = orders.filter(o => o.status === "Placed" || o.status === "Confirmed");
+    const fulfilledOrders = orders.filter(o => o.status === "Fulfilled");
 
     const availableProducts = products.filter(p => p.stock > 0).length;
 
@@ -66,8 +66,8 @@ export function StaffKPICards() {
         trend: "neutral" as const, trendLabel: "Today", color: C.green,
       },
       {
-        title: "Pending Orders", value: String(pendingOrders.length), icon: <ClipboardList size={20}/>,
-        trend: "neutral" as const, trendLabel: `${pendingOrders.length} open`, color: C.orange,
+        title: "Fulfilled Orders", value: String(fulfilledOrders.length), icon: <ClipboardList size={20}/>,
+        trend: "neutral" as const, trendLabel: `${fulfilledOrders.length} completed`, color: C.orange,
       },
       {
         title: "Available Products", value: `${availableProducts} / ${products.length}`, icon: <Package size={20}/>,

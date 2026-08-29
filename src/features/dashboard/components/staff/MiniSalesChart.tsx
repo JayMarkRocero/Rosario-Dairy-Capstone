@@ -3,7 +3,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { Card } from "@/components/data-display/Card";
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
-import { api } from "@/lib/api";
+import { authService } from "@/features/auth/api/auth.service";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -15,7 +15,7 @@ export function MiniSalesChart() {
   useEffect(() => {
     let active = true;
 
-    Promise.all([salesService.getAll(), api.getCurrentUser()])
+    Promise.all([salesService.getAll(), authService.getCurrentUser()])
       .then(([s, user]) => {
         if (!active) return;
         setSales(s);
