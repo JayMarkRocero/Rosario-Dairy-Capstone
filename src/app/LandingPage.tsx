@@ -1,227 +1,117 @@
-import { useEffect, useRef, useState } from "react";
-import { motion, useInView, AnimatePresence } from "framer-motion";
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-  Menu,
-  X,
-  ArrowRight,
-  ArrowDown,
-  CheckCircle2,
-  Boxes,
-  ShoppingCart,
-  BarChart3,
-  TrendingUp,
-  Users,
-  FileSpreadsheet,
-  Bell,
-  Mail,
-  Phone,
-  MapPin,
-  ChevronRight,
-  Milk,
-  PackageCheck,
+  ArrowRight, BarChart3, Boxes, CheckCircle2, ChevronRight,
+  FileSpreadsheet, LockKeyhole, Mail, MapPin, Menu, Milk,
+  Phone, RefreshCw, ShieldCheck, ShoppingCart, TrendingUp, Users, X,
 } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 
-/* ------------------------------------------------------------------ */
-/*  Types & helpers                                                   */
-/* ------------------------------------------------------------------ */
+interface LandingPageProps { onLogin?: () => void }
 
-interface LandingPageProps {
-  onLogin?: () => void;
-}
+const NAV_LINKS = [
+  { label: "Home", id: "home" },
+  { label: "Capabilities", id: "features" },
+  { label: "How It Works", id: "about" },
+  { label: "Contact", id: "contact" },
+] as const;
+
+const reveal = {
+  initial: { opacity: 0, y: 22 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-80px" },
+  transition: { duration: 0.5 },
+};
 
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-/** Small count-up hook, used by the Stats section. */
-function useCountUp(target: number, active: boolean, duration = 1400) {
-  const [value, setValue] = useState(0);
-
-  useEffect(() => {
-    if (!active) return;
-    let start: number | null = null;
-    let raf = 0;
-
-    const step = (ts: number) => {
-      if (start === null) start = ts;
-      const progress = Math.min((ts - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
-      setValue(Math.round(eased * target));
-      if (progress < 1) raf = requestAnimationFrame(step);
-    };
-
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [active, target, duration]);
-
-  return value;
-}
-
-/* ------------------------------------------------------------------ */
-/*  1. Navigation Bar                                                  */
-/* ------------------------------------------------------------------ */
-
 function NavBar({ onLogin }: { onLogin?: () => void }) {
-  const [scrolled, setScrolled]           = useState(false);
-  const [mobileOpen, setMobileOpen]       = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("home");
-
-  const links = [
-    { label: "Home", id: "home" },
-    { label: "Features", id: "features" },
-    { label: "About", id: "about" },
-    { label: "Contact", id: "contact" },
-  ];
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();
-    window.addEventListener("scroll", onScroll);
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // ── Scroll-spy: highlight whichever section is currently in view ─────────
   useEffect(() => {
-    const sections = links
-      .map(l => document.getElementById(l.id))
-      .filter((el): el is HTMLElement => !!el);
-
-    if (sections.length === 0) return;
+    const sections = NAV_LINKS
+      .map(({ id }) => document.getElementById(id))
+      .filter((element): element is HTMLElement => Boolean(element));
 
     const observer = new IntersectionObserver(
-      entries => {
-        const visible = entries
-          .filter(e => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-
+      (entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting);
         if (visible.length > 0) {
-          setActiveSection(visible[0].target.id);
+          // Sort by highest visibility ratio in viewport
+          const mostVisible = visible.reduce((prev, curr) =>
+            curr.intersectionRatio > prev.intersectionRatio ? curr : prev
+          );
+          setActiveSection(mostVisible.target.id);
         }
       },
-      {
-        rootMargin: "-30% 0px -60% 0px",
-        threshold: [0, 0.25, 0.5, 0.75, 1],
-      }
+      { rootMargin: "-10% 0px -40% 0px", threshold: [0.1, 0.3, 0.6] }
     );
 
-    sections.forEach(s => observer.observe(s));
+    sections.forEach((section) => observer.observe(section));
     return () => observer.disconnect();
   }, []);
 
+  const navigate = (id: string) => {
+    scrollToId(id);
+    setMobileOpen(false);
+  };
+
   return (
     <header
-      className={`sticky top-0 z-50 w-full transition-shadow duration-300 ${
-        scrolled ? "shadow-[0_2px_20px_rgba(15,23,42,0.08)]" : "shadow-none"
-      }`}
-      style={{ backgroundColor: C.white, borderBottom: `1px solid ${C.border}` }}
+      className={`sticky top-0 z-50 border-b backdrop-blur-xl transition-all duration-300 ${scrolled ? "shadow-[0_8px_30px_rgba(15,23,42,0.07)]" : "shadow-none"}`}
+      style={{ backgroundColor: `${C.white}F2`, borderColor: C.border }}
     >
-      <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 sm:h-[72px] flex items-center justify-between">
-        {/* Logo */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-white font-bold text-base shrink-0"
-            style={{ backgroundColor: C.navy }}
-          >
-            RD
-          </div>
-          <div className="leading-tight min-w-0">
-            <p
-              className="font-bold text-sm sm:text-base truncate"
-              style={{ color: C.navy, fontFamily: "Poppins, sans-serif" }}
-            >
-              Rosario Dairy
-            </p>
-            <p className="text-[11px] sm:text-xs truncate" style={{ color: C.muted }}>
-              Integrated Inventory &amp; POS System
-            </p>
-          </div>
-        </div>
+      <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 sm:px-8">
+        <button onClick={() => navigate("home")} className="flex min-w-0 items-center gap-3 text-left">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm" style={{ backgroundColor: C.navy }}>RD</span>
+          <span className="min-w-0 leading-tight">
+            <span className="block truncate text-sm font-bold" style={{ color: C.navy, fontFamily: "Poppins, sans-serif" }}>Rosario Dairy</span>
+            <span className="block truncate text-xs" style={{ color: C.muted }}>Operations Intelligence</span>
+          </span>
+        </button>
 
-        {/* Desktop links */}
-        <nav className="hidden md:flex items-center gap-8">
-          {links.map((l) => {
-            const isActive = activeSection === l.id;
+        <nav className="hidden items-center gap-8 md:flex" aria-label="Primary navigation">
+          {NAV_LINKS.map((link) => {
+            const active = activeSection === link.id;
             return (
-              <button
-                key={l.id}
-                onClick={() => scrollToId(l.id)}
-                className="relative text-sm font-medium transition-colors hover:opacity-80 py-1.5"
-                style={{ color: isActive ? C.blue : C.text }}
-              >
-                {l.label}
-                <span
-                  className="absolute left-0 -bottom-0.5 h-0.5 rounded-full transition-all duration-300"
-                  style={{
-                    width: isActive ? "100%" : "0%",
-                    backgroundColor: C.blue,
-                  }}
-                />
+              <button key={link.id} onClick={() => navigate(link.id)} className="relative py-2 text-sm font-medium transition-colors" style={{ color: active ? C.blue : C.muted }}>
+                {link.label}
+                <span className="absolute inset-x-0 -bottom-0.5 mx-auto h-0.5 rounded-full transition-all duration-300" style={{ width: active ? "100%" : 0, backgroundColor: C.blue }} />
               </button>
             );
           })}
         </nav>
 
-        <div className="hidden md:block flex-shrink-0">
-          <button
-            onClick={onLogin}
-            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5"
-            style={{ backgroundColor: C.blue }}
-          >
-            Login
-          </button>
-        </div>
-
-        {/* Mobile toggle */}
-        <button
-          className="md:hidden p-2 rounded-lg flex-shrink-0"
-          style={{ color: C.navy }}
-          onClick={() => setMobileOpen((v) => !v)}
-          aria-label="Toggle menu"
-        >
+        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="hidden rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm md:block" style={{ backgroundColor: C.blue }}>
+          Sign in
+        </motion.button>
+        <button className="rounded-lg p-2 md:hidden" style={{ color: C.navy }} onClick={() => setMobileOpen((open) => !open)} aria-label="Toggle navigation menu" aria-expanded={mobileOpen}>
           {mobileOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
       </div>
 
-      {/* Mobile drawer */}
       <AnimatePresence>
         {mobileOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="md:hidden overflow-hidden"
-            style={{ backgroundColor: C.white, borderTop: `1px solid ${C.border}` }}
-          >
-            <div className="px-5 py-4 flex flex-col gap-1">
-              {links.map((l) => {
-                const isActive = activeSection === l.id;
-                return (
-                  <button
-                    key={l.id}
-                    onClick={() => {
-                      scrollToId(l.id);
-                      setMobileOpen(false);
-                    }}
-                    className="text-left text-sm font-medium py-2.5 px-3 rounded-lg transition-colors"
-                    style={{
-                      color: isActive ? C.blue : C.text,
-                      backgroundColor: isActive ? C.blue + "0D" : "transparent",
-                    }}
-                  >
-                    {l.label}
-                  </button>
-                );
-              })}
-              <button
-                onClick={onLogin}
-                className="mt-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white w-full"
-                style={{ backgroundColor: C.blue }}
-              >
-                Login
-              </button>
-            </div>
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t md:hidden" style={{ borderColor: C.border, backgroundColor: C.white }}>
+            <nav className="flex flex-col gap-1 px-5 py-4" aria-label="Mobile navigation">
+              {NAV_LINKS.map((link) => (
+                <button key={link.id} onClick={() => navigate(link.id)} className="rounded-lg px-3 py-2.5 text-left text-sm font-medium" style={{ color: activeSection === link.id ? C.blue : C.text, backgroundColor: activeSection === link.id ? `${C.blue}0D` : "transparent" }}>
+                  {link.label}
+                </button>
+              ))}
+              <button onClick={onLogin} className="mt-2 rounded-xl px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: C.blue }}>Sign in</button>
+            </nav>
           </motion.div>
         )}
       </AnimatePresence>
@@ -229,719 +119,183 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Dashboard mockup used inside the Hero                              */
-/* ------------------------------------------------------------------ */
-
 function DashboardShowcase() {
-  const bars = [40, 65, 50, 80, 60, 95, 70];
-  const forecastPoints = "0,38 20,32 40,34 60,22 80,26 100,14 120,18 140,6";
-
+  const forecast = "0,62 30,55 60,58 90,40 120,44 150,25 180,31 210,12";
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, delay: 0.15 }}
-      className="relative w-full max-w-md rounded-2xl overflow-hidden"
-      style={{ backgroundColor: C.white, border: `1px solid ${C.border}`, boxShadow: "0 20px 60px -20px rgba(23,55,94,0.25)" }}
-    >
-      <div
-        className="flex items-center justify-between px-4 py-3"
-        style={{ backgroundColor: C.bg, borderBottom: `1px solid ${C.border}` }}
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: C.red }} />
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: C.orange }} />
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: C.green }} />
-        </div>
-        <div className="flex items-center gap-1.5 text-[11px]" style={{ color: C.muted }}>
-          <motion.span
-            className="w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: C.green }}
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 1.6, repeat: Infinity }}
-          />
-          Live dashboard
-        </div>
-      </div>
-
-      <div className="p-4 space-y-3">
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: "Stock Value", value: "₱482K", icon: <Boxes size={13} /> },
-            { label: "Today's Sales", value: "₱36.4K", icon: <ShoppingCart size={13} /> },
-            { label: "Low Stock", value: "6 items", icon: <Bell size={13} /> },
-          ].map((kpi) => (
-            <div
-              key={kpi.label}
-              className="rounded-xl p-2.5"
-              style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}
-            >
-              <div className="flex items-center gap-1 mb-1" style={{ color: C.blue }}>
-                {kpi.icon}
-              </div>
-              <p className="text-[13px] font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
-                {kpi.value}
-              </p>
-              <p className="text-[10px]" style={{ color: C.muted }}>
-                {kpi.label}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-xl p-3" style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}>
-            <p className="text-[10px] font-semibold mb-2" style={{ color: C.muted }}>
-              REVENUE ANALYTICS
-            </p>
-            <div className="flex items-end gap-1 h-14">
-              {bars.map((h, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ height: 0 }}
-                  whileInView={{ height: `${h}%` }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: i * 0.05 }}
-                  className="flex-1 rounded-t-sm"
-                  style={{ backgroundColor: i === 5 ? C.blue : "#BFDBFE" }}
-                />
-              ))}
-            </div>
+    <motion.div initial={{ opacity: 0, y: 28, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.65, delay: 0.15 }} className="relative w-full max-w-xl">
+      <div className="absolute -inset-5 -z-10 rounded-[32px] opacity-70 blur-2xl" style={{ background: `linear-gradient(135deg, ${C.blue}20, ${C.green}12)` }} />
+      <div className="overflow-hidden rounded-3xl border p-5 sm:p-6" style={{ backgroundColor: C.white, borderColor: C.border, boxShadow: "0 28px 70px -32px rgba(23,55,94,0.42)" }}>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: C.muted }}>Executive overview</p>
+            <p className="mt-1 text-base font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>Operations Dashboard</p>
           </div>
-
-          <div className="rounded-xl p-3" style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}>
-            <p className="text-[10px] font-semibold mb-2" style={{ color: C.muted }}>
-              SARIMA FORECAST
-            </p>
-            <svg viewBox="0 0 140 44" className="w-full h-14">
-              <polyline
-                points={forecastPoints}
-                fill="none"
-                stroke={C.green}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <p className="text-[10px] font-medium" style={{ color: C.green }}>
-              ▲ 12% next week
-            </p>
-          </div>
-        </div>
-
-        <div className="rounded-xl p-3" style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}>
-          <p className="text-[10px] font-semibold mb-2" style={{ color: C.muted }}>
-            INVENTORY SUMMARY
-          </p>
-          <div className="space-y-1.5">
-            {[
-              { label: "Fresh Milk", pct: 78 },
-              { label: "Cheese", pct: 54 },
-              { label: "Yogurt", pct: 33 },
-            ].map((row) => (
-              <div key={row.label} className="flex items-center gap-2">
-                <span className="text-[10px] w-16 shrink-0" style={{ color: C.text }}>
-                  {row.label}
-                </span>
-                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: C.border }}>
-                  <motion.div
-                    initial={{ width: 0 }}
-                    whileInView={{ width: `${row.pct}%` }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.6 }}
-                    className="h-full rounded-full"
-                    style={{ backgroundColor: C.blue }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-xl p-3" style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}>
-          <p className="text-[10px] font-semibold mb-2" style={{ color: C.muted }}>
-            RECENT ORDERS
-          </p>
-          <div className="space-y-1.5">
-            {[
-              { id: "#OR-2481", item: "Fresh Milk 1L ×20", status: "Completed" },
-              { id: "#OR-2480", item: "Cheese Block ×8", status: "Processing" },
-            ].map((o) => (
-              <div key={o.id} className="flex items-center justify-between text-[10.5px]">
-                <span style={{ color: C.text }}>{o.id} · {o.item}</span>
-                <span
-                  className="px-2 py-0.5 rounded-full text-[9px] font-semibold"
-                  style={{
-                    backgroundColor: o.status === "Completed" ? "#DCFCE7" : "#DBEAFE",
-                    color: o.status === "Completed" ? C.green : C.blue,
-                  }}
-                >
-                  {o.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  2. Hero Section                                                    */
-/* ------------------------------------------------------------------ */
-
-function HeroSection({ onLogin }: { onLogin?: () => void }) {
-  return (
-    <section id="home" className="pt-16 sm:pt-24 pb-20" style={{ backgroundColor: C.bg }}>
-      <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-2 gap-14 items-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <span
-            className="inline-block px-3 py-1 rounded-full text-xs font-semibold mb-5"
-            style={{ backgroundColor: "#DBEAFE", color: C.blue }}
-          >
-            Rosario Dairy · Operations Platform
+          <span className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ color: C.green, backgroundColor: `${C.green}12` }}>
+            <motion.span className="h-2 w-2 rounded-full" style={{ backgroundColor: C.green }} animate={{ opacity: [1, 0.35, 1] }} transition={{ duration: 1.8, repeat: Infinity }} />Live
           </span>
-          <h1
-            className="text-4xl sm:text-5xl font-bold leading-[1.1] mb-6"
-            style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
-          >
-            Smarter Dairy Inventory &amp; Sales Management
-          </h1>
-          <p className="text-base sm:text-lg leading-relaxed mb-8 max-w-lg" style={{ color: C.muted }}>
-            Rosario Dairy runs its stock, sales, and reporting from one system.
-            Track raw milk and finished goods with FEFO batch monitoring, process
-            sales through an integrated POS, generate reports on demand, and
-            forecast demand ahead of time using the SARIMA time-series model.
-          </p>
-          <div className="flex flex-wrap items-center gap-4">
-            <button
-              onClick={onLogin}
-              className="flex items-center gap-2 px-6 py-3.5 rounded-xl text-white font-semibold text-sm transition-all hover:shadow-xl hover:-translate-y-0.5"
-              style={{ backgroundColor: C.blue }}
-            >
-              Get Started <ArrowRight size={16} />
-            </button>
-            <button
-              onClick={() => scrollToId("features")}
-              className="px-6 py-3.5 rounded-xl font-semibold text-sm transition-all hover:bg-white"
-              style={{ color: C.navy, border: `1px solid ${C.border}` }}
-            >
-              Learn More
-            </button>
-          </div>
-        </motion.div>
-
-        <div className="flex justify-center lg:justify-end">
-          <DashboardShowcase />
         </div>
-      </div>
-    </section>
-  );
-}
 
-/* ------------------------------------------------------------------ */
-/*  3. Features Section                                                */
-/* ------------------------------------------------------------------ */
-
-function FeaturesSection() {
-  const features = [
-    {
-      icon: <Boxes size={22} />,
-      title: "Inventory Management",
-      desc: "Track raw milk, finished goods, and packaging with real-time visibility and FEFO batch tracking.",
-    },
-    {
-      icon: <ShoppingCart size={22} />,
-      title: "Point of Sale",
-      desc: "Process walk-in and wholesale orders quickly with a POS built for daily dairy operations.",
-    },
-    {
-      icon: <BarChart3 size={22} />,
-      title: "Sales Analytics",
-      desc: "See revenue trends, best-selling products, and branch performance in one dashboard.",
-    },
-    {
-      icon: <TrendingUp size={22} />,
-      title: "Demand Forecasting (SARIMA)",
-      desc: "Anticipate seasonal demand shifts and plan production using SARIMA time-series forecasting.",
-    },
-    {
-      icon: <Users size={22} />,
-      title: "Customer Management",
-      desc: "Keep customer records, order history, and preferences organized for faster repeat service.",
-    },
-    {
-      icon: <FileSpreadsheet size={22} />,
-      title: "Reports & Export",
-      desc: "Generate inventory, sales, and forecast reports and export them whenever you need them.",
-    },
-  ];
-
-  return (
-    <section id="features" className="py-20" style={{ backgroundColor: C.white }}>
-      <div className="max-w-7xl mx-auto px-5 sm:px-8">
-        <SectionHeading
-          eyebrow="Platform"
-          title="Everything Rosario Dairy needs to run daily operations"
-          subtitle="One system for inventory, sales, and forecasting — built around how dairy stock actually moves."
-        />
-
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-12">
-          {features.map((f, i) => (
-            <motion.div
-              key={f.title}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.45, delay: i * 0.06 }}
-              className="group p-6 rounded-2xl transition-all hover:-translate-y-1"
-              style={{ backgroundColor: C.white, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}
-            >
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-colors group-hover:text-white"
-                style={{ backgroundColor: "#EFF6FF", color: C.blue }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = C.blue)}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#EFF6FF")}
-              >
-                {f.icon}
-              </div>
-              <h3
-                className="font-bold text-base mb-2"
-                style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
-              >
-                {f.title}
-              </h3>
-              <p className="text-sm leading-relaxed" style={{ color: C.muted }}>
-                {f.desc}
-              </p>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Inventory value", value: "₱482K", change: "+4.8%" },
+            { label: "Sales today", value: "₱36.4K", change: "+12.1%" },
+            { label: "At-risk stock", value: "6", change: "Needs review" },
+          ].map((item, index) => (
+            <motion.div key={item.label} whileHover={{ y: -3 }} className="rounded-2xl border p-3.5 sm:p-4" style={{ backgroundColor: C.bg, borderColor: C.border }}>
+              <p className="text-xs leading-tight" style={{ color: C.muted }}>{item.label}</p>
+              <p className="mt-2 text-lg font-bold sm:text-xl" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{item.value}</p>
+              <p className="mt-1 text-xs font-medium" style={{ color: index === 2 ? C.orange : C.green }}>{item.change}</p>
             </motion.div>
           ))}
         </div>
-      </div>
-    </section>
-  );
-}
 
-/* Reusable section heading */
-function SectionHeading({
-  eyebrow,
-  title,
-  subtitle,
-  light,
-}: {
-  eyebrow: string;
-  title: string;
-  subtitle?: string;
-  light?: boolean;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.5 }}
-      className="max-w-2xl"
-    >
-      <span
-        className="text-xs font-bold uppercase tracking-wide"
-        style={{ color: light ? "#93C5FD" : C.blue }}
-      >
-        {eyebrow}
-      </span>
-      <h2
-        className="text-2xl sm:text-3xl font-bold mt-2 mb-3 leading-tight"
-        style={{ color: light ? C.white : C.text, fontFamily: "Poppins, sans-serif" }}
-      >
-        {title}
-      </h2>
-      {subtitle && (
-        <p className="text-sm sm:text-base leading-relaxed" style={{ color: light ? "#CBD5E1" : C.muted }}>
-          {subtitle}
-        </p>
-      )}
+        <div className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.border, backgroundColor: C.bg }}>
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div><p className="text-sm font-semibold" style={{ color: C.text }}>SARIMA demand forecast</p><p className="mt-1 text-xs" style={{ color: C.muted }}>Projected volume for the next seven days</p></div>
+            <span className="shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ color: C.blue, backgroundColor: `${C.blue}10` }}>+12.0%</span>
+          </div>
+          <svg viewBox="0 0 210 72" className="h-28 w-full" role="img" aria-label="Rising seven-day demand forecast">
+            <defs><linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.blue} stopOpacity="0.2" /><stop offset="100%" stopColor={C.blue} stopOpacity="0" /></linearGradient></defs>
+            <polygon points={`0,72 ${forecast} 210,72`} fill="url(#forecastFill)" />
+            <motion.polyline points={forecast} fill="none" stroke={C.blue} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: 0 }} whileInView={{ pathLength: 1 }} viewport={{ once: true }} transition={{ duration: 1.1, delay: 0.25 }} />
+          </svg>
+        </div>
+      </div>
     </motion.div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  4. Why Choose Rosario Dairy                                        */
-/* ------------------------------------------------------------------ */
-
-function WhyChooseSection() {
-  const checklist = [
-    "Inventory Monitoring",
-    "POS Integration",
-    "Low Stock Alerts",
-    "Sales Dashboard",
-    "Demand Forecasting",
-    "Reports",
-    "Role-Based Access",
-  ];
-
-  const batches = [
-    { name: "Fresh Milk 1L — Batch #A214", status: "Fresh", days: "12 days left", color: C.green },
-    { name: "Yogurt Cup — Batch #C098", status: "Near Expiry", days: "3 days left", color: C.orange },
-    { name: "Cheese Block — Batch #B152", status: "Fresh", days: "20 days left", color: C.green },
-  ];
-
+function HeroSection({ onLogin }: { onLogin?: () => void }) {
   return (
-    <section className="py-20" style={{ backgroundColor: C.bg }}>
-      <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-2 gap-14 items-center">
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.55 }}
-          className="rounded-2xl p-6"
-          style={{ backgroundColor: C.white, border: `1px solid ${C.border}`, boxShadow: "0 20px 50px -25px rgba(23,55,94,0.2)" }}
-        >
-          <div className="flex items-center gap-2 mb-5">
-            <PackageCheck size={18} style={{ color: C.blue }} />
-            <p className="font-bold text-sm" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
-              Batch Expiry Tracker
-            </p>
+    <section id="home" className="relative overflow-hidden py-20 sm:py-28" style={{ backgroundColor: C.bg }}>
+      <div className="absolute inset-0 opacity-60" style={{ background: `radial-gradient(circle at 15% 10%, ${C.blue}12, transparent 34%), radial-gradient(circle at 90% 80%, ${C.green}0D, transparent 30%)` }} />
+      <div className="relative mx-auto grid max-w-7xl items-center gap-16 px-5 sm:px-8 lg:grid-cols-[0.9fr_1.1fr]">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+          <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold" style={{ color: C.blue, borderColor: `${C.blue}25`, backgroundColor: `${C.blue}08` }}><ShieldCheck size={14} />Purpose-built operations platform</span>
+          <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.08] sm:text-5xl lg:text-[3.5rem]" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>Control dairy operations with clarity and confidence.</h1>
+          <p className="mt-6 max-w-xl text-base leading-8 sm:text-lg" style={{ color: C.muted }}>Unify batch-level inventory, point-of-sale activity, management reporting, and demand forecasting in one dependable operating system.</p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="inline-flex items-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold text-white shadow-lg" style={{ backgroundColor: C.blue, boxShadow: `0 14px 28px -14px ${C.blue}` }}>Access the platform <ArrowRight size={16} /></motion.button>
+            <button onClick={() => scrollToId("features")} className="rounded-xl border px-6 py-3.5 text-sm font-semibold transition-colors hover:bg-white" style={{ color: C.navy, borderColor: C.border }}>Explore capabilities</button>
           </div>
-          <div className="space-y-3">
-            {batches.map((b) => (
-              <div
-                key={b.name}
-                className="flex items-center justify-between p-3 rounded-xl"
-                style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-9 h-9 rounded-lg flex items-center justify-center"
-                    style={{ backgroundColor: C.white, border: `1px solid ${C.border}` }}
-                  >
-                    <Milk size={16} style={{ color: C.blue }} />
-                  </div>
-                  <div>
-                    <p className="text-[12.5px] font-medium" style={{ color: C.text }}>
-                      {b.name}
-                    </p>
-                    <p className="text-[11px]" style={{ color: C.muted }}>
-                      {b.days}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className="text-[10px] font-semibold px-2.5 py-1 rounded-full shrink-0"
-                  style={{ backgroundColor: `${b.color}1A`, color: b.color }}
-                >
-                  {b.status}
-                </span>
-              </div>
-            ))}
+          <div className="mt-9 flex flex-wrap gap-x-6 gap-y-3 text-xs font-medium" style={{ color: C.muted }}>
+            {["FEFO batch control", "Role-based workflows", "Decision-ready analytics"].map((item) => <span key={item} className="flex items-center gap-2"><CheckCircle2 size={15} style={{ color: C.green }} />{item}</span>)}
           </div>
         </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.55 }}
-        >
-          <span className="text-xs font-bold uppercase tracking-wide" style={{ color: C.blue }}>
-            Why Rosario Dairy Chose This System
-          </span>
-          <h2
-            className="text-2xl sm:text-3xl font-bold mt-2 mb-6 leading-tight"
-            style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
-          >
-            Built specifically for how dairy stock moves
-          </h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {checklist.map((item) => (
-              <div key={item} className="flex items-center gap-2.5">
-                <CheckCircle2 size={18} style={{ color: C.green }} className="shrink-0" />
-                <span className="text-sm font-medium" style={{ color: C.text }}>
-                  {item}
-                </span>
-              </div>
-            ))}
-          </div>
-        </motion.div>
+        <DashboardShowcase />
       </div>
     </section>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  5. System Workflow                                                 */
-/* ------------------------------------------------------------------ */
-
-function WorkflowSection() {
-  const steps = [
-    { icon: <Boxes size={20} />, label: "Inventory", desc: "Stock is recorded and tracked by batch." },
-    { icon: <ShoppingCart size={20} />, label: "POS", desc: "Sales deduct stock automatically." },
-    { icon: <BarChart3 size={20} />, label: "Analytics", desc: "Sales data becomes reports." },
-    { icon: <TrendingUp size={20} />, label: "Forecasting", desc: "SARIMA projects future demand." },
-  ];
-
+function SectionHeading({ eyebrow, title, subtitle, centered = false }: { eyebrow: string; title: string; subtitle: string; centered?: boolean }) {
   return (
-    <section className="py-20" style={{ backgroundColor: C.white }}>
-      <div className="max-w-7xl mx-auto px-5 sm:px-8">
-        <SectionHeading
-          eyebrow="How it works"
-          title="From stockroom to forecast, in one flow"
-          subtitle="Every sale updates inventory in real time, and every day of sales sharpens the forecast."
-        />
+    <motion.div {...reveal} className={`max-w-2xl ${centered ? "mx-auto text-center" : ""}`}>
+      <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: C.blue }}>{eyebrow}</p>
+      <h2 className="mt-3 text-3xl font-bold leading-tight sm:text-4xl" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{title}</h2>
+      <p className="mt-4 text-base leading-7" style={{ color: C.muted }}>{subtitle}</p>
+    </motion.div>
+  );
+}
 
-        <div className="mt-14 flex flex-col lg:flex-row items-stretch gap-4">
-          {steps.map((s, i) => (
-            <div key={s.label} className="flex flex-1 items-center gap-4">
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.45, delay: i * 0.1 }}
-                className="flex-1 p-6 rounded-2xl text-center"
-                style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}
-              >
-                <div
-                  className="w-12 h-12 rounded-xl mx-auto flex items-center justify-center mb-4"
-                  style={{ backgroundColor: C.navy, color: C.white }}
-                >
-                  {s.icon}
-                </div>
-                <p className="font-bold text-sm mb-1.5" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
-                  {s.label}
-                </p>
-                <p className="text-xs leading-relaxed" style={{ color: C.muted }}>
-                  {s.desc}
-                </p>
-              </motion.div>
-
-              {i < steps.length - 1 && (
-                <div className="hidden lg:flex items-center justify-center shrink-0" style={{ color: C.border }}>
-                  <ChevronRight size={22} style={{ color: C.blue }} />
-                </div>
-              )}
-              {i < steps.length - 1 && (
-                <div className="flex lg:hidden justify-center py-1" style={{ color: C.blue }}>
-                  <ArrowDown size={18} />
-                </div>
-              )}
-            </div>
-          ))}
+function FeaturesSection() {
+  const features = [
+    { icon: Boxes, title: "Batch inventory", desc: "Track quantities, expiry dates, and FEFO priority at batch level." },
+    { icon: ShoppingCart, title: "Integrated POS", desc: "Record transactions while keeping available stock synchronized." },
+    { icon: TrendingUp, title: "Demand forecasting", desc: "Use SARIMA projections to support purchasing and production plans." },
+    { icon: BarChart3, title: "Management analytics", desc: "Monitor revenue, stock risk, and product performance from one view." },
+    { icon: Users, title: "Customer operations", desc: "Maintain customer profiles, order history, and repeat-service context." },
+    { icon: FileSpreadsheet, title: "Structured reporting", desc: "Prepare operational summaries for review, export, and audit." },
+  ];
+  return (
+    <section id="features" className="py-24 sm:py-28" style={{ backgroundColor: C.white }}>
+      <div className="mx-auto max-w-7xl px-5 sm:px-8">
+        <SectionHeading eyebrow="Core capabilities" title="One source of truth for daily operations" subtitle="Each module solves a distinct operational need while sharing the same inventory and transaction data." centered />
+        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((feature, index) => {
+            const Icon = feature.icon;
+            return (
+              <motion.article key={feature.title} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.45, delay: index * 0.05 }} whileHover={{ y: -5 }} className="group rounded-2xl border p-6 sm:p-7" style={{ borderColor: C.border, backgroundColor: C.white, boxShadow: "0 12px 34px -26px rgba(15,23,42,0.35)" }}>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105" style={{ color: C.blue, backgroundColor: `${C.blue}0D` }}><Icon size={22} /></div>
+                <h3 className="mt-5 text-base font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{feature.title}</h3>
+                <p className="mt-2 text-sm leading-6" style={{ color: C.muted }}>{feature.desc}</p>
+              </motion.article>
+            );
+          })}
         </div>
       </div>
     </section>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  6. Statistics Section                                              */
-/* ------------------------------------------------------------------ */
-
-function StatCard({ target, suffix, label, decimals = 0 }: { target: number; suffix: string; label: string; decimals?: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: "-80px" });
-  const value = useCountUp(target, inView);
-
-  return (
-    <div
-      ref={ref}
-      className="p-8 rounded-2xl text-center"
-      style={{ backgroundColor: C.white, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(15,23,42,0.04)" }}
-    >
-      <p className="text-3xl sm:text-4xl font-bold" style={{ color: C.blue, fontFamily: "Poppins, sans-serif" }}>
-        {decimals ? value.toFixed(decimals) : value.toLocaleString()}
-        {suffix}
-      </p>
-      <p className="text-sm mt-2 font-medium" style={{ color: C.muted }}>
-        {label}
-      </p>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  7. About Section                                                   */
-/* ------------------------------------------------------------------ */
-
-function AboutSection() {
-  const points = [
-    "Inventory Management across raw milk and finished goods",
-    "Point of Sale for daily transactions",
-    "Analytics that turn transactions into insight",
-    "SARIMA forecasting for seasonal demand planning",
-    "Role-based access for admin and staff",
-    "Modern, exportable reporting",
+function WorkflowSection({ onLogin }: { onLogin?: () => void }) {
+  const steps = [
+    { number: "01", icon: Milk, title: "Receive and classify", desc: "Register products and batches with quantity and expiry context." },
+    { number: "02", icon: RefreshCw, title: "Operate in real time", desc: "Sales and orders flow through role-appropriate daily workflows." },
+    { number: "03", icon: BarChart3, title: "Review performance", desc: "Operational data becomes clear management indicators and reports." },
+    { number: "04", icon: TrendingUp, title: "Plan forward", desc: "Forecasts convert historical sales into evidence-based decisions." },
   ];
-
   return (
-    <section id="about" className="py-20" style={{ backgroundColor: C.bg }}>
-      <div className="max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-2 gap-14">
-        <SectionHeading
-          eyebrow="About the system"
-          title="A single system built around Rosario Dairy's operations"
-          subtitle="The Rosario Dairy Integrated Inventory & POS System was built to replace manual stock counts and disconnected sales records with one connected platform — from the stockroom to the register to the forecast."
-        />
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="grid sm:grid-cols-2 gap-3"
-        >
-          {points.map((p) => (
-            <div
-              key={p}
-              className="flex items-start gap-2.5 p-3.5 rounded-xl"
-              style={{ backgroundColor: C.bg, border: `1px solid ${C.border}` }}
-            >
-              <CheckCircle2 size={16} style={{ color: C.blue }} className="shrink-0 mt-0.5" />
-              <span className="text-[13px] leading-snug" style={{ color: C.text }}>
-                {p}
-              </span>
-            </div>
-          ))}
+    <section id="about" className="py-24 sm:py-28" style={{ backgroundColor: C.bg }}>
+      <div className="mx-auto max-w-7xl px-5 sm:px-8">
+        <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+          <SectionHeading eyebrow="Operating model" title="A controlled flow from receiving to planning" subtitle="Rosario Dairy replaces disconnected records with a traceable workflow designed around perishable inventory." />
+          <motion.div {...reveal} className="grid gap-3 sm:grid-cols-3">
+            {[{ icon: LockKeyhole, label: "Role-aware access" }, { icon: ShieldCheck, label: "Traceable records" }, { icon: CheckCircle2, label: "Consistent process" }].map(({ icon: Icon, label }) => (
+              <div key={label} className="rounded-xl border p-4 text-center" style={{ backgroundColor: C.white, borderColor: C.border }}><Icon className="mx-auto" size={19} style={{ color: C.blue }} /><p className="mt-2 text-xs font-semibold" style={{ color: C.text }}>{label}</p></div>
+            ))}
+          </motion.div>
+        </div>
+        <div className="relative mt-14 grid gap-4 lg:grid-cols-4">
+          {steps.map((step, index) => {
+            const Icon = step.icon;
+            return (
+              <motion.div key={step.number} {...reveal} transition={{ duration: 0.45, delay: index * 0.08 }} className="relative flex">
+                <article className="w-full rounded-2xl border p-6" style={{ backgroundColor: C.white, borderColor: C.border, boxShadow: "0 14px 38px -30px rgba(15,23,42,0.4)" }}>
+                  <div className="flex items-center justify-between"><span className="text-xs font-bold tracking-[0.18em]" style={{ color: C.blue }}>{step.number}</span><div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ color: C.navy, backgroundColor: `${C.blue}0D` }}><Icon size={19} /></div></div>
+                  <h3 className="mt-6 text-base font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{step.title}</h3>
+                  <p className="mt-2 text-sm leading-6" style={{ color: C.muted }}>{step.desc}</p>
+                </article>
+                {index < steps.length - 1 && <ChevronRight className="absolute -right-4 top-1/2 z-10 hidden -translate-y-1/2 lg:block" size={17} style={{ color: C.blue }} />}
+              </motion.div>
+            );
+          })}
+        </div>
+        <motion.div {...reveal} className="mt-16 overflow-hidden rounded-3xl px-6 py-10 text-center sm:px-10 sm:py-12" style={{ background: `linear-gradient(135deg, ${C.navy}, #244D7C)` }}>
+          <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: "#93C5FD" }}>Rosario Dairy Management System</p>
+          <h2 className="mx-auto mt-3 max-w-2xl text-2xl font-bold text-white sm:text-3xl" style={{ fontFamily: "Poppins, sans-serif" }}>Move from manual coordination to informed operational control.</h2>
+          <p className="mx-auto mt-4 max-w-xl text-sm leading-6" style={{ color: "#CBD5E1" }}>Access inventory, POS, analytics, and forecasting through one secure workspace.</p>
+          <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="mt-7 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white" style={{ backgroundColor: C.blue }}>Sign in to continue <ArrowRight size={16} /></motion.button>
         </motion.div>
       </div>
     </section>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  8. Call to Action                                                   */
-/* ------------------------------------------------------------------ */
-
-function CTASection({ onLogin }: { onLogin?: () => void }) {
-  return (
-    <section className="py-20" style={{ backgroundColor: C.navy }}>
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.5 }}
-        className="max-w-3xl mx-auto px-5 sm:px-8 text-center"
-      >
-        <h2
-          className="text-3xl sm:text-4xl font-bold mb-4 leading-tight"
-          style={{ color: C.white, fontFamily: "Poppins, sans-serif" }}
-        >
-          Ready to Modernize Rosario Dairy?
-        </h2>
-        <p className="text-sm sm:text-base mb-8" style={{ color: "#CBD5E1" }}>
-          Log in to manage inventory, process sales, and view forecasts — all in one place.
-        </p>
-        <button
-          onClick={onLogin}
-          className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-sm transition-all hover:shadow-xl hover:-translate-y-0.5"
-          style={{ backgroundColor: C.blue, color: C.white }}
-        >
-          Login <ArrowRight size={16} />
-        </button>
-      </motion.div>
-    </section>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  9. Footer                                                           */
-/* ------------------------------------------------------------------ */
 
 function Footer() {
   return (
-    <footer id="contact" className="pt-16 pb-8" style={{ backgroundColor: "#0F1E33" }}>
-      <div className="max-w-7xl mx-auto px-5 sm:px-8">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-10 pb-10" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-          <div>
-            <div className="flex items-center gap-3 mb-3">
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-                style={{ backgroundColor: C.blue }}
-              >
-                RD
-              </div>
-              <p className="font-bold text-sm text-white" style={{ fontFamily: "Poppins, sans-serif" }}>
-                Rosario Dairy
-              </p>
-            </div>
-            <p className="text-xs leading-relaxed" style={{ color: "#94A3B8" }}>
-              Integrated Inventory &amp; POS System for daily dairy operations.
-            </p>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide mb-4" style={{ color: "#64748B" }}>
-              Quick Links
-            </p>
-            <div className="flex flex-col gap-2.5">
-              {[
-                { label: "Home", id: "home" },
-                { label: "Features", id: "features" },
-                { label: "About", id: "about" },
-                { label: "Contact", id: "contact" },
-              ].map((l) => (
-                <button
-                  key={l.id}
-                  onClick={() => scrollToId(l.id)}
-                  className="text-left text-sm transition-colors hover:text-white"
-                  style={{ color: "#CBD5E1" }}
-                >
-                  {l.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide mb-4" style={{ color: "#64748B" }}>
-              Contact
-            </p>
-            <div className="flex flex-col gap-2.5 text-sm" style={{ color: "#CBD5E1" }}>
-              <div className="flex items-center gap-2">
-                <Mail size={14} /> rocerojaymark31@gmail.com
-              </div>
-              <div className="flex items-center gap-2">
-                <Phone size={14} /> 09125096057
-              </div>
-              <div className="flex items-center gap-2">
-                <MapPin size={14} /> Rosario, Batangas, Philippines
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide mb-4" style={{ color: "#64748B" }}>
-              System
-            </p>
-            <p className="text-sm leading-relaxed" style={{ color: "#CBD5E1" }}>
-              Inventory · POS · Analytics · SARIMA Forecasting
-            </p>
-          </div>
+    <footer id="contact" className="border-t pt-14 pb-7" style={{ backgroundColor: "#0F1E33", borderColor: "rgba(255,255,255,0.08)" }}>
+      <div className="mx-auto max-w-7xl px-5 sm:px-8">
+        <div className="grid gap-10 border-b pb-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_0.8fr_1fr]" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+          <div className="max-w-sm"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: C.blue }}>RD</div><div><p className="text-sm font-bold text-white" style={{ fontFamily: "Poppins, sans-serif" }}>Rosario Dairy</p><p className="text-xs" style={{ color: "#94A3B8" }}>Integrated Inventory &amp; POS System</p></div></div><p className="mt-4 text-sm leading-6" style={{ color: "#94A3B8" }}>A unified operations platform for perishable inventory, sales control, and forward planning.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "#64748B" }}>Navigate</p><div className="mt-4 flex flex-col gap-3">{NAV_LINKS.map((link) => <button key={link.id} onClick={() => scrollToId(link.id)} className="text-left text-sm transition-colors hover:text-white" style={{ color: "#CBD5E1" }}>{link.label}</button>)}</div></div>
+          <div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "#64748B" }}>Contact</p><div className="mt-4 flex flex-col gap-3 text-sm" style={{ color: "#CBD5E1" }}><a className="flex items-center gap-2 hover:text-white" href="mailto:rocerojaymark31@gmail.com"><Mail size={15} />rocerojaymark31@gmail.com</a><a className="flex items-center gap-2 hover:text-white" href="tel:+639125096057"><Phone size={15} />0912 509 6057</a><p className="flex items-center gap-2"><MapPin size={15} />Rosario, Batangas, Philippines</p></div></div>
         </div>
-
-        <p className="text-center text-xs pt-6" style={{ color: "#64748B" }}>
-          © {new Date().getFullYear()} Rosario Dairy Management System — FEFO + SARIMA Analytics
-        </p>
+        <p className="pt-6 text-center text-xs" style={{ color: "#64748B" }}>© {new Date().getFullYear()} Rosario Dairy Management System · FEFO and SARIMA Analytics</p>
       </div>
     </footer>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Default export                                                      */
-/* ------------------------------------------------------------------ */
-
 export default function LandingPage({ onLogin }: LandingPageProps) {
   return (
-    <div className="min-h-screen w-full " style={{ backgroundColor: C.bg }}>
+    <div className="min-h-screen w-full" style={{ backgroundColor: C.bg }}>
       <NavBar onLogin={onLogin} />
-      <HeroSection onLogin={onLogin} />
-      <FeaturesSection />
-      <WhyChooseSection />
-      <WorkflowSection />
-      <AboutSection />
-      <CTASection onLogin={onLogin} />
+      <main>
+        <HeroSection onLogin={onLogin} />
+        <FeaturesSection />
+        <WorkflowSection onLogin={onLogin} />
+      </main>
       <Footer />
     </div>
   );
