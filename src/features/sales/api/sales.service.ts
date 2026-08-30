@@ -13,6 +13,12 @@ function toDisplayPayment(method: string): "Cash" | "Online" {
   return method === "cash" ? "Cash" : "Online";
 }
 
+function transactionCustomerName(transaction: DjangoTransaction): string {
+  return transaction.order?.customer?.name?.trim()
+    || transaction.customer?.name?.trim()
+    || "Walk-in";
+}
+
 export const salesService = {
   getAll: async (filters?: { startDate?: string; endDate?: string }): Promise<Sale[]> => {
     const { data: transactions } = await http.get<DjangoTransaction[]>("/sales/transactions/", {
@@ -24,7 +30,7 @@ export const salesService = {
 
     return transactions.map((t: DjangoTransaction) => ({
       receipt: `TXN-${String(t.id).padStart(6, "0")}`,
-      customer: "Walk-in", // Transaction model has no customer field
+      customer: transactionCustomerName(t),
       cashier: t.handled_by.username,
       date: t.created_at.slice(0, 10),
       payment: toDisplayPayment(t.payment_method),

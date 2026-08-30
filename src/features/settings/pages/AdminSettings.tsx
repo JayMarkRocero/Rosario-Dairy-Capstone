@@ -79,7 +79,7 @@ function BusinessTab() {
         <input className={inputClass} style={inputStyle} defaultValue="Rosario Dairy"/>
       </Field>
       <Field label="Address" span>
-        <input className={inputClass} style={inputStyle} defaultValue="123 Dairy Road, Quezon City"/>
+        <input className={inputClass} style={inputStyle} defaultValue="Rosario, Batangas"/>
       </Field>
       <Field label="Contact Number">
         <input className={inputClass} style={inputStyle} defaultValue="(02) 8123-4567"/>

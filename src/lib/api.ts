@@ -346,6 +346,8 @@ export interface DjangoTransactionItem {
 export interface DjangoTransaction {
   id: number;
   handled_by: CurrentUser;
+  order?: { customer?: DjangoCustomer | null } | null;
+  customer?: DjangoCustomer | null;
   subtotal: string;
   discount_type: string;
   discount_value: string;

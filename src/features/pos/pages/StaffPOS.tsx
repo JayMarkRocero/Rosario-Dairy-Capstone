@@ -39,7 +39,7 @@ function ReceiptModal({ cart, total, subtotal, payment, change, onClose, onConfi
         {/* Header */}
         <div className="text-center py-3">
           <div className="font-bold text-lg" style={{color:C.navy,fontFamily:"Poppins,sans-serif"}}>Rosario Dairy</div>
-          <div className="text-xs" style={{color:C.muted}}>123 Dairy Road, Quezon City</div>
+          <div className="text-xs" style={{color:C.muted}}>Rosario, Batangas</div>
           <div className="text-xs mt-1" style={{color:C.muted}}>
             {now.toLocaleDateString("en-PH",{dateStyle:"full"})} · {now.toLocaleTimeString("en-PH",{timeStyle:"short"})}
           </div>
