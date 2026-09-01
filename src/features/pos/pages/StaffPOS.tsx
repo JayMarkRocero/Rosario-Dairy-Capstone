@@ -8,6 +8,7 @@ import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { checkoutService } from "@/features/pos/api/checkout.service";
 import { customersService } from "@/features/customers/api/customers.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
+import type { Customer } from "@/features/customers/types/customer";
 
 type PayMethod  = "Cash" | "GCash";
 type DiscountType = "none" | "percent" | "fixed";
@@ -150,6 +151,7 @@ function CartContents({
   cart, total, subtotal, payMethod, setPayMethod, cashReceived, setCash, change,
   discountType, setDiscountType,
   discountValue, setDiscountValue, showDiscount, setShowDiscount, updateQty, clearCart, onComplete,
+  customers, customerId, setCustomerId, setItemQuantity,
 }: {
   cart: CartItem[]; total: number; subtotal: number;
   payMethod: PayMethod; setPayMethod: (m: PayMethod) => void;
@@ -157,6 +159,8 @@ function CartContents({
   discountType: DiscountType; setDiscountType: (type: DiscountType) => void;
   discountValue: string; setDiscountValue: (value: string) => void;
   showDiscount: boolean; setShowDiscount: (show: boolean) => void;
+  customers: Customer[]; customerId: string; setCustomerId: (id: string) => void;
+  setItemQuantity: (id: number, quantity: number) => void;
   updateQty: (id: number, delta: number) => void; clearCart: () => void;
   onComplete: () => void;
 }) {
@@ -193,7 +197,10 @@ function CartContents({
                   <button onClick={()=>updateQty(item.id,-1)}
                     className="w-7 h-7 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center hover:bg-gray-100 text-sm font-bold"
                     style={{border:`1px solid ${C.border}`,color:C.muted}}>−</button>
-                  <span className="w-5 text-center text-xs font-bold" style={{color:C.text}}>{item.qty}</span>
+                  <input type="number" min="1" max={item.stock} value={item.qty}
+                    onChange={event=>setItemQuantity(item.id, Number(event.target.value))}
+                    className="w-12 h-7 sm:h-6 rounded-lg border text-center text-xs font-bold outline-none"
+                    style={{borderColor:C.border,color:C.text}} aria-label={`Quantity for ${item.name}`}/>
                   <button onClick={()=>updateQty(item.id,1)} disabled={item.qty >= item.stock}
                     className="w-7 h-7 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center hover:bg-blue-50 text-sm font-bold disabled:opacity-30"
                     style={{border:`1px solid ${C.border}`,color:C.blue}}>+</button>
@@ -232,6 +239,15 @@ function CartContents({
       </div>
 
       <div className="px-5 pb-5 pt-1 space-y-3 flex-shrink-0">
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{color:C.muted}}>Customer</label>
+          <select value={customerId} onChange={event=>setCustomerId(event.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border bg-gray-50"
+            style={{borderColor:C.border,color:C.text}}>
+            <option value="">Walk-in Customer</option>
+            {customers.filter(customer=>customer.name.trim().toLowerCase()!=="walk-in customer").map(customer=><option key={customer.id} value={customer.id}>{customer.name}</option>)}
+          </select>
+        </div>
         <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
           Payment Method
         </div>
@@ -274,7 +290,7 @@ function CartContents({
 // ─── Main POS ─────────────────────────────────────────────────────────────────
 export function StaffPOS() {
   const [products, setProducts] = useState<InventoryItem[]>([]);
-  const [walkInCustomerId, setWalkInCustomerId] = useState(1);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
 
   useEffect(() => {
@@ -284,10 +300,7 @@ export function StaffPOS() {
       .catch(() => toast.error("Failed to load products."))
       .finally(() => setProductsLoading(false));
     customersService.getAll()
-      .then(data => {
-        const walkIn = data.find(customer => customer.name.trim().toLowerCase() === "walk-in customer");
-        setWalkInCustomerId(walkIn?.id ?? 1);
-      })
+      .then(setCustomers)
       .catch(() => toast.error("Failed to load customers."));
   }, []);
 
@@ -296,6 +309,7 @@ export function StaffPOS() {
   const [search,       setSearch]     = useState("");
   const [payMethod,    setPayMethod]  = useState<PayMethod>("Cash");
   const [cashReceived, setCash]       = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [discountType, setDiscountType] = useState<DiscountType>("none");
   const [discountValue, setDiscountValue] = useState("0");
   const [showDiscount, setShowDiscount] = useState(false);
@@ -304,7 +318,7 @@ export function StaffPOS() {
   const [submitting, setSubmitting] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
-  const categories = ["All",...Array.from(new Set(products.map(p=>p.cat)))];
+  const categories = ["All",...Array.from(new Set(products.map(p=>p.cat))).sort((a,b)=>a.localeCompare(b))];
   const filtered = products.filter(p=>
     (category==="All"||p.cat===category) && p.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -325,6 +339,9 @@ export function StaffPOS() {
       const nextQty = i.qty + delta;
       return { ...i, qty: Math.min(nextQty, i.stock) };
     }).filter(i=>i.qty>0));
+  const setItemQuantity = (id: number, quantity: number) => setCart(current => current.map(item =>
+    item.id === id ? { ...item, qty: Math.max(1, Math.min(Number.isFinite(quantity) ? Math.floor(quantity) : 1, item.stock)) } : item
+  ));
 
   const subtotal = cart.reduce((s,i)=>s + i.price * i.qty, 0);
   const parsedDiscount = Number(discountValue) || 0;
@@ -354,7 +371,7 @@ export function StaffPOS() {
   const handleConfirmTransaction = () => {
     setSubmitting(true);
     checkoutService.submit({
-      customerId: walkInCustomerId,
+      customerId: customerId ? Number(customerId) : null,
       items: cart.map(i => ({ productId: i.id, quantity: i.qty })),
       paymentMethod: payMethod,
       discountType,
@@ -365,6 +382,7 @@ export function StaffPOS() {
         setReceiptOpen(false);
         setCart([]);
         setCash("");
+        setCustomerId("");
         setDiscountType("none");
         setDiscountValue("0");
         setShowDiscount(false);
@@ -443,6 +461,8 @@ export function StaffPOS() {
           discountType={discountType} setDiscountType={setDiscountType}
           discountValue={discountValue} setDiscountValue={setDiscountValue}
           showDiscount={showDiscount} setShowDiscount={setShowDiscount}
+          customers={customers} customerId={customerId} setCustomerId={setCustomerId}
+          setItemQuantity={setItemQuantity}
           updateQty={updateQty} clearCart={()=>setCart([])} onComplete={handleComplete}
         />
       </div>
@@ -481,6 +501,8 @@ export function StaffPOS() {
                 discountType={discountType} setDiscountType={setDiscountType}
                 discountValue={discountValue} setDiscountValue={setDiscountValue}
                 showDiscount={showDiscount} setShowDiscount={setShowDiscount}
+                customers={customers} customerId={customerId} setCustomerId={setCustomerId}
+                setItemQuantity={setItemQuantity}
                 updateQty={updateQty} clearCart={()=>setCart([])} onComplete={handleComplete}
               />
             </div>

@@ -15,8 +15,8 @@ import type { Category } from "@/features/inventory/types/inventory";
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
 const inputStyle = { borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" };
 
-interface FormState { name: string; desc: string; is_active: boolean }
-const EMPTY: FormState = { name:"", desc:"", is_active:true };
+interface FormState { name: string; desc: string; is_visible_to_staff: boolean }
+const EMPTY: FormState = { name:"", desc:"", is_visible_to_staff:true };
 
 function CategoryForm({ form, setForm }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>> }) {
   return (
@@ -31,20 +31,6 @@ function CategoryForm({ form, setForm }: { form: FormState; setForm: React.Dispa
         <input className={inputClass} style={inputStyle} value={form.desc}
           onChange={e => setForm(f=>({...f,desc:e.target.value}))} placeholder="Short description"/>
       </div>
-      <div className="flex items-center justify-between p-3 rounded-xl" style={{backgroundColor:C.bg}}>
-        <div>
-          <div className="text-sm font-medium" style={{color:C.text}}>Active Status</div>
-          <div className="text-xs" style={{color:C.muted}}>Category is visible to staff</div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setForm(f=>({...f,is_active:!f.is_active}))}
-          className="w-11 h-6 rounded-full transition-colors relative"
-          style={{backgroundColor:form.is_active?C.green:C.border}}>
-          <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all"
-            style={{left:form.is_active?"calc(100% - 22px)":"2px"}}/>
-        </button>
-      </div>
     </div>
   );
 }
@@ -53,16 +39,19 @@ export function AdminCategories() {
   const [cats, setCats] = useState<Category[]>([]);
   const [catsLoading, setCatsLoading] = useState(true);
 
-  const loadCategories = () => {
+  const loadCategories = async () => {
     setCatsLoading(true);
-    inventoryService.getCategories()
-      .then(setCats)
-      .catch(() => toast.error("Failed to load categories."))
-      .finally(() => setCatsLoading(false));
+    try {
+      setCats(await inventoryService.getCategories());
+    } catch {
+      toast.error("Failed to load categories.");
+    } finally {
+      setCatsLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadCategories();
+    void loadCategories();
   }, []);
 
   const [addOpen,    setAddOpen]    = useState(false);
@@ -77,9 +66,10 @@ export function AdminCategories() {
   const visibleCategories = showInactive
     ? cats
     : cats.filter((cat) => cat.is_active);
+  const sortedCategories = [...visibleCategories].sort((a, b) => a.name.localeCompare(b.name));
 
   const openEdit = (c: Category) => {
-    setSelected(c); setForm({ name:c.name, desc:c.desc, is_active:c.is_active }); setEditOpen(true);
+    setSelected(c); setForm({ name:c.name, desc:c.desc, is_visible_to_staff:c.is_visible_to_staff }); setEditOpen(true);
   };
 
   const save = async (mode:"add"|"edit") => {
@@ -98,7 +88,7 @@ export function AdminCategories() {
           setEditOpen(false);
       }
       setForm(EMPTY);
-      loadCategories();
+      await loadCategories();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Failed to ${mode === "add" ? "add" : "update"} category.`);
     } finally {
@@ -130,6 +120,25 @@ export function AdminCategories() {
       .finally(() => setLoading(false));
   };
 
+  const handleStaffVisibility = async (category: Category) => {
+    const isVisible = !category.is_visible_to_staff;
+    setLoading(true);
+    try {
+      await inventoryService.updateCategory(category.id, { is_visible_to_staff: isVisible });
+      setCats(current => current.map(item => item.id === category.id
+        ? { ...item, is_visible_to_staff: isVisible }
+        : item));
+      setSelected(current => current?.id === category.id
+        ? { ...current, is_visible_to_staff: isVisible }
+        : current);
+      toast.success(`${category.name} is now ${isVisible ? "visible" : "hidden"} to staff.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update staff visibility.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
@@ -157,13 +166,14 @@ export function AdminCategories() {
                 <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Description</th>
                 <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Products</th>
                 <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Status</th>
+                <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Staff Visibility</th>
                 <th className="text-right px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {catsLoading && (
                 <tr>
-                  <td colSpan={5} className="px-5 py-6 text-center text-sm" style={{color:C.muted}}>
+                  <td colSpan={6} className="px-5 py-6 text-center text-sm" style={{color:C.muted}}>
                     Loading categories…
                   </td>
                 </tr>
@@ -171,13 +181,13 @@ export function AdminCategories() {
 
               {!catsLoading && visibleCategories.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-5 py-10 text-center text-sm" style={{color:C.muted}}>
+                  <td colSpan={6} className="px-5 py-10 text-center text-sm" style={{color:C.muted}}>
                     {showInactive ? "No categories found." : "No active categories found."}
                   </td>
                 </tr>
               )}
 
-              {!catsLoading && visibleCategories.map(cat => (
+              {!catsLoading && sortedCategories.map(cat => (
                 <tr key={cat.id} className="hover:bg-gray-50/70 transition-colors"
                   style={{borderBottom:`1px solid ${C.border}`}}>
                   <td className="px-5 py-3">
@@ -202,6 +212,18 @@ export function AdminCategories() {
                   </td>
                   <td className="px-5 py-3">
                     <StatusBadge status={cat.is_active?"Active":"Inactive"}/>
+                  </td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={cat.is_visible_to_staff?"Visible":"Hidden"}/>
+                      <button type="button" disabled={loading} onClick={()=>handleStaffVisibility(cat)}
+                        className="w-9 h-5 rounded-full transition-colors relative disabled:opacity-50"
+                        style={{backgroundColor:cat.is_visible_to_staff?C.green:C.border}}
+                        aria-label={`${cat.is_visible_to_staff?"Hide":"Show"} ${cat.name} for staff`}>
+                        <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
+                          style={{left:cat.is_visible_to_staff?"calc(100% - 18px)":"2px"}}/>
+                      </button>
+                    </div>
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex gap-1 justify-end">
@@ -261,7 +283,7 @@ export function AdminCategories() {
               <h3 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
               <p className="text-sm mt-1" style={{color:C.muted}}>{selected.desc}</p>
             </div>
-            {[{l:"Total Products",v:`${selected.products}`},{l:"Status",v:selected.is_active?"Active":"Inactive"}].map(r=>(
+            {[{l:"Total Products",v:`${selected.products}`},{l:"Status",v:selected.is_active?"Active":"Inactive"},{l:"Staff Visibility",v:selected.is_visible_to_staff?"Visible":"Hidden"}].map(r=>(
               <div key={r.l} className="flex justify-between py-2" style={{borderBottom:`1px solid ${C.border}`}}>
                 <span style={{color:C.muted}} className="text-sm">{r.l}</span>
                 <span className="text-sm font-semibold" style={{color:C.text}}>{r.v}</span>

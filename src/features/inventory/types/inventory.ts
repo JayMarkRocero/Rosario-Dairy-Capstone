@@ -27,4 +27,5 @@ export interface Category {
   products: number;
   desc: string;
   is_active: boolean;
+  is_visible_to_staff: boolean;
 }

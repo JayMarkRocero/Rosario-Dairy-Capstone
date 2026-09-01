@@ -14,7 +14,7 @@ export interface CheckoutResult {
 
 export const checkoutService = {
   submit: async (input: {
-    customerId: number | null;
+    customerId?: number | null;
     items: CheckoutCartItem[];
     paymentMethod: "Cash" | "GCash";
     discountType: "none" | "percent" | "fixed";
@@ -22,7 +22,7 @@ export const checkoutService = {
     amountTendered?: number;
   }): Promise<CheckoutResult> => {
     const payload: CheckoutPayload = {
-      customer_id: input.customerId,
+      customer_id: input.customerId ?? null,
       items: input.items.map(i => ({ product_id: i.productId, quantity: i.quantity })),
       payment_method: input.paymentMethod === "Cash" ? "cash" : "online",
       discount_type: input.discountType,

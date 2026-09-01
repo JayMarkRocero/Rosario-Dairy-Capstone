@@ -91,7 +91,9 @@ export const inventoryService = {
 
   getCategoriesRaw: async () => {
     const { data: categories } = await http.get<DjangoCategory[]>("/inventory/categories/");
-    return categories.map((c: DjangoCategory) => ({ id: c.id, name: c.name }));
+    return categories
+      .map((c: DjangoCategory) => ({ id: c.id, name: c.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   },
 
   getCategories: async (): Promise<Category[]> => {
@@ -108,7 +110,8 @@ export const inventoryService = {
     products: activeProducts.filter((p: DjangoProduct) => p.category.id === c.id).length,
     desc: c.description ?? "",
     is_active: c.is_active,
-  }));
+    is_visible_to_staff: c.is_visible_to_staff,
+  })).sort((a, b) => a.name.localeCompare(b.name));
 },
 
   getLowStock: async (): Promise<InventoryItem[]> => {
@@ -148,23 +151,24 @@ export const inventoryService = {
     await http.post<DjangoProductBatch>("/inventory/product-batches/", batchPayload);
   },
 
-  createCategory: async (input: { name: string; desc: string; is_active: boolean }): Promise<void> => {
+  createCategory: async (input: { name: string; desc: string; is_visible_to_staff: boolean }): Promise<void> => {
     const payload: CreateCategoryPayload = {
       name: input.name,
       description: input.desc,
-      is_active: input.is_active,
+      is_visible_to_staff: input.is_visible_to_staff,
     };
     await http.post<DjangoCategory>("/inventory/categories/", payload);
   },
 
   updateCategory: async (
     categoryId: number,
-    input: { name?: string; desc?: string; is_active?: boolean }
+    input: { name?: string; desc?: string; is_active?: boolean; is_visible_to_staff?: boolean }
   ): Promise<void> => {
     const payload: UpdateCategoryPayload = {};
     if (input.name !== undefined) payload.name = input.name;
     if (input.desc !== undefined) payload.description = input.desc;
     if (input.is_active !== undefined) payload.is_active = input.is_active;
+    if (input.is_visible_to_staff !== undefined) payload.is_visible_to_staff = input.is_visible_to_staff;
     await http.patch<DjangoCategory>(`/inventory/categories/${categoryId}/`, payload);
   },
 

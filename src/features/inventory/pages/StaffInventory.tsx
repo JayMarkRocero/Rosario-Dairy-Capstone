@@ -59,7 +59,7 @@ export function StaffInventory() {
 
   const categories = useMemo(() => {
     const unique = Array.from(new Set(items.map(p => p.cat)));
-    return ["All", ...unique];
+    return ["All", ...unique.sort((a, b) => a.localeCompare(b))];
   }, [items]);
 
  const filteredItems = useMemo(() => {

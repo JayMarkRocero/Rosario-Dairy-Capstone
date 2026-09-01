@@ -122,6 +122,7 @@ export interface DjangoCategory {
   name: string;
   description: string | null;
   is_active: boolean;
+  is_visible_to_staff: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -237,7 +238,7 @@ export type UpdateIngredientBatchPayload = Partial<
 export interface CreateCategoryPayload {
   name: string;
   description: string;
-  is_active: boolean;
+  is_visible_to_staff: boolean;
 }
 
 export type UpdateCategoryPayload = Partial<CreateCategoryPayload>;
@@ -328,7 +329,7 @@ export interface CheckoutItemPayload {
 }
 
 export interface CheckoutPayload {
-  customer_id: number | null;
+  customer_id?: number | null;
   items: CheckoutItemPayload[];
   payment_method: "cash" | "online";
   discount_type: "none" | "percent" | "fixed";
