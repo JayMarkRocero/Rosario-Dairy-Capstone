@@ -1,3 +1,6 @@
+import { filterSelectClass } from "@/styles/controlClasses";
+import { ActionButton } from "@/components/buttons/ActionButton";
+import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useEffect } from "react";
 import { Plus, Eye, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -130,25 +133,25 @@ export function AdminCustomers() {
         <div className="flex items-center gap-2.5">
           <Avatar name={r.name} size={9}/>
           <div>
-            <div className="font-semibold text-sm" style={{color:C.text}}>{r.name}</div>
+            <div className="font-medium text-sm" style={{color:C.text}}>{r.name}</div>
             <div className="text-xs" style={{color:C.muted}}>{r.email}</div>
           </div>
         </div>
       )},
     { key:"phone", header:"Phone", align:"center", width:"16%",
       render:r=><span className="text-sm" style={{color:C.muted}}>{r.phone}</span> },
-    { key:"orders", header:"Orders", align:"center", width:"12%", sortKey:r=>r.orders,
-      render:r=><span className="font-semibold text-sm" style={{color:C.text}}>{r.orders}</span> },
-    { key:"total", header:"Lifetime Value", align:"center", width:"16%", sortKey:r=>r.total,
-      render:r=><span className="font-bold text-sm" style={{color:C.green}}>₱{r.total.toLocaleString()}</span> },
+    { key:"orders", header:"Orders", align:"right", width:"12%", sortKey:r=>r.orders,
+      render:r=><span className="font-medium text-sm" style={{color:C.text}}>{r.orders}</span> },
+    { key:"total", header:"Lifetime Value", align:"right", width:"16%", sortKey:r=>r.total,
+      render:r=><span className="font-medium text-sm" style={{color:C.green}}>₱{r.total.toLocaleString()}</span> },
     { key:"last", header:"Last Order", align:"center", width:"14%", sortKey:r=>r.last,
       render:r=><span className="text-xs" style={{color:C.muted}}>{r.last}</span> },
     { key:"actions", header:"Actions", align:"center", width:"14%",
       render:r=>(
         <div className="flex gap-1 justify-center" onClick={e=>e.stopPropagation()}>
-          <button onClick={()=>openView(r)} className="p-1.5 rounded-lg hover:bg-blue-50" style={{color:C.blue}}><Eye size={13}/></button>
-          <button onClick={()=>openEdit(r)} className="p-1.5 rounded-lg hover:bg-gray-100" style={{color:C.muted}}><Edit size={13}/></button>
-          <button onClick={()=>{setSelected(r);setDeleteOpen(true);}} className="p-1.5 rounded-lg hover:bg-red-50" style={{color:C.red}}><Trash2 size={13}/></button>
+          <ActionButton label="View details" onClick={()=>openView(r)}><Eye size={13}/></ActionButton>
+          <ActionButton label="Edit" onClick={()=>openEdit(r)}><Edit size={13}/></ActionButton>
+          <ActionButton label="Delete" destructive onClick={()=>{setSelected(r);setDeleteOpen(true);}}><Trash2 size={13}/></ActionButton>
         </div>
       )},
   ];
@@ -172,13 +175,7 @@ export function AdminCustomers() {
         ? `₱${Math.round(list.reduce((a,c)=>a+c.total,0)/list.reduce((a,c)=>a+c.orders,0)).toLocaleString()}`
         : "₱0", color:C.navy },
   ].map(s=>(
-    <Card key={s.l} className="p-3.5 flex items-center gap-2.5">
-      <div className="w-1.5 h-9 rounded-full flex-shrink-0" style={{backgroundColor:s.color}}/>
-      <div className="min-w-0">
-        <div className="font-bold text-lg truncate leading-tight" style={{color:s.color,fontFamily:"Poppins,sans-serif"}}>{s.v}</div>
-        <div className="text-xs truncate" style={{color:C.muted}}>{s.l}</div>
-      </div>
-    </Card>
+    <SummaryCard key={s.l} label={s.l} value={s.v} color={s.color} />
   ))}
 </div>
 
@@ -199,8 +196,7 @@ export function AdminCustomers() {
             <select
               value={segFilter}
               onChange={e => setSegFilter(e.target.value)}
-              className="px-3 py-2 rounded-xl text-sm outline-none border"
-              style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+              className={filterSelectClass}
             >
               {SEGMENTS.map(s => <option key={s} value={s}>{s === "All" ? "All Customers" : s}</option>)}
             </select>

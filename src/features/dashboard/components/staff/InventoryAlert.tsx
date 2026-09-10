@@ -57,14 +57,14 @@ export function InventoryAlert() {
   ];
 
   return (
-    <Card className="p-4">
-      <h3 className="font-semibold text-sm mb-3" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
+    <Card className="p-3.5 flex-1 min-h-0 flex flex-col overflow-hidden">
+      <h3 className="font-semibold text-sm mb-3 flex-shrink-0" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
         Inventory Alert
       </h3>
       {loading ? (
         <p className="text-sm py-2" style={{ color: C.muted }}>Loading…</p>
       ) : (
-        <div className="space-y-2">
+        <div className="flex-1 min-h-0 flex flex-col justify-evenly gap-1">
           {ALERTS.map(item => (
             <div key={item.label} className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2">

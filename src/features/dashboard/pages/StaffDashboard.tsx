@@ -12,19 +12,19 @@ export function StaffDashboard({ onNavigate }: Props) {
   const hour = now.getHours();
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col min-h-full gap-4 overflow-hidden">
+    <div className="p-4 flex-1 min-w-0 h-full min-h-0 flex flex-col gap-3.5 overflow-hidden">
       {/* Greeting */}
-      <div>
+      <div className="flex-shrink-0">
         <h2 className="text-sm mt-0.5" style={{ color:C.muted }}>Here's your dashboard for today.</h2>
       </div>
 
       <StaffKPICards />
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2">
+      <div className="flex-1 min-h-0 grid grid-cols-12 gap-4">
+        <div className="col-span-8 flex flex-col h-full min-h-0 min-w-0">
           <StaffRecentOrders />
         </div>
-        <div className="space-y-4">
+        <div className="col-span-4 flex flex-col gap-4 h-full min-h-0 min-w-0">
           <InventoryAlert />
           <MiniSalesChart />
         </div>

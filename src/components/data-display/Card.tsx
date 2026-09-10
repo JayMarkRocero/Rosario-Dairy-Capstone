@@ -1,4 +1,3 @@
-import { C } from "@/styles/tokens/colors";
 
 interface Props {
   children: React.ReactNode;
@@ -8,8 +7,7 @@ interface Props {
 export function Card({ children, className = "" }: Props) {
   return (
     <div
-      className={`bg-white rounded-2xl shadow-sm ${className}`}
-      style={{ border: `1px solid ${C.border}` }}
+      className={`bg-white border border-slate-100 rounded-xl shadow-sm ${className}`}
     >
       {children}
     </div>

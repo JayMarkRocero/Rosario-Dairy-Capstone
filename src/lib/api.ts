@@ -73,14 +73,22 @@ function extractErrorMessage(data: unknown, fallback: string): string {
   if (!data || typeof data !== "object") return fallback;
 
   const payload = data as Record<string, unknown>;
-  if (typeof payload.error === "string") return payload.error;
   if (typeof payload.detail === "string") return payload.detail;
+  if (typeof payload.message === "string") return payload.message;
+  if (typeof payload.error === "string") return payload.error;
 
   const fieldMessages = Object.values(payload)
     .flatMap((value) => Array.isArray(value) ? value : [value])
     .filter((value): value is string => typeof value === "string");
 
   return fieldMessages.join(" ") || fallback;
+}
+
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    return extractErrorMessage(error.response?.data, fallback);
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 axiosInstance.interceptors.response.use(

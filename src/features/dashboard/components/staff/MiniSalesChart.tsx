@@ -47,17 +47,18 @@ export function MiniSalesChart() {
   }, [sales, username]);
 
   return (
-    <Card className="p-4">
+    <Card className="p-3.5 flex-1 min-h-0 flex flex-col overflow-hidden">
       <h3
-        className="font-semibold text-sm mb-5"
+        className="font-semibold text-sm mb-3 flex-shrink-0"
         style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
       >
         My Weekly Sales
       </h3>
+      <div className="flex-1 min-h-0 min-w-0">
       {loading ? (
-        <div className="h-[140px] flex items-center justify-center text-xs" style={{ color: C.muted }}>Loading…</div>
+        <div className="h-full flex items-center justify-center text-xs" style={{ color: C.muted }}>Loading…</div>
       ) : (
-        <ResponsiveContainer width="100%" height={140}>
+        <ResponsiveContainer width="100%" height="100%" minHeight={0} minWidth={0}>
           <AreaChart
             data={chartData}
             margin={{ top: 10, right: 15, left: 5, bottom: 5 }}
@@ -103,6 +104,7 @@ export function MiniSalesChart() {
           </AreaChart>
         </ResponsiveContainer>
       )}
+      </div>
     </Card>
   );
 }

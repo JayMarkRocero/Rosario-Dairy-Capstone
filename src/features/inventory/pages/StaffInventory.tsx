@@ -1,3 +1,4 @@
+import { filterSelectClass, searchContainerClass } from "@/styles/controlClasses";
 import { useMemo, useState, useEffect } from "react";
 import { AlertTriangle, Search } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
@@ -91,17 +92,17 @@ export function StaffInventory() {
     { key:"cat", header:"Category", align:"center", width:"14%",
       render: p => (
         <div className="flex justify-center">
-          <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ backgroundColor: C.blue + "15", color: C.blue }}>
+          <span className="text-xs px-2.5 py-1 rounded-md font-medium whitespace-nowrap inline-flex items-center gap-1 border border-blue-200/60" style={{ backgroundColor: C.blue + "15", color: C.blue }}>
             {p.cat}
           </span>
         </div>
       ) },
-    { key:"stock", header:"Available Qty", align:"center", width:"16%",
+    { key:"stock", header:"Available Qty", align:"right", width:"16%",
       render: p => {
         const itemStatus = getStatus(p);
         const iconColor = itemStatus === "Expired" ? C.red : itemStatus === "Low" ? C.orange : itemStatus === "Near Expiry" ? "#F59E0B" : undefined;
         return (
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center justify-end gap-2">
             <span className="font-medium text-sm" style={{ color: (itemStatus === "Expired" || itemStatus === "Low") ? C.red : C.text }}>{p.stock}</span>
             {itemStatus !== "Active" && <AlertTriangle size={11} style={{ color: iconColor }} />}
           </div>
@@ -138,15 +139,14 @@ export function StaffInventory() {
       {/* Single card: filter bar + table, no internal scroll, table paginates instead */}
       <Card className="p-5 overflow-hidden">
         {/* Filter bar */}
-        <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           {/* Search */}
           <div
-            className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border w-full sm:w-72"
-            style={{ borderColor: C.border }}
+            className={`${searchContainerClass} w-full sm:w-72`}
           >
             <Search size={14} style={{ color: C.muted }} />
             <input
-              className="bg-transparent outline-none text-sm flex-1 min-w-0"
+              aria-label="Search records" className="h-full bg-transparent outline-none text-sm flex-1 min-w-0"
               placeholder="Search products..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -158,8 +158,7 @@ export function StaffInventory() {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="text-sm rounded-lg px-3 py-2 border bg-gray-50 outline-none"
-            style={{ borderColor: C.border, color: C.text }}
+            className={filterSelectClass}
           >
             {categories.map(cat => (
               <option key={cat} value={cat}>{cat}</option>
@@ -170,8 +169,7 @@ export function StaffInventory() {
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="text-sm rounded-lg px-3 py-2 border bg-gray-50 outline-none"
-            style={{ borderColor: C.border, color: C.text }}
+            className={filterSelectClass}
           >
             {STATUSES.map(s => (
               <option key={s} value={s}>{s}</option>

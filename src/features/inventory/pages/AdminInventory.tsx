@@ -1,3 +1,6 @@
+import { filterSelectClass } from "@/styles/controlClasses";
+import { ActionButton } from "@/components/buttons/ActionButton";
+import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useEffect } from "react";
 import { Plus, Eye, Edit, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -314,7 +317,7 @@ export function AdminInventory() {
             <CategoryIcon name={r.cat} size={16} color={C.blue} />
           </div>
           <div>
-            <div className="font-semibold text-sm" style={{color:C.text}}>{r.name}</div>
+            <div className="font-medium text-sm" style={{color:C.text}}>{r.name}</div>
             <div className="text-xs mt-0.5" style={{color:C.muted}}>PRD-{String(r.id).padStart(3,"0")}</div>
           </div>
         </div>
@@ -324,24 +327,24 @@ export function AdminInventory() {
       key:"cat", header:"Category", width:"12%",
       sortKey: r => r.cat,
       render: r => (
-        <span className="text-xs px-2.5 py-1 rounded-full font-medium"
+        <span className="text-xs px-2.5 py-1 rounded-md font-medium inline-flex items-center gap-1 border border-blue-200/60"
           style={{backgroundColor:C.blue+"15",color:C.blue}}>{r.cat}</span>
       ),
     },
     {
-      key:"price", header:"Price", align:"center", width:"11%",
+      key:"price", header:"Price", align:"right", width:"11%",
       sortKey: r => r.price,
-      render: r => <span className="font-semibold text-sm" style={{color:C.text}}>₱{r.price}</span>,
+      render: r => <span className="font-medium text-sm" style={{color:C.text}}>₱{r.price}</span>,
     },
     {
-      key:"stock", header:"Stock", align:"center", width:"11%",
+      key:"stock", header:"Stock", align:"right", width:"11%",
       sortKey: r => r.stock,
       render: r => {
         const status = getStatus(r);
         const iconColor = status === "Expired" ? C.red : status === "Low" ? C.orange : status === "Near Expiry" ? "#F59E0B" : undefined;
         return (
-          <div className="flex items-center justify-center gap-1.5">
-            <span className="font-semibold text-sm" style={{color:status==="Expired"||status==="Low"?C.red:C.text}}>{r.stock}</span>
+          <div className="flex items-center justify-end gap-1.5">
+            <span className="font-medium text-sm" style={{color:status==="Expired"||status==="Low"?C.red:C.text}}>{r.stock}</span>
             {status !== "Active" && <AlertTriangle size={12} style={{color:iconColor}}/>}
           </div>
         );
@@ -363,18 +366,15 @@ export function AdminInventory() {
       key:"actions", header:"Actions", align:"center", width:"10%",
       render: r => (
         <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
-          <button onClick={() => openView(r)}
-            className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors" style={{color:C.blue}}>
+          <ActionButton label="View details" onClick={() => openView(r)}>
             <Eye size={13}/>
-          </button>
-          <button onClick={() => openEdit(r)}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" style={{color:C.muted}}>
+          </ActionButton>
+          <ActionButton label="Edit" onClick={() => openEdit(r)}>
             <Edit size={13}/>
-          </button>
-          <button onClick={() => openDelete(r)}
-            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" style={{color:C.red}}>
+          </ActionButton>
+          <ActionButton label="Deactivate" destructive onClick={() => openDelete(r)}>
             <Trash2 size={13}/>
-          </button>
+          </ActionButton>
         </div>
       ),
     },
@@ -405,23 +405,15 @@ export function AdminInventory() {
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 flex-shrink-0">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 flex-shrink-0">
         {[
           { label:"Total Products",  value:String(stats.totalProducts), color:C.blue   },
           { label:"Low Stock",       value:String(stats.lowStock),      color:C.orange },
-          { label:"Near Expiry",     value:String(stats.nearExpiry),    color:"#f6c46d" },
+          { label:"Near Expiry",     value:String(stats.nearExpiry),    color:"#f59e0b" },
           { label:"Expired",         value:String(stats.expired),       color:C.red    },
           { label:"Total Value",     value:`₱${stats.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, color:C.green  },
         ].map(s => (
-          <Card key={s.label} className="p-3.5 flex items-center gap-2.5">
-            <div className="w-1.5 h-9 rounded-full flex-shrink-0" style={{backgroundColor:s.color}}/>
-            <div className="min-w-0">
-              <div className="font-bold text-xl leading-tight" style={{color:s.color,fontFamily:"Poppins,sans-serif"}}>
-                {s.value}
-              </div>
-              <div className="text-xs truncate" style={{color:C.muted}}>{s.label}</div>
-            </div>
-          </Card>
+          <SummaryCard key={s.label} label={s.label} value={s.value} color={s.color} />
         ))}
       </div>
 
@@ -445,8 +437,7 @@ export function AdminInventory() {
                 <select
                   value={catFilter}
                   onChange={e => setCatFilter(e.target.value)}
-                  className="px-3 py-2 rounded-xl text-sm outline-none border"
-                  style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+                  className={filterSelectClass}
                 >
                   <option value="All">All Categories</option>
                   {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -454,8 +445,7 @@ export function AdminInventory() {
                 <select
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value)}
-                  className="px-3 py-2 rounded-xl text-sm outline-none border"
-                  style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+                  className={filterSelectClass}
                 >
                   <option value="All">All Statuses</option>
                   {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}

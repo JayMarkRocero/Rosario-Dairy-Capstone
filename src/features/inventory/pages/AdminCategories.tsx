@@ -1,3 +1,4 @@
+import { ActionButton } from "@/components/buttons/ActionButton";
 import { useState, useEffect } from "react";
 import { Plus, Edit, Trash2, Eye, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -140,7 +141,7 @@ export function AdminCategories() {
   };
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
           <h2 className="text-lg font-bold" style={{color:C.muted}}>Organize products by type</h2>
@@ -159,21 +160,21 @@ export function AdminCategories() {
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{backgroundColor:C.bg, borderBottom:`1px solid ${C.border}`}}>
-                <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Category</th>
-                <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Description</th>
-                <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Products</th>
-                <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Status</th>
-                <th className="text-left px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Staff Visibility</th>
-                <th className="text-right px-5 py-3 font-semibold text-xs uppercase tracking-wide" style={{color:C.muted}}>Actions</th>
+          <table className="w-full text-sm text-slate-700">
+            <thead className="bg-slate-50/80 border-b border-slate-100">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Category</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Description</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Products</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Status</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Staff Visibility</th>
+                <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Actions</th>
               </tr>
             </thead>
             <tbody>
               {catsLoading && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-6 text-center text-sm" style={{color:C.muted}}>
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm" style={{color:C.muted}}>
                     Loading categories…
                   </td>
                 </tr>
@@ -181,39 +182,38 @@ export function AdminCategories() {
 
               {!catsLoading && visibleCategories.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-sm" style={{color:C.muted}}>
+                  <td colSpan={6} className="px-4 py-10 text-center text-sm" style={{color:C.muted}}>
                     {showInactive ? "No categories found." : "No active categories found."}
                   </td>
                 </tr>
               )}
 
               {!catsLoading && sortedCategories.map(cat => (
-                <tr key={cat.id} className="hover:bg-gray-50/70 transition-colors"
-                  style={{borderBottom:`1px solid ${C.border}`}}>
-                  <td className="px-5 py-3">
+                <tr key={cat.id} className="h-14 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors">
+                  <td className="px-4 py-2">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                         style={{backgroundColor:C.blue+"12"}}>
                         <CategoryIcon name={cat.name} size={18} color={C.blue}/>
                       </div>
-                      <span className="font-semibold" style={{color:C.text, fontFamily:"Poppins,sans-serif"}}>
+                      <span className="font-medium text-slate-700">
                         {cat.name}
                       </span>
                     </div>
                   </td>
-                  <td className="px-5 py-3 max-w-xs whitespace-normal break-words" style={{color:C.muted}}>
+                  <td className="px-4 py-2 max-w-xs whitespace-normal break-words" style={{color:C.muted}}>
                     {cat.desc}
                   </td>
-                  <td className="px-5 py-3">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                  <td className="px-4 py-2">
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-md inline-flex items-center gap-1 border border-blue-200/60"
                       style={{backgroundColor:C.blue+"15",color:C.blue}}>
                       {cat.products}
                     </span>
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-2">
                     <StatusBadge status={cat.is_active?"Active":"Inactive"}/>
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <StatusBadge status={cat.is_visible_to_staff?"Visible":"Hidden"}/>
                       <button type="button" disabled={loading} onClick={()=>handleStaffVisibility(cat)}
@@ -225,7 +225,7 @@ export function AdminCategories() {
                       </button>
                     </div>
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-2">
                     <div className="flex gap-1 justify-end">
                       {!cat.is_active && (
                         <button onClick={()=>handleReactivate(cat)} disabled={loading}
@@ -234,18 +234,15 @@ export function AdminCategories() {
                           <RotateCcw size={13}/> Reactivate
                         </button>
                       )}
-                      <button onClick={()=>{setSelected(cat);setViewOpen(true);}}
-                        className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors" style={{color:C.blue}}>
+                      <ActionButton label="View details" onClick={()=>{setSelected(cat);setViewOpen(true);}}>
                         <Eye size={14}/>
-                      </button>
-                      <button onClick={()=>openEdit(cat)}
-                        className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" style={{color:C.muted}}>
+                      </ActionButton>
+                      <ActionButton label="Edit" onClick={()=>openEdit(cat)}>
                         <Edit size={14}/>
-                      </button>
-                      <button onClick={()=>{setSelected(cat);setDeleteOpen(true);}}
-                        className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" style={{color:C.red}}>
+                      </ActionButton>
+                      <ActionButton label="Deactivate" destructive onClick={()=>{setSelected(cat);setDeleteOpen(true);}}>
                         <Trash2 size={14}/>
-                      </button>
+                      </ActionButton>
                     </div>
                   </td>
                 </tr>

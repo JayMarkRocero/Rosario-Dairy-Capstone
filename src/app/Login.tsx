@@ -453,9 +453,9 @@ export function Login({ onBack }: Props) {
                 Sign in to access your dashboard
               </p>
 
-              <form onSubmit={handleSubmit} noValidate className="space-y-5">
+              <form onSubmit={handleSubmit} noValidate>
                 {/* Username */}
-                <div className="rd-anim-field-1">
+                <div className="mb-4 rd-anim-field-1">
                   <label htmlFor="rd-username" className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>
                     Username
                   </label>
@@ -481,19 +481,9 @@ export function Login({ onBack }: Props) {
 
                 {/* Password */}
                 <div className="rd-anim-field-2">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label htmlFor="rd-password" className="text-xs font-semibold" style={{ color: C.muted }}>
-                      Password
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setForgotOpen(true)}
-                      className="text-xs font-medium transition-opacity hover:opacity-70"
-                      style={{ color: C.blue }}
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
+                  <label htmlFor="rd-password" className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>
+                    Password
+                  </label>
                   <div
                     className="flex items-center gap-2.5 rounded-xl px-4 py-3 border transition-all focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
                     style={{ borderColor: error ? C.red : C.border, backgroundColor: "#F8FAFC" }}
@@ -524,23 +514,33 @@ export function Login({ onBack }: Props) {
                   </div>
                 </div>
 
+                {/* Password recovery */}
+                <div className="flex justify-end mt-1.5 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setForgotOpen(true)}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+
                 {/* Terms & Conditions */}
-                <label className="flex items-start gap-2.5 cursor-pointer select-none rd-anim-field-3">
+                <label className="flex items-center gap-2 mb-5 text-xs text-slate-600 cursor-pointer select-none rd-anim-field-3">
                   <input
                     type="checkbox"
                     checked={agreedToTerms}
                     onChange={(e) => setAgreedToTerms(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded flex-shrink-0 cursor-pointer"
+                    className="w-4 h-4 rounded flex-shrink-0 cursor-pointer"
                     style={{ accentColor: C.navy }}
-                    aria-describedby="rd-terms-label"
+                    aria-labelledby="rd-terms-label"
                   />
-                  <span id="rd-terms-label" className="text-xs" style={{ color: C.muted }}>
+                  <span id="rd-terms-label" className="min-w-0 leading-relaxed">
                     I agree to the{" "}
                     <button
                       type="button"
                       onClick={() => setTermsOpen(true)}
-                      className="font-semibold underline transition-opacity hover:opacity-70"
-                      style={{ color: C.blue }}
+                      className="text-xs font-medium text-blue-600 hover:text-blue-700 underline transition-colors cursor-pointer"
                     >
                       Terms & Conditions
                     </button>
@@ -550,7 +550,7 @@ export function Login({ onBack }: Props) {
                 {error && (
                   <div
                     role="alert"
-                    className="flex items-start gap-2 text-xs px-3.5 py-2.5 rounded-xl"
+                    className="flex items-start gap-2 mb-4 text-xs px-3.5 py-2.5 rounded-xl"
                     style={{ backgroundColor: C.red + "10", color: C.red }}
                   >
                     <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" aria-hidden="true" />

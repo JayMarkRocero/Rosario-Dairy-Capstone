@@ -1,3 +1,4 @@
+import { getApiErrorMessage } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
 import { Minus, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -90,7 +91,7 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
       else toast.success("Order placed successfully.");
       setQuantities({}); setProductSearch(""); setCustomerId(""); setAmountTendered("");
       setShowDiscount(false); setDiscountType("none"); setDiscountValue(""); onCreated(); onClose();
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to place order."); }
+    } catch (error) { toast.error(getApiErrorMessage(error, "Failed to place order.")); }
     finally { setLoading(false); }
   };
 

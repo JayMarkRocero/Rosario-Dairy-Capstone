@@ -78,17 +78,17 @@ export function StaffKPICards() {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 flex-shrink-0">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-2xl p-5 shadow-sm animate-pulse" style={{ border: `1px solid ${C.border}`, minHeight: 100 }} />
+          <div key={i} className="bg-white rounded-2xl p-3.5 shadow-sm animate-pulse" style={{ border: `1px solid ${C.border}`, minHeight: 100 }} />
         ))}
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {kpis.map(k => <KPICard key={k.title} {...k} />)}
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 flex-shrink-0">
+      {kpis.map(k => <KPICard key={k.title} {...k} compact />)}
     </div>
   );
 }

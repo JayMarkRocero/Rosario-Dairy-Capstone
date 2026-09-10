@@ -1,3 +1,4 @@
+import { getApiErrorMessage } from "@/lib/api";
 import { useState, useEffect } from "react";
 import { Search, ShoppingCart, AlertTriangle, Banknote, Smartphone, Printer, Check, X } from "lucide-react";
 import { toast } from "sonner";
@@ -13,6 +14,11 @@ import type { Customer } from "@/features/customers/types/customer";
 type PayMethod  = "Cash" | "GCash";
 type DiscountType = "none" | "percent" | "fixed";
 interface CartItem { id:number; name:string; price:number; qty:number; stock:number }
+
+// Inventory services normalize the backend expiry date to `expiry`.
+function isExpiredProduct(product: InventoryItem & { status?: string; expiry_date?: string }): boolean {
+  return product.status === "Expired" || !(new Date(product.expiry_date ?? product.expiry).getTime() >= Date.now());
+}
 
 const LOW_STOCK_THRESHOLD = 20;
 
@@ -85,6 +91,7 @@ function ReceiptModal({ cart, total, subtotal, payment, change, onClose, onConfi
 function ProductCard({ prod, qtyInCart, onAdd }:{
   prod: InventoryItem; qtyInCart: number; onAdd: () => void;
 }) {
+  const isExpired = isExpiredProduct(prod);
   const isLow = prod.stock > 0 && prod.stock <= LOW_STOCK_THRESHOLD;
   const isOut = prod.stock === 0;
   const isMaxed = qtyInCart >= prod.stock;
@@ -92,11 +99,12 @@ function ProductCard({ prod, qtyInCart, onAdd }:{
   return (
     <button
       onClick={onAdd}
-      disabled={isOut || isMaxed}
-      className="relative flex flex-col bg-white rounded-2xl p-3.5 sm:p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed"
-      style={{ border: `1px solid ${C.border}`, opacity: (isOut || isMaxed) ? 0.5 : 1, minHeight: 150 }}
+      disabled={isExpired || isOut || isMaxed}
+      className={`relative flex flex-col bg-white rounded-2xl p-3.5 sm:p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed ${isExpired ? "opacity-50 pointer-events-none" : ""}`}
+      style={{ border: `1px solid ${C.border}`, opacity: (isExpired || isOut || isMaxed) ? 0.5 : 1, minHeight: 150 }}
     >
-      {qtyInCart > 0 && (
+      {isExpired && <span className="absolute top-2.5 right-2.5 rounded-md bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">Expired</span>}
+      {!isExpired && qtyInCart > 0 && (
         <div className="absolute top-2.5 right-2.5 sm:top-3 sm:right-3">
           <span
             className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center font-bold shadow-sm"
@@ -320,10 +328,12 @@ export function StaffPOS() {
 
   const categories = ["All",...Array.from(new Set(products.map(p=>p.cat))).sort((a,b)=>a.localeCompare(b))];
   const filtered = products.filter(p=>
+    !isExpiredProduct(p) &&
     (category==="All"||p.cat===category) && p.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const addToCart = (prod:InventoryItem) => {
+    if (isExpiredProduct(prod)) { toast.error("Expired products cannot be added to the cart."); return; }
     setCart(prev=>{
       const ex = prev.find(i=>i.id===prod.id);
       if (ex) {
@@ -389,7 +399,7 @@ export function StaffPOS() {
         toast.success(`Transaction complete! ₱${money(result.totalAmount)} received.`);
         inventoryService.getAll().then(setProducts).catch(() => {});
       })
-      .catch((err: Error) => toast.error(err.message))
+      .catch((err: unknown) => toast.error(getApiErrorMessage(err, "Failed to complete transaction.")))
       .finally(() => setSubmitting(false));
   };
 

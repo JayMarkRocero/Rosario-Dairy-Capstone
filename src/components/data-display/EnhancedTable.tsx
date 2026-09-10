@@ -1,3 +1,4 @@
+import { searchContainerClass } from "@/styles/controlClasses";
 // components/EnhancedTable.tsx
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download } from "lucide-react";
@@ -116,19 +117,18 @@ export function EnhancedTable<T>({
     <div className="flex flex-col h-full">
       {/* Controls bar */}
       {showControlsBar && (
-        <div className="flex flex-wrap items-center gap-3 mb-4 flex-shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 flex-shrink-0">
           {searchable && (
             <div
-              className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border w-full sm:flex-1 sm:max-w-xs order-1"
-              style={{ borderColor: C.border }}
+              className={`${searchContainerClass} w-full sm:flex-1 sm:max-w-xs order-1`}
             >
               <Search size={14} style={{ color: C.muted }} />
               <input
-                className="bg-transparent outline-none text-sm flex-1 min-w-0"
+                aria-label={searchPlaceholder}
+                className="h-full bg-transparent outline-none text-sm text-slate-700 flex-1 min-w-0"
                 placeholder={searchPlaceholder}
                 value={search}
                 onChange={e => handleSearch(e.target.value)}
-                style={{ color: C.text }}
               />
             </div>
           )}
@@ -147,7 +147,7 @@ export function EnhancedTable<T>({
             )}
             {showExport && (
               <button
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-gray-50 transition-colors flex-shrink-0"
+                className="inline-flex h-10 items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex-shrink-0"
                 style={{ border: `1px solid ${C.border}`, color: C.muted }}
               >
                 <Download size={12} />
@@ -159,21 +159,21 @@ export function EnhancedTable<T>({
       )}
 
       {/* Table */}
-      <div className="relative rounded-2xl" style={{ border: `1px solid ${C.border}` }}>
+      <div className="relative overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm">
         <div
           ref={scrollRef}
           onScroll={checkScroll}
-          className="overflow-x-auto rounded-2xl"
+          className="overflow-x-auto"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ backgroundColor: "#F8FAFC", borderBottom: `1px solid ${C.border}` }}>
+          <table className="w-full text-sm text-slate-700">
+            <thead className="bg-slate-50/80 border-b border-slate-100">
+              <tr>
                 {columns.map(col => (
                   <th
                     key={col.key}
-                    className={`py-3.5 px-4 text-left font-semibold text-xs uppercase tracking-wide select-none whitespace-nowrap ${col.sortKey ? "cursor-pointer hover:bg-gray-100" : ""}`}
-                    style={{ color: C.muted, width: col.width }}
+                    className={`py-3 px-4 text-left font-semibold text-xs text-slate-500 uppercase tracking-wider select-none whitespace-nowrap ${col.sortKey ? "cursor-pointer hover:bg-gray-100" : ""}`}
+                    style={{ width: col.width }}
                     onClick={() => handleSort(col)}
                   >
                     <div className={`flex items-center gap-1.5 ${col.align === "right" ? "justify-end" : col.align === "center" ? "justify-center" : ""}`}>
@@ -200,20 +200,14 @@ export function EnhancedTable<T>({
                 pageData.map((row, ri) => (
                   <tr
                     key={rowKey(row)}
-                    className={`transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
-                    style={{
-                      borderBottom: `1px solid ${C.border}`,
-                      backgroundColor: ri % 2 === 0 ? "#fff" : "#FAFBFC",
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#EBF3FF")}
-                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = ri % 2 === 0 ? "#fff" : "#FAFBFC")}
+                    className={`h-14 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
                     onClick={() => onRowClick?.(row)}
                   >
                     {columns.map(col => (
                       <td
                         key={col.key}
-                        className="py-3.5 px-4 whitespace-nowrap"
-                        style={{ color: C.text, textAlign: col.align }}
+                        className="py-2 px-4 whitespace-nowrap"
+                        style={{ textAlign: col.align }}
                       >
                         {col.render ? col.render(row, ri) : String((row as any)[col.key] ?? "")}
                       </td>
@@ -228,13 +222,13 @@ export function EnhancedTable<T>({
         {/* Scroll shadows — mobile only, shown when there's more content to swipe to */}
         {canScrollLeft && (
           <div
-            className="sm:hidden pointer-events-none absolute top-0 left-0 h-full w-6 rounded-l-2xl"
+            className="sm:hidden pointer-events-none absolute top-0 left-0 h-full w-6 rounded-l-xl"
             style={{ background: "linear-gradient(to right, rgba(0,0,0,0.08), transparent)" }}
           />
         )}
         {canScrollRight && (
           <div
-            className="sm:hidden pointer-events-none absolute top-0 right-0 h-full w-6 rounded-r-2xl"
+            className="sm:hidden pointer-events-none absolute top-0 right-0 h-full w-6 rounded-r-xl"
             style={{ background: "linear-gradient(to left, rgba(0,0,0,0.08), transparent)" }}
           />
         )}

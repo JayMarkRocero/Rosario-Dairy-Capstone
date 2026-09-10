@@ -29,14 +29,16 @@ export function StaffRecentOrders() {
   }, []);
 
   return (
-    <Card className="p-5">
-      <SectionHeader title="Recent Orders" subtitle="Today's transactions" />
+    <Card className="p-4 flex flex-col h-full min-h-0 overflow-hidden">
+      <div className="flex-shrink-0">
+        <SectionHeader title="Recent Orders" subtitle="Today's transactions" />
+      </div>
       {loading ? (
         <p className="text-sm py-4" style={{ color: C.muted }}>Loading…</p>
       ) : orders.length === 0 ? (
         <p className="text-sm py-4" style={{ color: C.muted }}>No recent orders.</p>
       ) : (
-        <DataTable
+        <DataTable scrollable
           headers={["Order #", "Customer", "Status", "Date"]}
           rows={orders.map(o => [
             <span key="id"   className="font-mono text-xs"   style={{ color: C.muted }}>#{o.id}</span>,

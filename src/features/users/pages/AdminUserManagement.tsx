@@ -1,3 +1,6 @@
+import { filterSelectClass } from "@/styles/controlClasses";
+import { ActionButton } from "@/components/buttons/ActionButton";
+import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useEffect } from "react";
 import { Plus, Eye, Edit, Trash2, Lock, PenBox, KeyIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -270,7 +273,7 @@ export function AdminUserManagement() {
             {r.name.split(" ").map(n=>n[0]).join("").slice(0,2)}
           </div>
           <div>
-            <div className="font-semibold text-sm" style={{color:C.text}}>{r.name}</div>
+            <div className="font-medium text-sm" style={{color:C.text}}>{r.name}</div>
             <div className="text-xs" style={{color:C.muted}}>{r.email}</div>
           </div>
         </div>
@@ -278,7 +281,7 @@ export function AdminUserManagement() {
     { key:"role", header:"Role", align:"center", width:"18%", sortKey:r=>r.role,
       render:r=>(
         <div className="flex justify-center">
-          <span className="text-xs px-2.5 py-1 rounded-full font-medium"
+          <span className="text-xs px-2.5 py-1 rounded-md font-medium inline-flex items-center gap-1 border border-blue-200/60"
             style={{backgroundColor:r.role==="Administrator"?C.navy+"15":C.blue+"15",
               color:r.role==="Administrator"?C.navy:C.blue}}>
             {r.role}
@@ -292,10 +295,10 @@ export function AdminUserManagement() {
     { key:"actions", header:"Actions", align:"center", width:"20%",
       render:r=>(
         <div className="flex gap-1 justify-center" onClick={e=>e.stopPropagation()}>
-          <button onClick={()=>openView(r)} className="p-1.5 rounded-lg hover:bg-blue-50" style={{color:C.blue}}><Eye size={13}/></button>
-          <button onClick={()=>openEdit(r)} className="p-1.5 rounded-lg hover:bg-gray-100" style={{color:C.muted}}><Edit size={13}/></button>
-          <button onClick={()=>{setSelected(r);setResetOpen(true);}} className="p-1.5 rounded-lg hover:bg-yellow-50" style={{color:C.orange}}><KeyIcon size={13}/></button>
-          <button onClick={()=>{setSelected(r);setDeleteOpen(true);}} className="p-1.5 rounded-lg hover:bg-red-50" style={{color:C.red}}><Trash2 size={13}/></button>
+          <ActionButton label="View details" onClick={()=>openView(r)}><Eye size={13}/></ActionButton>
+          <ActionButton label="Edit" onClick={()=>openEdit(r)}><Edit size={13}/></ActionButton>
+          <ActionButton label="Reset password" onClick={()=>{setSelected(r);setResetOpen(true);}}><KeyIcon size={13}/></ActionButton>
+          <ActionButton label="Deactivate" destructive onClick={()=>{setSelected(r);setDeleteOpen(true);}}><Trash2 size={13}/></ActionButton>
         </div>
       )},
   ];
@@ -313,13 +316,7 @@ export function AdminUserManagement() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0">
   {summary.map(s=>(
-    <Card key={s.label} className="p-3.5 flex items-center gap-2.5">
-      <div className="w-1.5 h-9 rounded-full flex-shrink-0" style={{backgroundColor:s.color}}/>
-      <div className="min-w-0">
-        <div className="font-bold text-xl leading-tight" style={{color:s.color,fontFamily:"Poppins,sans-serif"}}>{s.value}</div>
-        <div className="text-xs truncate" style={{color:C.muted}}>{s.label}</div>
-      </div>
-    </Card>
+    <SummaryCard key={s.label} label={s.label} value={s.value} color={s.color} />
   ))}
 </div>
 
@@ -340,8 +337,7 @@ export function AdminUserManagement() {
             <select
               value={roleFilter}
               onChange={e => setRoleFilter(e.target.value)}
-              className="px-3 py-2 rounded-xl text-sm outline-none border"
-              style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+              className={filterSelectClass}
             >
               <option value="All">All Roles</option>
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}

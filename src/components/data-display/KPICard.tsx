@@ -9,16 +9,17 @@ interface Props {
   trend: Trend;
   trendLabel: string;
   color: string;
+  compact?: boolean;
 }
 
-export function KPICard({ title, value, icon, trend, trendLabel, color }: Props) {
+export function KPICard({ title, value, icon, trend, trendLabel, color, compact = false }: Props) {
   const trendClass =
     trend === "up"   ? "text-green-700 bg-green-50" :
     trend === "down" ? "text-red-600 bg-red-50"     : "text-gray-500 bg-gray-100";
 
   return (
     <div
-      className="bg-white rounded-2xl p-5 shadow-sm"
+      className={`bg-white rounded-2xl shadow-sm ${compact ? "p-3.5 min-w-0" : "p-5"}`}
       style={{ border: `1px solid ${C.border}` }}
     >
       <div className="flex items-start justify-between mb-3">
