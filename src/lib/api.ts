@@ -1,5 +1,7 @@
 import axios, { AxiosError } from "axios";
 
+const REFRESH_TOKEN_KEY = "rosario_refresh_token";
+
 const ACCESS_TOKEN_KEY = "rosario_access_token";
 
 const axiosInstance = axios.create({
@@ -12,7 +14,7 @@ export default axiosInstance;
 export class ApiError extends Error {
   status: number;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, public fieldErrors: Record<string, string[]> = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -40,6 +42,17 @@ export function getAccessToken(): string | null {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
+export function setRefreshToken(token: string | null) {
+  if (token) localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  else localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+const PUBLIC_AUTH_PATHS = ["/accounts/login/", "/accounts/forgot-password/", "/accounts/reset-password/"];
+
 function appendTrailingSlash(url: string): string {
   const [pathAndQuery, hash = ""] = url.split("#", 2);
   const [path, query = ""] = pathAndQuery.split("?", 2);
@@ -51,7 +64,7 @@ axiosInstance.interceptors.request.use((config) => {
   if (config.url) config.url = appendTrailingSlash(config.url);
 
   const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && !PUBLIC_AUTH_PATHS.includes(config.url ?? "")) config.headers.Authorization = `Bearer ${token}`;
 
   return config;
 });
@@ -72,22 +85,33 @@ function extractErrorMessage(data: unknown, fallback: string): string {
 
 axiosInstance.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     if (!error.response) return Promise.reject(error);
 
     const status = error.response.status;
     const requestUrl = error.config?.url ?? "";
-    const isLoginRequest = requestUrl.includes("/accounts/login/");
-    const fallback = `Request failed (${status})`;
-    let message = extractErrorMessage(error.response.data, fallback);
+    const isPublicAuthRequest = PUBLIC_AUTH_PATHS.includes(requestUrl);
+    const fallback = status === 429 ? "Too many attempts. Please wait before trying again." : `Request failed (${status})`;
+    let data = error.response.data;
+    if (data instanceof Blob) {
+      try { data = JSON.parse(await data.text()); } catch { data = null; }
+    }
+    const fieldErrors: Record<string, string[]> = {};
+    if (data && typeof data === "object") {
+      for (const [key, value] of Object.entries(data)) {
+        if (Array.isArray(value) && value.every(item => typeof item === "string")) fieldErrors[key] = value;
+      }
+    }
+    let message = extractErrorMessage(data, fallback);
 
-    if (status === 401 && !isLoginRequest) {
+    if (status === 401 && !isPublicAuthRequest && requestUrl !== "/accounts/logout/") {
       setAccessToken(null);
+      setRefreshToken(null);
       notifyUnauthorized();
       message = "Your session has expired. Please log in again.";
     }
 
-    return Promise.reject(new ApiError(status, message));
+    return Promise.reject(new ApiError(status, message, fieldErrors));
   }
 );
 

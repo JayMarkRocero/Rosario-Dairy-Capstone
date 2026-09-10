@@ -1,4 +1,5 @@
 import { inventoryService } from "@/features/inventory/api/inventory.service";
+import { settingsService } from "@/features/settings/api/settings.service";
 import { ordersService } from "@/features/orders/api/orders.service";
 
 export interface AppNotification {
@@ -23,39 +24,37 @@ function daysAgoLabel(dateStr: string): string {
 
 export const notificationsService = {
   getAll: async (): Promise<AppNotification[]> => {
-    const [items, fefo, orders] = await Promise.all([
-      inventoryService.getAll(),
-      inventoryService.getFEFO(),
-      ordersService.getAll(),
+    const [products, ingredients, productBatches, ingredientBatches, settings] = await Promise.all([
+      inventoryService.getLowStockProducts(),
+      inventoryService.getLowStockIngredients(),
+      inventoryService.getExpiringProducts(),
+      inventoryService.getExpiringIngredients(),
+      settingsService.get(),
     ]);
-
+    const orders = settings.notifications.new_order_alerts ? await ordersService.getAll() : [];
     const notifications: AppNotification[] = [];
 
-    // Low stock — one notification summarizing all low-stock products
-    const lowStock = items.filter(i => i.low);
-    if (lowStock.length > 0) {
-      notifications.push({
-        id: "low-stock",
-        type: "warning",
-        title: "Low Stock Alert",
-        body: `${lowStock.length} product${lowStock.length !== 1 ? "s are" : " is"} below minimum stock`,
-        time: "Live",
-        unread: true,
+    // Empty alert arrays are authoritative, including when alerts are disabled.
+    for (const [kind, items] of [["products", products], ["ingredients", ingredients]] as const) {
+      if (items.length > 0) notifications.push({
+        id: `low-stock-${kind}`, type: "warning", title: "Low Stock Alert",
+        body: `${items.length} ${kind} below minimum stock`, time: "Live", unread: true,
       });
     }
-
-    // Near-expiry batches — one notification per batch expiring within 3 days (most urgent)
-    const urgent = fefo.filter(f => f.days >= 0 && f.days <= 3);
-    urgent.forEach(f => {
+    for (const batch of productBatches) {
       notifications.push({
-        id: `expiry-${f.id}`,
-        type: "danger",
-        title: "Expiry Warning",
-        body: `${f.product} expires in ${f.days} day${f.days !== 1 ? "s" : ""}`,
-        time: "Today",
-        unread: true,
+        id: `expiry-product-${batch.id}`, type: "danger", title: "Product Expiry Warning",
+        body: `${batch.product.name} (batch ${batch.batch_number}) expires on ${batch.expiration_date}`,
+        time: "Live", unread: true,
       });
-    });
+    }
+    for (const batch of ingredientBatches) {
+      notifications.push({
+        id: `expiry-ingredient-${batch.id}`, type: "danger", title: "Ingredient Expiry Warning",
+        body: `${batch.ingredient.name} (batch ${batch.batch_number}) expires on ${batch.expiration_date}`,
+        time: "Live", unread: true,
+      });
+    }
 
     // Recently fulfilled orders — most recent 2, shown as read/success
     const fulfilled = orders

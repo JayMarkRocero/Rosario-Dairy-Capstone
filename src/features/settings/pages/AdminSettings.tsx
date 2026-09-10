@@ -1,246 +1,123 @@
-import { useState } from "react";
-import { Settings, Building, Bell, Package, User, Shield } from "lucide-react";
+﻿import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Modal } from "@/components/overlays/Modal";
-import { Btn } from "@/components/buttons/Btn";
-import { C } from "@/styles/tokens/colors";
+import { ApiError } from "@/lib/api";
+import { settingsService, type AppSettings, type SystemSettings, type NotificationSettings } from "@/features/settings/api/settings.service";
 
-type Tab = "general"|"business"|"notifications"|"fefo"|"account"|"security";
-
-const TABS: { id:Tab; label:string; icon:React.ReactNode }[] = [
-  { id:"general",       label:"General",        icon:<Settings size={15}/> },
-  { id:"business",      label:"Business Info",  icon:<Building size={15}/> },
-  { id:"notifications", label:"Notifications",  icon:<Bell size={15}/>     },
-  { id:"fefo",          label:"FEFO Settings",  icon:<Package size={15}/>  },
-  { id:"account",       label:"Account",        icon:<User size={15}/>     },
-  { id:"security",      label:"Security",       icon:<Shield size={15}/>   },
+type Tab = "general" | "business" | "notifications";
+const tabs: { id: Tab; label: string }[] = [
+  { id: "general", label: "General" }, { id: "business", label: "Business Info" }, { id: "notifications", label: "Notifications" },
+];
+const fields: Record<"general" | "business", { key: keyof SystemSettings; label: string }[]> = {
+  general: [
+    { key: "system_name", label: "System name" }, { key: "currency", label: "Currency" },
+    { key: "date_format", label: "Date format" }, { key: "timezone", label: "Time zone" }, { key: "language", label: "Language" },
+  ],
+  business: [
+    { key: "business_name", label: "Business name" }, { key: "business_address", label: "Business address" },
+    { key: "business_contact", label: "Contact number" }, { key: "business_email", label: "Business email" },
+    { key: "tin", label: "TIN" }, { key: "business_type", label: "Business type" },
+  ],
+};
+const notifications: { key: keyof NotificationSettings; label: string; description: string }[] = [
+  { key: "low_stock_alerts", label: "Low stock alerts", description: "Notify when product or ingredient stock falls below its threshold." },
+  { key: "near_expiry_alerts", label: "Near expiry alerts", description: "Notify when product or ingredient batches approach expiry." },
+  { key: "new_order_alerts", label: "New order alerts", description: "Notify when new orders are placed." },
+  { key: "forecast_warnings", label: "Forecast warnings", description: "Notify about forecast anomalies." },
+  { key: "report_ready_notifications", label: "Report ready notifications", description: "Notify when scheduled reports are generated." },
 ];
 
-const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
-const inputStyle = { borderColor:C.border, color:C.text, backgroundColor:"#F8FAFC" };
-
-function Field({ label, children, span=false }:{ label:string; children:React.ReactNode; span?:boolean }) {
-  return (
-    <div className={span?"sm:col-span-2":""}>
-      <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function Toggle({ label, desc, value, onChange }:{ label:string; desc:string; value:boolean; onChange:(v:boolean)=>void }) {
-  return (
-    <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl" style={{border:`1px solid ${C.border}`}}>
-      <div className="min-w-0">
-        <div className="text-sm font-medium" style={{color:C.text}}>{label}</div>
-        <div className="text-xs mt-0.5" style={{color:C.muted}}>{desc}</div>
-      </div>
-      <button onClick={()=>onChange(!value)}
-        className="w-11 h-6 rounded-full transition-colors relative flex-shrink-0"
-        style={{backgroundColor:value?C.green:C.border}}>
-        <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all"
-          style={{left:value?"calc(100% - 22px)":"2px"}}/>
-      </button>
-    </div>
-  );
-}
-
-function GeneralTab() {
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="System Name" span>
-          <input className={inputClass} style={inputStyle} defaultValue="Rosario Dairy Management System"/>
-        </Field>
-        <Field label="Currency">
-          <select className={inputClass} style={inputStyle}><option>PHP (₱)</option><option>USD ($)</option></select>
-        </Field>
-        <Field label="Date Format">
-          <select className={inputClass} style={inputStyle}><option>MM/DD/YYYY</option><option>DD/MM/YYYY</option></select>
-        </Field>
-        <Field label="Time Zone">
-          <select className={inputClass} style={inputStyle}><option>Asia/Manila (GMT+8)</option></select>
-        </Field>
-        <Field label="Language">
-          <select className={inputClass} style={inputStyle}><option>English (Philippines)</option></select>
-        </Field>
-        <Field label="Tax Rate (%)">
-          <input className={inputClass} style={inputStyle} type="number" defaultValue="12"/>
-        </Field>
-      </div>
-    </div>
-  );
-}
-
-function BusinessTab() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <Field label="Business Name" span>
-        <input className={inputClass} style={inputStyle} defaultValue="Rosario Dairy"/>
-      </Field>
-      <Field label="Address" span>
-        <input className={inputClass} style={inputStyle} defaultValue="Rosario, Batangas"/>
-      </Field>
-      <Field label="Contact Number">
-        <input className={inputClass} style={inputStyle} defaultValue="(02) 8123-4567"/>
-      </Field>
-      <Field label="Email">
-        <input className={inputClass} style={inputStyle} defaultValue="contact@rosariodairy.com"/>
-      </Field>
-      <Field label="TIN">
-        <input className={inputClass} style={inputStyle} defaultValue="123-456-789"/>
-      </Field>
-      <Field label="Business Type">
-        <select className={inputClass} style={inputStyle}><option>Dairy Business</option></select>
-      </Field>
-    </div>
-  );
-}
-
-function NotificationsTab() {
-  const [toggles,setToggles] = useState({lowStock:true,nearExpiry:true,newOrders:true,forecast:true,reports:false});
-  return (
-    <div className="space-y-3">
-      <Toggle label="Low Stock Alerts" desc="Notify when stock falls below threshold"
-        value={toggles.lowStock} onChange={v=>setToggles(t=>({...t,lowStock:v}))}/>
-      <Toggle label="Near Expiry Alerts" desc="Notify when products approach expiry date"
-        value={toggles.nearExpiry} onChange={v=>setToggles(t=>({...t,nearExpiry:v}))}/>
-      <Toggle label="New Order Alerts" desc="Notify when new orders are placed"
-        value={toggles.newOrders} onChange={v=>setToggles(t=>({...t,newOrders:v}))}/>
-      <Toggle label="Forecast Warnings" desc="Notify about ML forecast anomalies"
-        value={toggles.forecast} onChange={v=>setToggles(t=>({...t,forecast:v}))}/>
-      <Toggle label="Report Ready Notifications" desc="Notify when scheduled reports are generated"
-        value={toggles.reports} onChange={v=>setToggles(t=>({...t,reports:v}))}/>
-    </div>
-  );
-}
-
-function FEFOTab() {
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Low Stock Threshold (units)">
-          <input className={inputClass} style={inputStyle} type="number" defaultValue="20"/>
-        </Field>
-        <Field label="Near Expiry Alert (days)">
-          <input className={inputClass} style={inputStyle} type="number" defaultValue="7"/>
-        </Field>
-        <Field label="Critical Expiry (days)">
-          <input className={inputClass} style={inputStyle} type="number" defaultValue="3"/>
-        </Field>
-        <Field label="Auto-archive Expired After (days)">
-          <input className={inputClass} style={inputStyle} type="number" defaultValue="0"/>
-        </Field>
-      </div>
-      <div className="p-4 rounded-xl" style={{backgroundColor:C.blue+"08",border:`1px solid ${C.blue}20`}}>
-        <p className="text-xs leading-relaxed" style={{color:C.blue}}>
-          <strong>FEFO (First Expired, First Out)</strong> ensures that products closest to expiry are sold first,
-          minimizing waste and maintaining product quality standards.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function AccountTab() {
-  return (
-    <div className="space-y-4">
-      <Field label="Full Name">
-        <input className={inputClass} style={inputStyle} defaultValue="Admin Rosario"/>
-      </Field>
-      <Field label="Email Address">
-        <input className={inputClass} style={inputStyle} defaultValue="admin@rosariodairy.com"/>
-      </Field>
-      <Field label="Profile Photo">
-        <div className="flex items-center gap-3 mt-1">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
-            style={{backgroundColor:C.navy}}>A</div>
-          <Btn variant="secondary" size="sm">Change Photo</Btn>
-        </div>
-      </Field>
-    </div>
-  );
-}
-
-function SecurityTab() {
-  return (
-    <div className="space-y-4">
-      <Field label="Current Password">
-        <input className={inputClass} style={inputStyle} type="password" placeholder="Enter current password"/>
-      </Field>
-      <Field label="New Password">
-        <input className={inputClass} style={inputStyle} type="password" placeholder="Min. 8 characters"/>
-      </Field>
-      <Field label="Confirm New Password">
-        <input className={inputClass} style={inputStyle} type="password" placeholder="Repeat new password"/>
-      </Field>
-      <div className="p-3 rounded-xl text-xs" style={{backgroundColor:C.orange+"12",color:C.orange}}>
-        Password must be at least 8 characters and include uppercase, lowercase, and a number.
-      </div>
-    </div>
-  );
-}
-
-const TAB_CONTENT: Record<Tab, React.ReactNode> = {
-  general:       <GeneralTab/>,
-  business:      <BusinessTab/>,
-  notifications: <NotificationsTab/>,
-  fefo:          <FEFOTab/>,
-  account:       <AccountTab/>,
-  security:      <SecurityTab/>,
-};
-
-// ─── Inline (non-modal) settings page ─────────────────────────────────────────
 export function AdminSettings() {
-  const [tab,     setTab]     = useState<Tab>("general");
-  const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState<Tab>("general");
+  const [saved, setSaved] = useState<AppSettings | null>(null);
+  const [draft, setDraft] = useState<AppSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [reload, setReload] = useState(0);
 
-  const save = () => {
+  useEffect(() => {
+    let active = true;
     setLoading(true);
-    setTimeout(()=>{ setLoading(false); toast.success("Settings saved successfully!"); }, 700);
+    setError("");
+    settingsService.get().then(data => {
+      if (active) { setSaved(data); setDraft(data); }
+    }).catch(err => {
+      if (active) setError(err instanceof Error ? err.message : "Unable to load settings.");
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reload]);
+
+  const canManage = saved?.permissions.can_manage_settings === true;
+  const systemPatch: Partial<SystemSettings> = {};
+  const notificationPatch: Partial<NotificationSettings> = {};
+  if (draft && saved) {
+    if (tab === "notifications") {
+      for (const { key } of notifications) if (draft.notifications[key] !== saved.notifications[key]) notificationPatch[key] = draft.notifications[key];
+    } else {
+      for (const { key } of fields[tab]) if (draft.system[key] !== saved.system[key]) systemPatch[key] = draft.system[key];
+    }
+  }
+  const dirty = Object.keys(systemPatch).length + Object.keys(notificationPatch).length > 0;
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!draft || !saved || !canManage || saving || !dirty) return;
+    setSaving(true);
+    setError("");
+    setFieldErrors({});
+    try {
+      if (tab === "notifications") await settingsService.updateNotifications(notificationPatch);
+      else await settingsService.updateSystem(systemPatch);
+      // Refetch because PATCH responses need not contain the complete settings object.
+      const fresh = await settingsService.get();
+      setSaved(fresh);
+      setDraft(current => current ? {
+        ...current, permissions: fresh.permissions,
+        system: { ...current.system, ...Object.fromEntries(Object.keys(systemPatch).map(key => [key, fresh.system[key as keyof SystemSettings]])) },
+        notifications: tab === "notifications" ? fresh.notifications : current.notifications,
+      } : fresh);
+      toast.success("Settings saved successfully.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save settings.");
+      if (err instanceof ApiError) {
+        setFieldErrors(err.fieldErrors);
+        if (err.status === 403) setSaved(current => current ? { ...current, permissions: { can_manage_settings: false } } : current);
+      }
+    } finally { setSaving(false); }
   };
 
+  if (loading) return <p role="status" className="p-6 text-sm text-slate-500">Loading settings...</p>;
+  if (!draft || !saved) return <div className="p-6"><p role="alert">{error}</p><button onClick={() => setReload(value => value + 1)} className="mt-3 underline">Retry</button></div>;
+
   return (
-    <div className="p-4 sm:p-6 space-y-5">
-      <div>
-        <h2 className="text-lg font-bold" style={{color:C.muted}}>System configuration and preferences</h2>
+    <div className="space-y-5 p-4 sm:p-6 text-slate-900 dark:text-slate-100">
+      <div><h2 className="text-lg font-semibold">System configuration and preferences</h2>
+        {!canManage && <p className="mt-1 text-sm text-slate-500">Read-only access. You do not have permission to manage settings.</p>}
       </div>
-
-      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
-        {/* Sidebar tabs */}
-        <div className="lg:w-48 flex-shrink-0">
-          <div
-            className="bg-white rounded-2xl overflow-x-auto lg:overflow-hidden flex lg:block no-scrollbar"
-            style={{border:`1px solid ${C.border}`}}
-          >
-            {TABS.map(t=>(
-              <button key={t.id} onClick={()=>setTab(t.id)}
-                className="flex-shrink-0 lg:w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left whitespace-nowrap transition-colors"
-                style={{
-                  color:         tab===t.id?"#fff":C.muted,
-                  backgroundColor:tab===t.id?C.navy:"transparent",
-                  borderLeft:    tab===t.id?`3px solid ${C.blue}`:"3px solid transparent",
-                }}>
-                <span style={{opacity:0.8}}>{t.icon}</span>{t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="bg-white rounded-2xl p-4 sm:p-6" style={{border:`1px solid ${C.border}`}}>
-            <h3 className="font-bold text-base mb-5" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>
-              {TABS.find(t=>t.id===tab)?.label}
-            </h3>
-            {TAB_CONTENT[tab]}
-            <div className="flex justify-end mt-6 pt-4" style={{borderTop:`1px solid ${C.border}`}}>
-              <Btn variant="primary" onClick={save} disabled={loading} fullWidth>
-                {loading ? "Saving…" : "Save Changes"}
-              </Btn>
-            </div>
-          </div>
-        </div>
+      <div className="flex flex-col gap-5 lg:flex-row">
+        <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto lg:w-48 lg:shrink-0 lg:flex-col">
+          {tabs.map(item => <button key={item.id} disabled={saving} aria-current={tab === item.id ? "page" : undefined} onClick={() => { setTab(item.id); setError(""); setFieldErrors({}); }} className={`whitespace-nowrap rounded-lg px-4 py-3 text-left text-sm font-medium ${tab === item.id ? "bg-slate-900 text-white dark:bg-slate-700" : "hover:bg-slate-100 dark:hover:bg-slate-800"}`}>{item.label}</button>)}
+        </nav>
+        <form onSubmit={save} className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 dark:border-slate-800 dark:bg-slate-900">
+          <h3 className="mb-5 font-semibold">{tabs.find(item => item.id === tab)?.label}</h3>
+          {error && <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+          <fieldset disabled={!canManage || saving} className="disabled:opacity-70">
+            {tab === "notifications" ? <div className="space-y-3">
+              {notifications.map(({ key, label, description }) => <label key={key} className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                <span><span className="block text-sm font-medium">{label}</span><span className="text-xs text-slate-500 dark:text-slate-400">{description}</span></span>
+                <input type="checkbox" role="switch" checked={draft.notifications[key]} onChange={e => setDraft({ ...draft, notifications: { ...draft.notifications, [key]: e.target.checked } })} className="h-5 w-5 shrink-0 accent-slate-900" />
+              </label>)}
+            </div> : <div className="grid gap-4 sm:grid-cols-2">
+              {fields[tab].map(({ key, label }) => <div key={key}>
+                <label htmlFor={key} className="mb-1.5 block text-xs font-semibold">{label}</label>
+                <input id={key} type={key === "business_email" ? "email" : "text"} value={draft.system[key] ?? ""} onChange={e => { setDraft({ ...draft, system: { ...draft.system, [key]: e.target.value } }); setFieldErrors(current => ({ ...current, [key]: [] })); }} aria-invalid={!!fieldErrors[key]?.length} aria-describedby={fieldErrors[key]?.length ? `${key}-error` : undefined} className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800" />
+                {fieldErrors[key]?.length > 0 && <p id={`${key}-error`} className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors[key].join(" ")}</p>}
+              </div>)}
+            </div>}
+            {canManage && <div className="mt-6 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-800"><button type="submit" disabled={!dirty || saving} className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-700">{saving ? "Saving..." : "Save changes"}</button></div>}
+          </fieldset>
+        </form>
       </div>
     </div>
   );

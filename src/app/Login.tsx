@@ -1,7 +1,9 @@
 // src/app/Login.tsx
 import { useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { isAxiosError } from "axios";
 import {
+  X,
   Eye,
   EyeOff,
   Lock,
@@ -9,7 +11,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Milk,
-  HelpCircle,
   PackageCheck,
   ShoppingCart,
   TrendingUp,
@@ -20,6 +21,7 @@ import { toast } from "sonner";
 import { Modal } from "@/components/overlays/Modal";
 import { C } from "@/styles/tokens/colors";
 import { useAuth } from "@/features/auth/context/AuthContext";
+import { authService } from "@/features/auth/api/auth.service";
 import { ApiError } from "@/lib/api";
 
 interface Props {
@@ -109,97 +111,165 @@ function BrandMark({ size = 64 }: { size?: number }) {
 /*  Modals                                                              */
 /* ------------------------------------------------------------------ */
 
-function TermsModal({ onClose }: { onClose: () => void }) {
+const TERMS_SECTIONS = [
+  {
+    title: "Acceptance of Terms",
+    paragraph: 'By accessing or using the Rosario Dairy Management System ("System"), you agree to comply with and be bound by these Terms and Conditions. This System is strictly reserved for authorized staff, management, and administrators of Rosario Dairy.',
+  },
+  {
+    title: "Authorized Business Use",
+    items: [
+      "System access is granted exclusively for legitimate business operations, including inventory tracking, point-of-sale transactions, sales reporting, and stock management.",
+      "Any personal, unauthorized, or third-party commercial use of this system is strictly prohibited.",
+    ],
+  },
+  {
+    title: "Account Security & Credential Protection",
+    items: [
+      "User credentials are personal and non-transferable. You are responsible for maintaining the confidentiality of your login details.",
+      "Account sharing or performing transactions under another team member's identity is strictly forbidden.",
+      "Immediately report any suspected credential compromise or unauthorized access to system administrators.",
+    ],
+  },
+  {
+    title: "Data Privacy & Confidentiality",
+    items: [
+      "All data within the System—including customer details, sales records, pricing rules, and inventory levels—is proprietary and confidential to Rosario Dairy.",
+      "Users may not export, duplicate, or disclose confidential system data to external parties without explicit authorization.",
+    ],
+  },
+  {
+    title: "Data Integrity & Stock Protocols",
+    items: [
+      "Users must record transactions, stock adjustments, batch details, and expiration dates accurately to maintain data integrity (e.g., First-Expiry-First-Out stock rules).",
+      "Intentional falsification of records or misrepresentation of stock levels will result in immediate termination of access and administrative review.",
+    ],
+  },
+  {
+    title: "System Availability & Audit Logging",
+    items: [
+      "All actions (logins, sales, inventory adjustments, and data exports) are automatically logged for security and operational auditing.",
+      "Features and interfaces are subject to scheduled updates and operational improvements without prior notice.",
+    ],
+  },
+];
+
+function TermsModal({ onClose, onAgree }: { onClose: () => void; onAgree: () => void }) {
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Terms & Conditions"
-      subtitle="Rosario Dairy Management System"
-      size="md"
-      footer={
-        <button
-          onClick={onClose}
-          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
-          style={{ backgroundColor: C.navy }}
-        >
-          Close
-        </button>
-      }
-    >
-      <div className="space-y-4 text-sm" style={{ color: C.muted }}>
-        <p>
-          By using this system, you agree to access it only for authorized business purposes
-          related to Rosario Dairy's inventory, sales, and customer operations.
-        </p>
-        <p>
-          Your account credentials are personal and must not be shared. Any activity performed
-          under your account is your responsibility. Report any suspected unauthorized access
-          to an administrator immediately.
-        </p>
-        <p>
-          Data entered into this system including customer information, transactions, and
-          inventory records is confidential and must not be disclosed outside of authorized
-          business use.
-        </p>
-        <p>
-          This system is provided for internal use. Features and data are subject to change as
-          the system continues to be developed.
-        </p>
-      </div>
-    </Modal>
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
+          <header className="sticky top-0 flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-white px-6 py-5 dark:border-slate-800 dark:bg-slate-900">
+            <div className="min-w-0">
+              <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                Terms & Conditions
+              </Dialog.Title>
+              <Dialog.Description className="mt-1 text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">
+                Rosario Dairy Management System — Internal Usage Guidelines
+              </Dialog.Description>
+            </div>
+            <Dialog.Close asChild>
+              <button type="button" aria-label="Close terms and conditions" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100">
+                <X size={18} aria-hidden="true" />
+              </button>
+            </Dialog.Close>
+          </header>
+
+          <div tabIndex={0} role="region" aria-label="Internal usage terms" className="min-h-0 max-h-[55vh] overflow-y-auto overscroll-contain px-6 py-4 text-left text-sm leading-relaxed text-slate-600 [scrollbar-width:thin] [scrollbar-color:var(--color-slate-300)_transparent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 dark:text-slate-300 dark:[scrollbar-color:var(--color-slate-600)_transparent]">
+            {TERMS_SECTIONS.map((section, index) => (
+              <section key={section.title} className="mt-4 first:mt-0">
+                <h3 className="mb-1.5 text-xs font-semibold uppercase leading-relaxed tracking-wider text-slate-800 dark:text-slate-200">
+                  {index + 1}. {section.title}
+                </h3>
+                {section.paragraph && <p>{section.paragraph}</p>}
+                {section.items && (
+                  <ul className="list-disc space-y-2 pl-4 marker:text-slate-400 dark:marker:text-slate-500">
+                    {section.items.map((item) => <li key={item} className="pl-1">{item}</li>)}
+                  </ul>
+                )}
+              </section>
+            ))}
+          </div>
+
+          <footer className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-t border-slate-100 bg-slate-50/50 px-6 py-3.5 sm:flex-row sm:items-center dark:border-slate-800 dark:bg-slate-900/50">
+            <p className="text-xs text-slate-500 dark:text-slate-400">Last updated: September 2026</p>
+            <button type="button" onClick={onAgree} className="shrink-0 rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 dark:focus-visible:ring-offset-slate-900">
+              I Understand & Agree
+            </button>
+          </footer>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
 function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Forgot Password"
-      size="sm"
-      footer={
-        <button
-          onClick={onClose}
-          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90"
-          style={{ backgroundColor: C.navy }}
-        >
-          Got it
-        </button>
+  const [step, setStep] = useState<"request" | "reset" | "done">("request");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busy) return;
+    setError("");
+    setBusy(true);
+    try {
+      const identity = { username: username.trim(), email: email.trim() };
+      if (step === "request") {
+        await authService.requestPasswordOTP(identity);
+        setStep("reset");
+      } else {
+        await authService.resetPassword({ ...identity, otp, new_password: password });
+        setPassword("");
+        setOtp("");
+        setStep("done");
       }
-    >
-      <div className="space-y-4 text-sm" style={{ color: C.muted }}>
-        <div className="flex items-center gap-2 mb-1">
-          <HelpCircle size={16} style={{ color: C.blue }} aria-hidden="true" />
-          <span className="font-semibold" style={{ color: C.text }}>
-            Password resets require another user
-          </span>
-        </div>
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to connect. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const inputClass = "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400";
 
-        <div>
-          <p className="font-semibold text-xs mb-1" style={{ color: C.text }}>
-            If you're a Staff account:
-          </p>
-          <p>
-            Ask any Administrator to reset your password for you. They can do this from the
-            User Management panel — no need to remember your old password.
-          </p>
+  return (
+    <Modal open onClose={onClose} title="Reset your password" size="sm">
+      {step === "done" ? (
+        <div className="space-y-4">
+          <p role="status" className="text-sm text-slate-600">Your password has been reset. Sign in with your new password.</p>
+          <button type="button" onClick={onClose} className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white">Back to sign in</button>
         </div>
-
-        <div>
-          <p className="font-semibold text-xs mb-1" style={{ color: C.text }}>
-            If you're an Administrator:
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          <p role="status" className="text-sm leading-relaxed text-slate-600">
+            {step === "request" ? "Enter your username and account email to request a password reset code." : "If an account matches those details, a reset code will be sent to its email address. Enter the code below to continue."}
           </p>
-          <p>
-            Ask another Administrator to reset your password the same way, through User
-            Management.
-          </p>
-          <p className="mt-1.5">
-            If you're the only Administrator account, this system currently has no self-service
-            recovery option. You'll need to contact your development team to reset it directly.
-          </p>
-        </div>
-      </div>
+          <fieldset disabled={busy} className="space-y-4 disabled:opacity-60">
+            <label className="block text-sm text-slate-700">Username
+              <input required autoComplete="username" value={username} readOnly={step === "reset"} onChange={e => setUsername(e.target.value)} className={inputClass} />
+            </label>
+            <label className="block text-sm text-slate-700">Account email
+              <input required type="email" autoComplete="email" value={email} readOnly={step === "reset"} onChange={e => setEmail(e.target.value)} className={inputClass} />
+            </label>
+            {step === "reset" && <>
+              <label className="block text-sm text-slate-700">6-digit code
+                <input required type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, ""))} className={inputClass} />
+              </label>
+              <label className="block text-sm text-slate-700">New password
+                <input required type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
+              </label>
+            </>}
+            {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+            <button type="submit" className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">{busy ? "Please wait..." : step === "request" ? "Send reset code" : "Reset password"}</button>
+            {step === "reset" && <button type="button" onClick={() => { setStep("request"); setOtp(""); setPassword(""); setError(""); }} className="text-sm text-slate-600 underline">Change details or request another code</button>}
+          </fieldset>
+        </form>
+      )}
     </Modal>
   );
 }
@@ -248,8 +318,8 @@ export function Login({ onBack }: Props) {
           setError("Unable to connect to the server. Please try again.");
           toast.error("Unable to connect to the server.");
         } else if (err instanceof ApiError) {
-          setError("Unable to sign in. Please check your username and password.");
-          toast.error("Login failed. Please check your credentials.");
+          setError(err.message);
+          toast.error(err.message);
         } else {
           setError("Unable to sign in. Please check your username and password.");
           toast.error("Login failed. Please check your credentials.");
@@ -526,7 +596,15 @@ export function Login({ onBack }: Props) {
         </div>
       </div>
 
-      {termsOpen && <TermsModal onClose={() => setTermsOpen(false)} />}
+      {termsOpen && (
+        <TermsModal
+          onClose={() => setTermsOpen(false)}
+          onAgree={() => {
+            setAgreedToTerms(true);
+            setTermsOpen(false);
+          }}
+        />
+      )}
       {forgotOpen && <ForgotPasswordModal onClose={() => setForgotOpen(false)} />}
     </div>
   );

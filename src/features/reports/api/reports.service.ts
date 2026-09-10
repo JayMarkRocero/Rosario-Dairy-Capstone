@@ -59,9 +59,13 @@ export const reportsService = {
     link.href = url;
     link.download = `${type}-${new Date().toISOString().slice(0, 10)}.pdf`;
     document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    try {
+      link.click();
+    } finally {
+      link.remove();
+      // Give the browser time to start consuming the blob before releasing it.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
   },
 
   refreshReportCache: async (): Promise<void> => {

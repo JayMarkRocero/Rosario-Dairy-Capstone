@@ -114,14 +114,40 @@ export const inventoryService = {
   })).sort((a, b) => a.name.localeCompare(b.name));
 },
 
+  getLowStockProducts: async (): Promise<DjangoProduct[]> => {
+    return (await http.get<DjangoProduct[]>("/inventory/low-stock/products/")).data;
+  },
+
+  getLowStockIngredients: async (): Promise<DjangoIngredient[]> => {
+    return (await http.get<DjangoIngredient[]>("/inventory/low-stock/ingredients/")).data;
+  },
+
+  getExpiringProducts: async (): Promise<DjangoProductBatch[]> => {
+    return (await http.get<DjangoProductBatch[]>("/inventory/expiring/products/")).data;
+  },
+
+  getExpiringIngredients: async (): Promise<DjangoIngredientBatch[]> => {
+    return (await http.get<DjangoIngredientBatch[]>("/inventory/expiring/ingredients/")).data;
+  },
+
   getLowStock: async (): Promise<InventoryItem[]> => {
-    const all = await inventoryService.getAll();
-    return all.filter((i: InventoryItem) => i.low);
+    const products = await inventoryService.getLowStockProducts();
+    return products.map(product => ({
+      id: product.id, name: product.name, cat: product.category.name,
+      price: Number(product.unit_price), stock: Number(product.total_stock), expiry: "", low: true,
+    }));
   },
 
   getNearExpiry: async (): Promise<FEFOItem[]> => {
-    const fefo = await inventoryService.getFEFO();
-    return fefo.filter((i: FEFOItem) => i.days <= 7);
+    const batches = await inventoryService.getExpiringProducts();
+    return batches.map(batch => {
+      const days = daysUntil(batch.expiration_date);
+      return {
+        id: batch.id, product: batch.product.name, batch: batch.batch_number,
+        qty: Number(batch.remaining_quantity), expiry: batch.expiration_date,
+        days, ...fefoStatus(days),
+      };
+    });
   },
 
   createProduct: async (input: {

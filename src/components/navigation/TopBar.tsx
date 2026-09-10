@@ -3,6 +3,7 @@ import {
   Menu, Bell, AlertTriangle, Package, ClipboardList, CheckCircle,
 } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
+import { SETTINGS_UPDATED } from "@/features/settings/api/settings.service";
 import { notificationsService, type AppNotification } from "@/lib/notifications.service";
 
 const NOTIF_ICON: Record<string, React.ReactNode> = {
@@ -40,10 +41,19 @@ function NotificationBell() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    notificationsService.getAll()
-      .then(setNotifications)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    let active = true;
+    let generation = 0;
+    const refresh = () => {
+      const request = ++generation;
+      setLoading(true);
+      notificationsService.getAll()
+        .then(data => { if (active && request === generation) setNotifications(data); })
+        .catch(() => { if (active && request === generation) setNotifications([]); })
+        .finally(() => { if (active && request === generation) setLoading(false); });
+    };
+    refresh();
+    window.addEventListener(SETTINGS_UPDATED, refresh);
+    return () => { active = false; window.removeEventListener(SETTINGS_UPDATED, refresh); };
   }, []);
 
   const unreadCount = notifications.filter(n => n.unread).length;

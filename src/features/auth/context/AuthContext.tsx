@@ -1,6 +1,7 @@
 // src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { ApiError, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
+import { ApiError, getRefreshToken, setRefreshToken, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
+import { toast } from "sonner";
 import { authService } from "@/features/auth/api/auth.service";
 
 interface AuthState {
@@ -19,8 +20,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
 
-  const logout = useCallback((expired = false) => {
+  const clearSession = useCallback((expired = false) => {
     setAccessToken(null);
+    setRefreshToken(null);
     setUser(null);
     setSessionExpired(expired);
   }, []);
@@ -30,6 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const token = getAccessToken();
     if (!token) {
+      setRefreshToken(null);
       setLoading(false);
       return;
     }
@@ -38,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch((error: unknown) => {
         if (error instanceof ApiError && error.status === 401) {
           setAccessToken(null);
+          setRefreshToken(null);
         }
       })
       .finally(() => setLoading(false));
@@ -45,12 +49,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Any 401 from any API call anywhere in the app routes here.
   useEffect(() => {
-    return onUnauthorized(() => logout(true));
-  }, [logout]);
+    return onUnauthorized(() => clearSession(true));
+  }, [clearSession]);
 
   const login = useCallback(async (username: string, password: string) => {
     const tokens = await authService.login({ username, password });
     setAccessToken(tokens.access);
+    setRefreshToken(tokens.refresh);
     try {
       const currentUser = await authService.getCurrentUser();
       setUser(currentUser);
@@ -58,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return currentUser;
     } catch (error) {
       setAccessToken(null);
+      setRefreshToken(null);
       throw error;
     }
   }, []);
@@ -67,7 +73,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     sessionExpired,
     login,
-    logout: () => logout(false),
+    logout: () => {
+      const refresh = getRefreshToken();
+      // Capture authorization before clearing storage; logout still clears locally on failure.
+      const request = refresh ? authService.logout(refresh) : Promise.resolve();
+      clearSession(false);
+      void request.catch(() => toast.error("Signed out locally. Server logout could not be completed."));
+    },
     clearSessionExpiredFlag: () => setSessionExpired(false),
   };
 

@@ -36,6 +36,23 @@ export default defineConfig({
     },
   },
 
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // Match package boundaries on both Windows and POSIX paths.
+          const modulePath = id.replace(/\\/g, '/')
+          if (!modulePath.includes('/node_modules/')) return
+
+          if (/\/node_modules\/(react|react-dom|scheduler)\//.test(modulePath)) return 'react-vendor'
+          if (/\/node_modules\/(react-router|react-router-dom)\//.test(modulePath)) return 'router'
+          if (/\/node_modules\/(recharts|recharts-scale|d3-[^/]+|victory-vendor)\//.test(modulePath)) return 'charts'
+          if (/\/node_modules\/(framer-motion|motion|motion-dom|motion-utils)\//.test(modulePath)) return 'motion'
+        },
+      },
+    },
+  },
+
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 })
