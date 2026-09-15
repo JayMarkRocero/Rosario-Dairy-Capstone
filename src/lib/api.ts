@@ -175,9 +175,19 @@ export interface TokenPair {
 }
 
 export interface CurrentUser {
-  id: number;
   username: string;
   email: string;
+  role: "admin" | "staff";
+  first_name: string;
+  last_name: string;
+  phone_number: string | null;
+  address: string | null;
+  last_login: string | null;
+}
+
+export interface DjangoUserSummary {
+  id: number;
+  username: string;
   role: "admin" | "staff";
 }
 
@@ -254,10 +264,12 @@ export interface DjangoIngredient {
   id: number;
   name: string;
   unit: string;
+  unit_price: string;
+  shelf_life: number;
+  ingredient_type: "raw_milk" | "processing" | "packaging";
   low_stock_threshold: number;
   is_active: boolean;
-  category: DjangoCategory;
-  total_stock: string;
+  total_stock: string | number;
   created_at: string;
   updated_at: string;
 }
@@ -265,8 +277,10 @@ export interface DjangoIngredient {
 export interface CreateIngredientPayload {
   name: string;
   unit: string;
-  low_stock_threshold: number;
-  category_id: number;
+  unit_price: string | number;
+  shelf_life: number;
+  ingredient_type?: DjangoIngredient["ingredient_type"];
+  low_stock_threshold?: number;
 }
 
 export type UpdateIngredientPayload = Partial<CreateIngredientPayload>;
@@ -371,7 +385,7 @@ export interface DjangoOrderItem {
 export interface DjangoOrder {
   id: number;
   customer: DjangoCustomer;
-  handled_by: CurrentUser;
+  handled_by: DjangoUserSummary;
   status: "fulfilled" | "cancelled";
   transaction: DjangoTransaction;
   items: DjangoOrderItem[];
@@ -412,7 +426,7 @@ export interface DjangoTransactionItem {
 
 export interface DjangoTransaction {
   id: number;
-  handled_by: CurrentUser;
+  handled_by: DjangoUserSummary;
   order?: { customer?: DjangoCustomer | null } | null;
   customer?: DjangoCustomer | null;
   subtotal: string;

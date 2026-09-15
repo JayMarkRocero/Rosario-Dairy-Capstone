@@ -6,9 +6,19 @@ export interface RecoveryResetPayload extends RecoveryIdentity { otp: string; ne
 export const authService = {
   refresh: refreshAccessToken,
   logout: async (refreshToken: string): Promise<void> => {
-    await http.post("/accounts/logout/", { refresh_token: refreshToken }, {
-      headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+    const blacklist = (access: string, refresh: string) => http.post("/accounts/logout/", { refresh_token: refresh }, {
+      headers: { Authorization: `Bearer ${access}` },
     });
+    try {
+      await blacklist(getAccessToken() ?? "", refreshToken);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+      // Use captured credentials: AuthContext clears storage immediately on logout.
+      // Do not persist these tokens or revive a session that is signing out.
+      const { data } = await http.post<{ access: string; refresh?: string }>("/accounts/refresh/", { refresh: refreshToken });
+      if (!data.access) throw new ApiError(401, "Unable to refresh your session for logout.");
+      await blacklist(data.access, data.refresh ?? refreshToken);
+    }
   },
 
   requestPasswordOTP: async (payload: RecoveryIdentity): Promise<void> => {

@@ -1,4 +1,4 @@
-import type { CurrentUser, DjangoCustomer, DjangoProduct, DjangoTransaction } from "@/lib/api";
+import type { DjangoUserSummary, DjangoCustomer, DjangoProduct, DjangoTransaction } from "@/lib/api";
 
 export type OrderStatus = "fulfilled" | "cancelled";
 
@@ -22,7 +22,7 @@ export interface CreateOrderPayload {
 export interface Order {
   id: number;
   customer: DjangoCustomer;
-  handled_by: CurrentUser;
+  handled_by: DjangoUserSummary;
   status: OrderStatus;
   transaction: DjangoTransaction;
   items: OrderItem[];

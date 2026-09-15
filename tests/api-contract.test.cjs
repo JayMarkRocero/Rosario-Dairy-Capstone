@@ -21,6 +21,7 @@ const compiled = buildSync({
     export * from './src/features/inventory/api/inventory.service';
     export * from './src/features/reports/api/reports.service';
     export * from './src/lib/notifications.service';
+    export * from './src/features/dashboard/components/admin/RevenueChart';
   `, resolveDir: root },
   define: { 'import.meta.env': '{}' },
   bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false,
@@ -259,4 +260,46 @@ test('auto-pagination subtracts measured chrome and floors partial rows', () => 
   assert.equal(api.calculatePageSize(351, 40, 0, 52), 5);
   assert.equal(api.calculatePageSize(0, 40, 40, 52), 3);
   assert.equal(api.calculatePageSize(320, 40, 0, 56), 5);
+});
+
+test('nested low-stock rows are unwrapped for products and ingredients', async () => {
+  responseData = [{ product: { id: 1, name: 'Milk', category: { name: 'Dairy' }, unit_price: '20.00' }, remaining_quantity: '2.50' }];
+  assert.deepEqual(await api.inventoryService.getLowStock(), [{ id: 1, name: 'Milk', cat: 'Dairy', price: 20, stock: 2.5, expiry: '', low: true }]);
+  responseData = [{ ingredient: { id: 2, name: 'Raw milk' }, remaining_quantity: '3.25' }];
+  assert.deepEqual(await api.inventoryService.getLowStockIngredients(), [{ id: 2, name: 'Raw milk', total_stock: '3.25' }]);
+});
+
+test('revenue chart maps Django daily totals and weekly/monthly breakdowns', () => {
+  assert.deepEqual(api.normalizeRevenueChart({ date: '2026-09-15', total_revenue: '42.50', items: [{ total_revenue: '99' }] }, 'daily'), [{ n: '2026-09-15', rev: 42.5 }]);
+  assert.deepEqual(api.normalizeRevenueChart({ daily_breakdown: [{ date: '2026-09-15', revenue: '0.00' }, { date: '2026-09-14', revenue: '20.00' }] }, 'weekly'), [{ n: '2026-09-14', rev: 20 }, { n: '2026-09-15', rev: 0 }]);
+  assert.deepEqual(api.normalizeRevenueChart({ weekly_breakdown: [{ week_start: '2026-09-07', week_end: '2026-09-13', revenue: '125.50' }] }, 'monthly'), [{ n: '2026-09-07', rev: 125.5 }]);
+  assert.deepEqual(api.normalizeRevenueChart(null, 'daily'), []);
+});
+
+test('category patch excludes read-only activation even from untyped callers', async () => {
+  await api.inventoryService.updateCategory(1, { name: 'Dairy', is_active: false });
+  assert.deepEqual(JSON.parse(calls[0].data), { name: 'Dairy' });
+});
+
+test('expired logout refreshes captured credentials and blacklists without restoring storage', async () => {
+  api.setAccessToken('expired'); api.setRefreshToken('refresh');
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    const response = { status: 200, data: {}, config, headers: {} };
+    if (config.url === '/accounts/refresh/') {
+      assert.equal(config.headers.Authorization, undefined);
+      assert.deepEqual(JSON.parse(config.data), { refresh: 'refresh' });
+      return { ...response, data: { access: 'renewed', refresh: 'rotated' } };
+    }
+    if (config.headers.Authorization === 'Bearer expired') throw new AxiosError('Expired', undefined, config, undefined, { ...response, status: 401 });
+    assert.equal(config.headers.Authorization, 'Bearer renewed');
+    assert.deepEqual(JSON.parse(config.data), { refresh_token: 'rotated' });
+    return response;
+  };
+  const pending = api.authService.logout('refresh');
+  api.setAccessToken(null); api.setRefreshToken(null);
+  await pending;
+  assert.deepEqual(calls.map(call => call.url), ['/accounts/logout/', '/accounts/refresh/', '/accounts/logout/']);
+  assert.equal(api.getAccessToken(), null);
+  assert.equal(api.getRefreshToken(), null);
 });

@@ -115,11 +115,13 @@ export const inventoryService = {
 },
 
   getLowStockProducts: async (): Promise<DjangoProduct[]> => {
-    return (await http.get<DjangoProduct[]>("/inventory/low-stock/products/")).data;
+    const { data } = await http.get<Array<{ product: DjangoProduct; remaining_quantity: string }>>("/inventory/low-stock/products/");
+    return data.map(({ product, remaining_quantity }) => ({ ...product, total_stock: remaining_quantity }));
   },
 
   getLowStockIngredients: async (): Promise<DjangoIngredient[]> => {
-    return (await http.get<DjangoIngredient[]>("/inventory/low-stock/ingredients/")).data;
+    const { data } = await http.get<Array<{ ingredient: DjangoIngredient; remaining_quantity: string }>>("/inventory/low-stock/ingredients/");
+    return data.map(({ ingredient, remaining_quantity }) => ({ ...ingredient, total_stock: remaining_quantity }));
   },
 
   getExpiringProducts: async (): Promise<DjangoProductBatch[]> => {
@@ -188,12 +190,11 @@ export const inventoryService = {
 
   updateCategory: async (
     categoryId: number,
-    input: { name?: string; desc?: string; is_active?: boolean; is_visible_to_staff?: boolean }
+    input: { name?: string; desc?: string; is_visible_to_staff?: boolean }
   ): Promise<void> => {
     const payload: UpdateCategoryPayload = {};
     if (input.name !== undefined) payload.name = input.name;
     if (input.desc !== undefined) payload.description = input.desc;
-    if (input.is_active !== undefined) payload.is_active = input.is_active;
     if (input.is_visible_to_staff !== undefined) payload.is_visible_to_staff = input.is_visible_to_staff;
     await http.patch<DjangoCategory>(`/inventory/categories/${categoryId}/`, payload);
   },

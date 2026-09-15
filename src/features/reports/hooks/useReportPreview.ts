@@ -21,7 +21,7 @@ export function useReportPreview(type: ReportType) {
   useEffect(() => {
     let active = true;
     setLoading(true); setData(null); setError("");
-    reportsService.fetchReportPreview(type).then(result => { if (active) setData(result); })
+    reportsService.fetchReportPreview(type).then(result => { if (active) setData(result.data); })
       .catch(error => { if (active) { setError(getApiErrorMessage(error, "Unable to load report.")); toastApiError(error, "Unable to load report."); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

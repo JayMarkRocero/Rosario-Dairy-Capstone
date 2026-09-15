@@ -2,20 +2,33 @@ import { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card } from "@/components/data-display/Card";
 import { C } from "@/styles/tokens/colors";
-import { useReportPreview, reportRows } from "@/features/reports/hooks/useReportPreview";
+import { useReportPreview } from "@/features/reports/hooks/useReportPreview";
+import type { ReportPreview } from "@/features/reports/api/reports.service";
 
 type Period = "daily" | "weekly" | "monthly";
+
+export function normalizeRevenueChart(report: ReportPreview | null, period: Period): Array<{ n: string; rev: number }> {
+  if (!report) return [];
+  const rows = period === "daily"
+    ? [{ date: report.date, revenue: report.total_revenue }]
+    : period === "weekly" ? report.daily_breakdown : report.weekly_breakdown;
+  if (!Array.isArray(rows)) return [];
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const date = period === "monthly" ? row.week_start : row.date;
+    const raw = row.revenue;
+    if (typeof date !== "string" || (typeof raw !== "string" && typeof raw !== "number") || raw === "") continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) totals.set(date, (totals.get(date) ?? 0) + value);
+  }
+  return [...totals].sort(([a], [b]) => a.localeCompare(b)).map(([n, rev]) => ({ n, rev }));
+}
 
 export function RevenueChart() {
   const [period, setPeriod] = useState<Period>("monthly");
   const { data: report, loading, error } = useReportPreview(`${period}_sales`);
-  const totals = new Map<string, number>();
-  for (const row of reportRows(report)) {
-    if (typeof row.date !== "string") continue;
-    const value = Number(row.total_revenue);
-    if (Number.isFinite(value)) totals.set(row.date, (totals.get(row.date) ?? 0) + value);
-  }
-  const data = [...totals].sort(([a], [b]) => a.localeCompare(b)).map(([n, rev]) => ({ n, rev }));
+  const data = normalizeRevenueChart(report, period);
 
   return (
     <Card className="p-5">

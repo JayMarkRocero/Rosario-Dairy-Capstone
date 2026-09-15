@@ -24,13 +24,18 @@ export interface DailySalesReport extends ReportPreviewBase {
   transaction_count: number;
   items: Array<{
     product_name: string;
-    quantity: number;
+    quantity: string;
     total_revenue: string | number;
-    date: string;
   }>;
 }
 
 export type ReportPreview = ReportPreviewBase | SarimaForecastPreview | DailySalesReport;
+
+export interface ReportPreviewResponse {
+  report_type: ReportType;
+  generated_at: string;
+  data: ReportPreview;
+}
 
 export interface BestSeller {
   product: string;
@@ -54,8 +59,8 @@ export const reportsService = {
       toast.warning(`Saved successfully, but reports could not refresh: ${getApiErrorMessage(error, "Please retry refreshing reports.")}`);
     }
   },
-  fetchReportPreview: async (type: ReportType): Promise<ReportPreview> => {
-    const { data } = await http.get<ReportPreview>("/api/reports/preview/", { params: { type } });
+  fetchReportPreview: async (type: ReportType): Promise<ReportPreviewResponse> => {
+    const { data } = await http.get<ReportPreviewResponse>("/api/reports/preview/", { params: { type } });
     return data;
   },
 

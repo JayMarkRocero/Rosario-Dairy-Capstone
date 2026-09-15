@@ -119,7 +119,7 @@ export function KPICards() {
     // ── Monthly Revenue ──
     const thisMonthSales = sales.filter(s => s.date >= thisMonth.start && s.date <= thisMonth.end);
     const lastMonthSales = sales.filter(s => s.date >= lastMonth.start && s.date <= lastMonth.end);
-    const thisMonthTotal = reportNumber(monthlyReport.data, "total_revenue") ?? thisMonthSales.reduce((sum, s) => sum + s.total, 0);
+    const thisMonthTotal = reportNumber(monthlyReport.data, "revenue") ?? thisMonthSales.reduce((sum, s) => sum + s.total, 0);
     const lastMonthTotal = lastMonthSales.reduce((sum, s) => sum + s.total, 0);
     const monthTrend = pctChange(thisMonthTotal, lastMonthTotal);
     const uniqueCustomersThisMonth = new Set(
