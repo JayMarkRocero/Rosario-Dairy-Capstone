@@ -1,9 +1,10 @@
-import http, { ApiError, getAccessToken, type CurrentUser, type LoginPayload, type TokenPair } from "@/lib/api";
+import http, { ApiError, refreshAccessToken, getAccessToken, type CurrentUser, type LoginPayload, type TokenPair } from "@/lib/api";
 
 export interface RecoveryIdentity { username: string; email: string }
 export interface RecoveryResetPayload extends RecoveryIdentity { otp: string; new_password: string }
 
 export const authService = {
+  refresh: refreshAccessToken,
   logout: async (refreshToken: string): Promise<void> => {
     await http.post("/accounts/logout/", { refresh_token: refreshToken }, {
       headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },

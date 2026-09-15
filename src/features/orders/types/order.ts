@@ -12,11 +12,11 @@ export interface OrderItem {
 
 export interface CreateOrderPayload {
   customer_id: number;
-  items: Array<{ product_id: number; quantity: number }>;
+  items: Array<{ product_id: number; quantity: number | string }>;
   discount_type?: "none" | "percent" | "fixed";
-  discount_value?: number;
+  discount_value?: number | string;
   payment_method?: "cash" | "online";
-  amount_tendered?: number | null;
+  amount_tendered?: number | string | null;
 }
 
 export interface Order {

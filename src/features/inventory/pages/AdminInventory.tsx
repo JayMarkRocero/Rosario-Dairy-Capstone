@@ -1,3 +1,5 @@
+import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
+import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
@@ -181,6 +183,7 @@ function ProductDetail({ p }: { p: InventoryItem }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function AdminInventory() {
+  const pageCapacity = useAdminAutoPageSize(56);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
@@ -189,7 +192,7 @@ export function AdminInventory() {
     setItemsLoading(true);
     inventoryService.getAll()
       .then(setItems)
-      .catch(() => toast.error("Failed to load inventory."))
+      .catch(error => toastApiError(error, "Failed to load inventory."))
       .finally(() => setItemsLoading(false));
   };
 
@@ -197,7 +200,7 @@ export function AdminInventory() {
     loadItems();
     inventoryService.getCategoriesRaw()
       .then(setCategories)
-      .catch(() => toast.error("Failed to load categories."));
+      .catch(error => toastApiError(error, "Failed to load categories."));
   }, []);
 
   const [catFilter,    setCatFilter]    = useState("All");
@@ -271,7 +274,7 @@ export function AdminInventory() {
           setForm(EMPTY_FORM);
           loadItems();
         })
-        .catch(() => toast.error("Failed to add product."))
+        .catch(error => toastApiError(error, "Failed to add product."))
         .finally(() => setLoading(false));
     } else {
       if (!selected) { setLoading(false); return; }
@@ -286,7 +289,7 @@ export function AdminInventory() {
           setForm(EMPTY_FORM);
           loadItems();
         })
-        .catch(() => toast.error("Failed to update product."))
+        .catch(error => toastApiError(error, "Failed to update product."))
         .finally(() => setLoading(false));
     }
   };
@@ -300,13 +303,13 @@ export function AdminInventory() {
         setDeleteOpen(false);
         loadItems();
       })
-      .catch(() => toast.error("Failed to delete product."))
+      .catch(error => toastApiError(error, "Failed to delete product."))
       .finally(() => setLoading(false));
   };
 
   const columns: Column<InventoryItem>[] = [
     {
-      key:"name", header:"Product", width:"24%",
+      key:"name", header:"Product", align:"left", width:"24%",
       sortKey: r => r.name,
       render: r => (
         <div className="flex items-center gap-3">
@@ -324,7 +327,7 @@ export function AdminInventory() {
       ),
     },
     {
-      key:"cat", header:"Category", width:"12%",
+      key:"cat", header:"Category", align:"center", width:"14%",
       sortKey: r => r.cat,
       render: r => (
         <span className="text-xs px-2.5 py-1 rounded-md font-medium inline-flex items-center gap-1 border border-blue-200/60"
@@ -332,25 +335,25 @@ export function AdminInventory() {
       ),
     },
     {
-      key:"price", header:"Price", align:"right", width:"11%",
+      key:"price", header:"Price", align:"center", width:"12%",
       sortKey: r => r.price,
       render: r => <span className="font-medium text-sm" style={{color:C.text}}>₱{r.price}</span>,
     },
     {
-      key:"stock", header:"Stock", align:"right", width:"11%",
+      key:"stock", header:"Stock", align:"center", width:"12%",
       sortKey: r => r.stock,
       render: r => {
         const status = getStatus(r);
         const iconColor = status === "Expired" ? C.red : status === "Low" ? C.orange : status === "Near Expiry" ? "#F59E0B" : undefined;
         return (
-          <div className="flex items-center justify-end gap-1.5">
+          <div className="flex items-center justify-center gap-1">
             <span className="font-medium text-sm" style={{color:status==="Expired"||status==="Low"?C.red:C.text}}>{r.stock}</span>
             {status !== "Active" && <AlertTriangle size={12} style={{color:iconColor}}/>}
           </div>
         );
       },
     },
-    { key:"expiry", header:"Expiry", align:"center", width:"13%", sortKey: r => r.expiry,
+    { key:"expiry", header:"Expiry", align:"center", width:"14%", sortKey: r => r.expiry,
       render: r => {
         const expired = isExpired(r.expiry);
         const near = !expired && isNearExpiry(r.expiry);
@@ -360,12 +363,12 @@ export function AdminInventory() {
           </span>
         );
       } },
-    { key:"status", header:"Status", align:"center", width:"13%",
+    { key:"status", header:"Status", align:"center", width:"12%",
       render: r => <div className="flex justify-center"><StatusBadge status={getStatus(r)}/></div> },
     {
-      key:"actions", header:"Actions", align:"center", width:"10%",
+      key:"actions", header:"Actions", align:"center", width:"12%",
       render: r => (
-        <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-center gap-2" onClick={e => e.stopPropagation()}>
           <ActionButton label="View details" onClick={() => openView(r)}>
             <Eye size={13}/>
           </ActionButton>
@@ -391,7 +394,7 @@ export function AdminInventory() {
   );
 
   return (
-    <div className="flex flex-col min-h-full gap-4 p-4 sm:p-6 max-w-[1400px] mx-auto w-full">
+    <div className="flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
@@ -413,18 +416,19 @@ export function AdminInventory() {
           { label:"Expired",         value:String(stats.expired),       color:C.red    },
           { label:"Total Value",     value:`₱${stats.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, color:C.green  },
         ].map(s => (
-          <SummaryCard key={s.label} label={s.label} value={s.value} color={s.color} />
+          <SummaryCard compact key={s.label} label={s.label} value={s.value} color={s.color} />
         ))}
       </div>
 
       {/* Table */}
-      <Card className="p-5 overflow-hidden">
-        <div className="overflow-x-auto">
+      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
           <EnhancedTable
+            rowHeight={56}
             columns={columns}
             data={filteredItems}
             rowKey={r => r.id}
-            pageSize={4}
+            pageCapacity={pageCapacity}
             searchable
             searchKeys={r => [r.name, r.cat]}
             searchPlaceholder="Search products…"

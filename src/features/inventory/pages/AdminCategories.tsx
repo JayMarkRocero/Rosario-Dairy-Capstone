@@ -1,3 +1,5 @@
+import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
+import { toastApiError } from "@/lib/errorHandling";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { useState, useEffect } from "react";
 import { Plus, Edit, Trash2, Eye, RotateCcw } from "lucide-react";
@@ -44,8 +46,8 @@ export function AdminCategories() {
     setCatsLoading(true);
     try {
       setCats(await inventoryService.getCategories());
-    } catch {
-      toast.error("Failed to load categories.");
+    } catch (error) {
+      toastApiError(error, "Failed to load categories.");
     } finally {
       setCatsLoading(false);
     }
@@ -63,11 +65,23 @@ export function AdminCategories() {
   const [form,       setForm]       = useState<FormState>(EMPTY);
   const [loading,    setLoading]    = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [page, setPage] = useState(1);
+  const { pageSize, containerRef, headerRef } = useAdminAutoPageSize(56);
+  useEffect(() => { setPage(1); }, [pageSize]);
 
   const visibleCategories = showInactive
     ? cats
     : cats.filter((cat) => cat.is_active);
   const sortedCategories = [...visibleCategories].sort((a, b) => a.name.localeCompare(b.name));
+
+  const totalPages = Math.max(1, Math.ceil(sortedCategories.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageCategories = sortedCategories.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const syncCategory = (id: number, changes: Partial<Category>) => {
+    setCats(current => current.map(cat => cat.id === id ? { ...cat, ...changes } : cat));
+    setSelected(current => current?.id === id ? { ...current, ...changes } : current);
+  };
 
   const openEdit = (c: Category) => {
     setSelected(c); setForm({ name:c.name, desc:c.desc, is_visible_to_staff:c.is_visible_to_staff }); setEditOpen(true);
@@ -91,37 +105,41 @@ export function AdminCategories() {
       setForm(EMPTY);
       await loadCategories();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : `Failed to ${mode === "add" ? "add" : "update"} category.`);
+      toastApiError(err, `Failed to ${mode === "add" ? "add" : "update"} category.`);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = () => {
-    if (!selected) return;
+    if (!selected?.is_active || loading) return;
     setLoading(true);
     inventoryService.deleteCategory(selected.id)
       .then(() => {
+        syncCategory(selected.id, { is_active: false, is_visible_to_staff: false });
         toast.success(`${selected.name} deactivated.`);
         setDeleteOpen(false);
         loadCategories();
       })
-      .catch((err) => toast.error(err.message || "Failed to deactivate category."))
+      .catch((err) => toastApiError(err, "Failed to deactivate category."))
       .finally(() => setLoading(false));
   };
 
   const handleReactivate = (category: Category) => {
+    if (category.is_active || loading) return;
     setLoading(true);
     inventoryService.reactivateCategory(category.id)
       .then(() => {
+        syncCategory(category.id, { is_active: true });
         toast.success(`${category.name} reactivated.`);
         loadCategories();
       })
-      .catch((err) => toast.error(err.message || "Failed to reactivate category."))
+      .catch((err) => toastApiError(err, "Failed to reactivate category."))
       .finally(() => setLoading(false));
   };
 
   const handleStaffVisibility = async (category: Category) => {
+    if (!category.is_active || loading) return;
     const isVisible = !category.is_visible_to_staff;
     setLoading(true);
     try {
@@ -134,14 +152,14 @@ export function AdminCategories() {
         : current);
       toast.success(`${category.name} is now ${isVisible ? "visible" : "hidden"} to staff.`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update staff visibility.");
+      toastApiError(err, "Failed to update staff visibility.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5">
+    <div className="flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 w-full">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
           <h2 className="text-lg font-bold" style={{color:C.muted}}>Organize products by type</h2>
@@ -149,7 +167,7 @@ export function AdminCategories() {
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm cursor-pointer" style={{color:C.muted}}>
             <input type="checkbox" checked={showInactive}
-              onChange={e => setShowInactive(e.target.checked)} className="accent-blue-600"/>
+              onChange={e => { setShowInactive(e.target.checked); setPage(1); }} className="accent-blue-600"/>
             Show Inactive Categories
           </label>
           <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
@@ -158,17 +176,17 @@ export function AdminCategories() {
         </div>
       </div>
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-slate-700">
-            <thead className="bg-slate-50/80 border-b border-slate-100">
+      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+        <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden">
+          <table className="w-full table-fixed text-sm text-slate-700">
+            <thead ref={headerRef} className="bg-slate-50/80 border-b border-slate-100">
               <tr>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Category</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Description</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Products</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Status</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Staff Visibility</th>
-                <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Actions</th>
+                <th className="w-[22%] text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Category</th>
+                <th className="w-[26%] text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Description</th>
+                <th className="w-[12%] text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Products</th>
+                <th className="w-[12%] text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Status</th>
+                <th className="w-[16%] text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Staff Visibility</th>
+                <th className="w-[12%] text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -188,67 +206,76 @@ export function AdminCategories() {
                 </tr>
               )}
 
-              {!catsLoading && sortedCategories.map(cat => (
+              {!catsLoading && pageCategories.map(cat => (
                 <tr key={cat.id} className="h-14 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors">
-                  <td className="px-4 py-2">
+                  <td className="text-left px-4 py-2">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                         style={{backgroundColor:C.blue+"12"}}>
                         <CategoryIcon name={cat.name} size={18} color={C.blue}/>
                       </div>
-                      <span className="font-medium text-slate-700">
+                      <span className="truncate font-medium text-slate-700" title={cat.name}>
                         {cat.name}
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-2 max-w-xs whitespace-normal break-words" style={{color:C.muted}}>
+                  <td className="text-left px-4 py-2 max-w-xs truncate" style={{color:C.muted}}>
                     {cat.desc}
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="text-center px-4 py-2">
                     <span className="text-xs font-semibold px-2.5 py-1 rounded-md inline-flex items-center gap-1 border border-blue-200/60"
                       style={{backgroundColor:C.blue+"15",color:C.blue}}>
                       {cat.products}
                     </span>
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="text-center px-4 py-2">
                     <StatusBadge status={cat.is_active?"Active":"Inactive"}/>
                   </td>
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <StatusBadge status={cat.is_visible_to_staff?"Visible":"Hidden"}/>
-                      <button type="button" disabled={loading} onClick={()=>handleStaffVisibility(cat)}
-                        className="w-9 h-5 rounded-full transition-colors relative disabled:opacity-50"
-                        style={{backgroundColor:cat.is_visible_to_staff?C.green:C.border}}
-                        aria-label={`${cat.is_visible_to_staff?"Hide":"Show"} ${cat.name} for staff`}>
+                  <td className="text-center px-4 py-2">
+                    <div className="flex items-center justify-center gap-2">
+                      <StatusBadge status={(cat.is_active && cat.is_visible_to_staff)?"Visible":"Hidden"}/>
+                      <button type="button" disabled={loading || !cat.is_active} onClick={()=>handleStaffVisibility(cat)}
+                        className="w-9 h-5 shrink-0 rounded-full transition-colors relative disabled:opacity-50"
+                        style={{backgroundColor:(cat.is_active && cat.is_visible_to_staff)?C.green:C.border}}
+                        aria-label={`${(cat.is_active && cat.is_visible_to_staff)?"Hide":"Show"} ${cat.name} for staff`}>
                         <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
-                          style={{left:cat.is_visible_to_staff?"calc(100% - 18px)":"2px"}}/>
+                          style={{left:(cat.is_active && cat.is_visible_to_staff)?"calc(100% - 18px)":"2px"}}/>
                       </button>
                     </div>
                   </td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-1 justify-end">
+                  <td className="text-center px-4 py-2">
+                    <div className="flex items-center justify-center gap-2">
                       {!cat.is_active && (
                         <button onClick={()=>handleReactivate(cat)} disabled={loading}
-                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold hover:bg-green-50 transition-colors disabled:opacity-50"
-                          style={{color:C.green}}>
+                          title="Restore category" className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50">
                           <RotateCcw size={13}/> Reactivate
                         </button>
                       )}
                       <ActionButton label="View details" onClick={()=>{setSelected(cat);setViewOpen(true);}}>
                         <Eye size={14}/>
                       </ActionButton>
-                      <ActionButton label="Edit" onClick={()=>openEdit(cat)}>
+                      <ActionButton label="Edit category" onClick={()=>openEdit(cat)}>
                         <Edit size={14}/>
                       </ActionButton>
-                      <ActionButton label="Deactivate" destructive onClick={()=>{setSelected(cat);setDeleteOpen(true);}}>
+                      {cat.is_active && <ActionButton label="Deactivate category" destructive disabled={loading} onClick={()=>{setSelected(cat);setDeleteOpen(true);}}>
                         <Trash2 size={14}/>
-                      </ActionButton>
+                      </ActionButton>}
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="mt-auto pt-3 border-t border-slate-100 flex shrink-0 items-center justify-between gap-3 text-xs text-slate-500">
+          <span>Page {currentPage} of {totalPages}</span>
+          <div className="flex gap-1">
+            <button type="button" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} className="h-8 w-8 rounded-lg border disabled:opacity-40">&lt;</button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => Math.max(1, Math.min(currentPage - 2, totalPages - 4)) + i).map(number => (
+              <button key={number} type="button" aria-current={number === currentPage ? "page" : undefined} onClick={() => setPage(number)} className={`h-8 w-8 rounded-lg border ${number === currentPage ? "bg-blue-600 text-white border-blue-600" : "hover:bg-slate-100"}`}>{number}</button>
+            ))}
+            <button type="button" aria-label="Next page" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)} className="h-8 w-8 rounded-lg border disabled:opacity-40">&gt;</button>
+          </div>
         </div>
       </Card>
 
@@ -297,3 +324,4 @@ export function AdminCategories() {
     </div>
   );
 }
+

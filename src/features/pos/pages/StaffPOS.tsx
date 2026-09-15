@@ -1,3 +1,5 @@
+import { toastApiError } from "@/lib/errorHandling";
+import { isExpiredProduct } from "@/features/inventory/utils/expiry";
 import { getApiErrorMessage } from "@/lib/api";
 import { useState, useEffect } from "react";
 import { Search, ShoppingCart, AlertTriangle, Banknote, Smartphone, Printer, Check, X } from "lucide-react";
@@ -14,11 +16,6 @@ import type { Customer } from "@/features/customers/types/customer";
 type PayMethod  = "Cash" | "GCash";
 type DiscountType = "none" | "percent" | "fixed";
 interface CartItem { id:number; name:string; price:number; qty:number; stock:number }
-
-// Inventory services normalize the backend expiry date to `expiry`.
-function isExpiredProduct(product: InventoryItem & { status?: string; expiry_date?: string }): boolean {
-  return product.status === "Expired" || !(new Date(product.expiry_date ?? product.expiry).getTime() >= Date.now());
-}
 
 const LOW_STOCK_THRESHOLD = 20;
 
@@ -68,7 +65,7 @@ function ReceiptModal({ cart, total, subtotal, payment, change, onClose, onConfi
           </div>
           <div className="flex justify-between font-bold text-base pt-1" style={{borderTop:`1px solid ${C.border}`}}>
             <span style={{color:C.text}}>TOTAL</span>
-            <span style={{color:C.blue}}>₱{money(total)}</span>
+            <span>₱{money(total)}</span>
           </div>
           {payment==="Cash"&&change>0&&(
             <div className="flex justify-between font-semibold pt-1" style={{color:C.green}}>
@@ -174,7 +171,7 @@ function CartContents({
 }) {
   return (
     <>
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 my-2">
         <div className="flex items-center justify-between mb-3">
           <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
             Order Items
@@ -186,13 +183,7 @@ function CartContents({
           )}
         </div>
         {cart.length===0?(
-          <div className="flex flex-col items-center justify-center gap-3 py-12" style={{color:C.muted}}>
-            <ShoppingCart size={40} style={{opacity:0.2}}/>
-            <div className="text-center">
-              <p className="text-sm font-semibold" style={{ color: C.text }}>No items yet</p>
-              <p className="text-xs mt-1" style={{ color: C.muted }}>Select products to begin an order.</p>
-            </div>
-          </div>
+          <p className="text-xs text-slate-400 py-8 text-center">Cart is empty</p>
         ):(
           <div className="space-y-3">
             {cart.map(item=>(
@@ -222,16 +213,15 @@ function CartContents({
         )}
       </div>
 
-      <div className="px-5 py-4 space-y-2 flex-shrink-0" style={{borderTop:`1px solid ${C.border}`}}>
+      <div className="flex-shrink-0 pt-3 border-t border-slate-100 space-y-3">
         <div className="flex justify-between text-xs" style={{color:C.muted}}>
           <span>Subtotal</span><span>₱{money(subtotal)}</span>
         </div>
-        <div className="flex justify-between font-bold text-base pt-2"
-          style={{color:C.text}}>
+        <div className="flex items-center justify-between text-xl font-bold text-slate-900">
           <span>Total</span>
-          <span style={{color:C.blue}}>₱{money(total)}</span>
+          <span>₱{money(total)}</span>
         </div>
-        {!showDiscount ? <button type="button" onClick={()=>setShowDiscount(true)} className="text-xs font-semibold text-left pt-2" style={{color:C.blue}}>+ Apply Discount</button> : <div className="grid grid-cols-2 gap-2 pt-2">
+        {cart.length > 0 && (!showDiscount ? <button type="button" onClick={()=>setShowDiscount(true)} className="text-xs font-semibold text-left pt-2" style={{color:C.blue}}>+ Apply Discount</button> : <div className="grid grid-cols-2 gap-2 pt-2">
           <select value={discountType} onChange={event => setDiscountType(event.target.value as DiscountType)}
             className="px-3 py-2 rounded-xl text-xs outline-none border bg-gray-50" style={{borderColor:C.border,color:C.text}}>
             <option value="none">No Discount</option>
@@ -243,19 +233,17 @@ function CartContents({
             placeholder="Discount value" className="px-3 py-2 rounded-xl text-xs outline-none border disabled:opacity-50"
             style={{borderColor:C.border,color:C.text}}/>
           <button type="button" onClick={()=>{setShowDiscount(false);setDiscountType("none");setDiscountValue("0");}} className="col-span-2 text-xs text-left" style={{color:C.muted}}>Remove discount</button>
-        </div>}
-      </div>
-
-      <div className="px-5 pb-5 pt-1 space-y-3 flex-shrink-0">
+        </div>)}
         <div>
           <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{color:C.muted}}>Customer</label>
           <select value={customerId} onChange={event=>setCustomerId(event.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border bg-gray-50"
+            aria-label="Customer" className="w-full h-10 px-3 text-xs rounded-lg outline-none border bg-gray-50"
             style={{borderColor:C.border,color:C.text}}>
             <option value="">Walk-in Customer</option>
             {customers.filter(customer=>customer.name.trim().toLowerCase()!=="walk-in customer").map(customer=><option key={customer.id} value={customer.id}>{customer.name}</option>)}
           </select>
         </div>
+        {cart.length > 0 && <>
         <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
           Payment Method
         </div>
@@ -270,11 +258,11 @@ function CartContents({
           ))}
         </div>
 
-        {payMethod==="Cash"&&(
+        {cart.length > 0 && payMethod==="Cash"&&(
           <div className="space-y-2">
             <input type="number" step="0.01" placeholder="Cash received" value={cashReceived}
               onChange={e=>setCash(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border"
+              aria-label="Cash received" className="w-full h-10 px-3 text-xs rounded-lg outline-none border"
               style={{borderColor:C.border,color:C.text}}/>
             {cashReceived&&(
               <div className="flex justify-between text-xs px-1">
@@ -285,8 +273,10 @@ function CartContents({
           </div>
         )}
 
-        <button onClick={onComplete}
-          className="w-full py-3.5 rounded-2xl text-white font-bold text-sm transition-all hover:opacity-90 flex items-center justify-center gap-2"
+        </>}
+
+        <button onClick={onComplete} disabled={cart.length === 0}
+          className="w-full h-10 rounded-lg text-white font-bold text-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           style={{backgroundColor:cart.length>0?C.blue:C.border}}>
           <Printer size={14}/> Review & Complete
         </button>
@@ -303,13 +293,13 @@ export function StaffPOS() {
 
   useEffect(() => {
     setProductsLoading(true);
-    inventoryService.getAll()
+    inventoryService.getAll(true)
       .then(setProducts)
-      .catch(() => toast.error("Failed to load products."))
+      .catch(error => toastApiError(error, "Failed to load products."))
       .finally(() => setProductsLoading(false));
     customersService.getAll()
       .then(setCustomers)
-      .catch(() => toast.error("Failed to load customers."));
+      .catch(error => toastApiError(error, "Failed to load customers."));
   }, []);
 
   const [cart,         setCart]       = useState<CartItem[]>([]);
@@ -379,6 +369,9 @@ export function StaffPOS() {
   };
 
   const handleConfirmTransaction = () => {
+    if (cart.some(item => { const product = products.find(p => p.id === item.id); return !product || isExpiredProduct(product); })) {
+      toast.error("Remove expired or unavailable products before checking out."); return;
+    }
     setSubmitting(true);
     checkoutService.submit({
       customerId: customerId ? Number(customerId) : null,
@@ -397,7 +390,7 @@ export function StaffPOS() {
         setDiscountValue("0");
         setShowDiscount(false);
         toast.success(`Transaction complete! ₱${money(result.totalAmount)} received.`);
-        inventoryService.getAll().then(setProducts).catch(() => {});
+        inventoryService.getAll(true).then(setProducts).catch(error => toastApiError(error));
       })
       .catch((err: unknown) => toast.error(getApiErrorMessage(err, "Failed to complete transaction.")))
       .finally(() => setSubmitting(false));
@@ -459,9 +452,9 @@ export function StaffPOS() {
       </div>
 
       {/* ── Desktop cart panel (hidden on mobile) ── */}
-      <div className="hidden lg:flex flex-col bg-white shadow-xl flex-shrink-0 h-full overflow-hidden"
-        style={{width:360,borderLeft:`1px solid ${C.border}`}}>
-        <div className="px-5 py-4 flex-shrink-0" style={{borderBottom:`1px solid ${C.border}`}}>
+      <div className="hidden lg:flex h-full min-h-0 flex-col justify-between bg-white rounded-xl border border-slate-200/80 p-4 flex-shrink-0 overflow-hidden"
+        style={{width:360}}>
+        <div className="pb-3 flex-shrink-0" style={{borderBottom:`1px solid ${C.border}`}}>
           <h3 className="font-bold text-base" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>Current Order</h3>
         </div>
         <CartContents
@@ -496,14 +489,14 @@ export function StaffPOS() {
       {mobileCartOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/30" onClick={() => setMobileCartOpen(false)} />
-          <div className="relative bg-white rounded-t-3xl shadow-2xl flex flex-col" style={{ maxHeight: "85vh" }}>
+          <div className="relative bg-white rounded-t-3xl shadow-2xl flex flex-col h-[85dvh] max-h-[85dvh] overflow-hidden">
             <div className="px-5 py-4 flex items-center justify-between flex-shrink-0" style={{borderBottom:`1px solid ${C.border}`}}>
               <h3 className="font-bold text-base" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>Current Order</h3>
               <button onClick={() => setMobileCartOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100" style={{color:C.muted}}>
                 <X size={18}/>
               </button>
             </div>
-            <div className="flex flex-col overflow-hidden" style={{ maxHeight: "calc(85vh - 60px)" }}>
+            <div className="flex flex-1 min-h-0 flex-col overflow-hidden p-4">
               <CartContents
                 cart={cart} total={total} subtotal={subtotal}
                 payMethod={payMethod} setPayMethod={setPayMethod}

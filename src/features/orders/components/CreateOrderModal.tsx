@@ -1,3 +1,5 @@
+import { toastApiError } from "@/lib/errorHandling";
+import { isExpiredProduct } from "@/features/inventory/utils/expiry";
 import { getApiErrorMessage } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
 import { Minus, Plus, Search, Trash2 } from "lucide-react";
@@ -33,8 +35,8 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
   useEffect(() => {
     if (!open) return;
     Promise.all([customersService.getAll(), inventoryService.getAll()])
-      .then(([customerData, productData]) => { setCustomers(customerData); setProducts(productData.filter(product => product.stock > 0)); })
-      .catch(() => toast.error("Failed to load order options."));
+      .then(([customerData, productData]) => { setCustomers(customerData); setProducts(productData.filter(product => product.stock > 0 && !isExpiredProduct(product))); })
+      .catch(error => toastApiError(error, "Failed to load order options."));
   }, [open]);
 
   const selectedItems = products.filter(product => (quantities[product.id] ?? 0) > 0);
@@ -67,12 +69,13 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
       setShowNewCustomer(false);
       setNewCustomer({ name: "", phone: "", email: "" });
       toast.success("Customer registered.");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to register customer."); }
+    } catch (error) { toastApiError(error, "Failed to register customer."); }
     finally { setLoading(false); }
   };
 
   const submit = async () => {
-    if (!customerId) { toast.error("Select a customer."); return; }
+    if (!hasValidCustomer) { toast.error("Select a customer."); return; }
+    if (selectedItems.some(product => isExpiredProduct(product))) { toast.error("Remove expired products before placing the order."); return; }
     if (!selectedItems.length) { toast.error("Add at least one product."); return; }
     if (parsedDiscount < 0 || (discountType === "percent" && parsedDiscount > 100)) { toast.error("Enter a valid discount value."); return; }
     const tendered = Number(amountTendered);

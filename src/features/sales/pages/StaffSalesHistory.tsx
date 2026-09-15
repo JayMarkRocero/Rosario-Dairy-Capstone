@@ -1,3 +1,5 @@
+import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
+import { toastApiError } from "@/lib/errorHandling";
 import { useMemo, useState, useEffect } from "react";
 import { Search, Printer } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
@@ -12,6 +14,7 @@ const PAYMENT_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 export function StaffSalesHistory() {
+  const pageCapacity = useStaffAutoPageSize(56, 200);
   const [myRecords, setMyRecords] = useState<Sale[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(true);
 
@@ -21,7 +24,7 @@ export function StaffSalesHistory() {
       .then(([sales, user]) => {
         setMyRecords(sales.filter(s => s.cashier === user.username));
       })
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => setRecordsLoading(false));
   }, []);
 
@@ -65,17 +68,17 @@ export function StaffSalesHistory() {
   }, [myRecords]);
 
   const columns: Column<Sale>[] = [
-    { key:"receipt", header:"Receipt #", width:"18%",
+    { key:"receipt", header:"Receipt #", align:"left", width:"18%",
       render: s => <span className="font-mono text-xs whitespace-nowrap" style={{ color: C.muted }}>{s.receipt}</span> },
-    { key:"customer", header:"Customer", width:"22%",
+    { key:"customer", header:"Customer", align:"left", width:"26%",
       render: s => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{s.customer}</span> },
-    { key:"date", header:"Date", align:"center", width:"16%",
+    { key:"date", header:"Date", align:"center", width:"18%",
       render: s => <span className="text-xs whitespace-nowrap" style={{ color: C.muted }}>{s.date}</span> },
-    { key:"payment", header:"Payment", align:"center", width:"16%",
+    { key:"payment", header:"Payment", align:"center", width:"14%",
       render: s => {
         const pm = PAYMENT_STYLE[s.payment] ?? { bg: "#F5F5F5", color: C.muted };
         return (
-          <div className="flex justify-center">
+          <div className="flex items-center justify-center gap-1">
             <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ backgroundColor: pm.bg, color: pm.color }}>
               {s.payment}
             </span>
@@ -84,9 +87,9 @@ export function StaffSalesHistory() {
       } },
     { key:"total", header:"Total", align:"center", width:"14%",
       render: s => <span className="font-semibold text-sm whitespace-nowrap" style={{ color: C.text }}>₱{s.total.toLocaleString()}</span> },
-    { key:"receipt_action", header:"Receipt", align:"center", width:"14%",
+    { key:"receipt_action", header:"Receipt", align:"center", width:"10%",
       render: () => (
-        <div className="flex justify-center">
+        <div className="flex items-center justify-center gap-1">
           <button className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" style={{ color: C.muted }}>
             <Printer size={13} />
           </button>
@@ -95,7 +98,7 @@ export function StaffSalesHistory() {
   ];
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col min-h-full gap-4 overflow-hidden">
+    <div className="px-4 sm:px-6 pt-3 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden">
       {/* Header - fixed */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div>
@@ -121,9 +124,9 @@ export function StaffSalesHistory() {
       </div>
 
       {/* Table card - no internal scroll, table paginates instead */}
-      <Card className="p-5 overflow-hidden">
+      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
         {/* Filter bar */}
-        <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3 mb-4 shrink-0">
           <div
             className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border w-full sm:w-72"
             style={{ borderColor: C.border }}
@@ -163,12 +166,13 @@ export function StaffSalesHistory() {
         </div>
 
         {/* Table with real pagination, no internal scroll */}
-        <div className="overflow-x-auto">
+        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
           <EnhancedTable
+            rowHeight={56}
             columns={columns}
             data={filteredRecords}
             rowKey={s => s.receipt}
-            pageSize={4}
+            pageCapacity={pageCapacity}
             searchable={false}
             showExport={false}
             showCount={false}

@@ -11,12 +11,18 @@ const compiled = buildSync({
   stdin: { contents: `
     export { default as http } from './src/lib/api';
     export * from './src/lib/api';
+    export * from './src/hooks/useAutoPageSize';
+    export * from './src/features/pos/api/checkout.service';
+    export * from './src/features/orders/api/orders.service';
+    export * from './src/features/sales/api/sales.service';
+    export * from './src/features/inventory/utils/expiry';
     export * from './src/features/auth/api/auth.service';
     export * from './src/features/settings/api/settings.service';
     export * from './src/features/inventory/api/inventory.service';
     export * from './src/features/reports/api/reports.service';
     export * from './src/lib/notifications.service';
   `, resolveDir: root },
+  define: { 'import.meta.env': '{}' },
   bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false,
   alias: { '@': path.join(root, 'src') },
 }).outputFiles[0].text;
@@ -169,4 +175,88 @@ test('PDF download requests a blob and converts JSON blob errors to useful messa
   responseStatus = 400;
   responseData = new Blob([JSON.stringify({ error: 'Report unavailable.' })], { type: 'application/json' });
   await assert.rejects(api.reportsService.downloadReportPDF('daily_sales'), { message: 'Report unavailable.' });
+});
+
+
+test('checkout sends decimal strings and refreshes reports after committing', async () => {
+  responseData = { id: 7, subtotal: '43.00', total_amount: '43.00', change_due: '7.00' };
+  const result = await api.checkoutService.submit({ customerId: null, items: [{ productId: 1, quantity: 2.5 }], paymentMethod: 'Cash', discountType: 'fixed', discountValue: 1.5, amountTendered: 50 });
+  assert.deepEqual(JSON.parse(calls[0].data), { customer_id: null, items: [{ product_id: 1, quantity: '2.5' }], payment_method: 'cash', discount_type: 'fixed', discount_value: '1.5', amount_tendered: '50' });
+  assert.equal(calls[1].url, '/api/reports/refresh/');
+  assert.equal(result.totalAmount, 43);
+  assert.equal(result.changeDue, 7);
+});
+
+test('a report refresh failure never rejects an already completed checkout', async () => {
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    if (config.url === '/api/reports/refresh/') throw new AxiosError('Offline');
+    return { data: { id: 7, subtotal: '43', total_amount: '43', change_due: null }, status: 200, config, headers: {} };
+  };
+  const result = await api.checkoutService.submit({ items: [{ productId: 1, quantity: 1 }], paymentMethod: 'GCash', discountType: 'none', discountValue: 0 });
+  assert.equal(result.id, 7);
+  assert.equal(JSON.parse(calls[0].data).amount_tendered, '0');
+});
+
+test('order creation rejects missing customers and refreshes only after a successful save', async () => {
+  await assert.rejects(api.ordersService.createOrder({ customer_id: 0, items: [] }), { status: 400 });
+  assert.equal(calls.length, 0);
+  await api.ordersService.createOrder({ customer_id: 3, items: [{ product_id: 2, quantity: 1.5 }] });
+  assert.equal(calls[0].url, '/sales/orders/');
+  assert.equal(JSON.parse(calls[0].data).items[0].quantity, '1.5');
+  assert.equal(calls[1].url, '/api/reports/refresh/');
+});
+
+test('paginated transaction history includes all pages with numeric totals', async () => {
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    return { data: { count: 2, results: [{ id: config.params.page, total_amount: '43.00', created_at: '2026-09-10T10:00:00Z', handled_by: { username: 'staff' }, payment_method: 'cash' }] }, status: 200, config, headers: {} };
+  };
+  const sales = await api.salesService.getAll({ startDate: '2026-09-01' });
+  assert.equal(sales.length, 2);
+  assert.equal(sales[1].total, 43);
+  assert.deepEqual(calls.map(call => call.params.page), [1, 2]);
+  assert.equal(calls[1].params.start_date, '2026-09-01');
+});
+
+test('concurrent unauthorized calls share a refresh and retry with the new bearer token', async () => {
+  api.setAccessToken('old'); api.setRefreshToken('refresh');
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    const response = { status: 200, data: {}, config, headers: {} };
+    if (config.url === '/accounts/refresh/') return { ...response, data: { access: 'new', refresh: 'rotated' } };
+    if (config.headers.Authorization === 'Bearer old') throw new AxiosError('Expired', undefined, config, undefined, { ...response, status: 401 });
+    assert.equal(config.headers.Authorization, 'Bearer new');
+    return response;
+  };
+  await Promise.all([api.authService.getCurrentUser(), api.settingsService.get()]);
+  assert.equal(calls.filter(call => call.url === '/accounts/refresh/').length, 1);
+  assert.equal(api.getAccessToken(), 'new');
+  assert.equal(api.getRefreshToken(), 'rotated');
+});
+
+test('expiry validation uses calendar dates, preserves today and rejects invalid dates', () => {
+  const now = new Date(2026, 8, 10, 18);
+  assert.equal(api.isExpiredProduct({ expiry: '2026-09-10' }, now), false);
+  assert.equal(api.isExpiredProduct({ expiry_date: '2026-09-09' }, now), true);
+  assert.equal(api.isExpiredProduct({ status: 'Expired', expiry: '2026-09-11' }, now), true);
+  assert.equal(api.isExpiredProduct({ expiry: 'invalid' }, now), true);
+});
+
+test('backend detail, error and message responses remain explicit', async () => {
+  responseStatus = 400;
+  for (const key of ['detail', 'error', 'message']) {
+    responseData = { [key]: 'Expired batch stock.' };
+    await assert.rejects(api.http.post('/sales/checkout/', {}), { message: 'Expired batch stock.' });
+  }
+});
+
+
+test('auto-pagination subtracts measured chrome and floors partial rows', () => {
+  assert.equal(api.calculatePageSize(600, 40, 40, 52), 10);
+  assert.equal(api.calculatePageSize(599, 40, 40, 52), 9);
+  assert.equal(api.calculatePageSize(352, 40, 0, 52), 6);
+  assert.equal(api.calculatePageSize(351, 40, 0, 52), 5);
+  assert.equal(api.calculatePageSize(0, 40, 40, 52), 3);
+  assert.equal(api.calculatePageSize(320, 40, 0, 56), 5);
 });

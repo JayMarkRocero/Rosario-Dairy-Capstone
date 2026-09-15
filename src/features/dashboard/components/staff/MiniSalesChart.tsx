@@ -1,3 +1,5 @@
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect, useMemo } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Card } from "@/components/data-display/Card";
@@ -8,6 +10,7 @@ import { authService } from "@/features/auth/api/auth.service";
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function MiniSalesChart() {
+  const reportVersion = useReportVersion();
   const [sales, setSales] = useState<Sale[]>([]);
   const [username, setUsername] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,7 +24,7 @@ export function MiniSalesChart() {
         setSales(s);
         setUsername(user.username);
       })
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -29,7 +32,7 @@ export function MiniSalesChart() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reportVersion]);
 
   const chartData = useMemo(() => {
     const mySales = sales.filter(s => s.cashier === username);

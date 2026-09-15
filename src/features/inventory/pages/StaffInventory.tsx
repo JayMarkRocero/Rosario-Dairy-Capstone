@@ -1,3 +1,5 @@
+import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
+import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass, searchContainerClass } from "@/styles/controlClasses";
 import { useMemo, useState, useEffect } from "react";
 import { AlertTriangle, Search } from "lucide-react";
@@ -43,14 +45,15 @@ function getStatus(item: InventoryItem): "Expired" | "Low" | "Near Expiry" | "Ac
 }
 
 export function StaffInventory() {
+  const pageCapacity = useStaffAutoPageSize(56);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
 
   useEffect(() => {
     setItemsLoading(true);
-    inventoryService.getAll()
+    inventoryService.getAll(true)
       .then(setItems)
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => setItemsLoading(false));
   }, []);
 
@@ -87,24 +90,27 @@ export function StaffInventory() {
 }, [items, search, category, status]);
 
   const columns: Column<InventoryItem>[] = [
-    { key:"name", header:"Product", width:"24%",
+    { key:"name", header:"Product", align:"left", width:"26%",
       render: p => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{p.name}</span> },
-    { key:"cat", header:"Category", align:"center", width:"14%",
+    { key:"cat", header:"Category", align:"center", width:"15%",
       render: p => (
-        <div className="flex justify-center">
+        <div className="flex items-center justify-center gap-2">
           <span className="text-xs px-2.5 py-1 rounded-md font-medium whitespace-nowrap inline-flex items-center gap-1 border border-blue-200/60" style={{ backgroundColor: C.blue + "15", color: C.blue }}>
             {p.cat}
           </span>
         </div>
       ) },
-    { key:"stock", header:"Available Qty", align:"right", width:"16%",
+    { key:"price", header:"Price", align:"center", width:"14%",
+      sortKey: p => p.price,
+      render: p => <span className="font-medium text-sm tabular-nums" style={{ color: C.text }}>₱{p.price.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> },
+    { key:"stock", header:"Available Qty", align:"center", width:"15%",
       render: p => {
         const itemStatus = getStatus(p);
         const iconColor = itemStatus === "Expired" ? C.red : itemStatus === "Low" ? C.orange : itemStatus === "Near Expiry" ? "#F59E0B" : undefined;
         return (
-          <div className="flex items-center justify-end gap-2">
-            <span className="font-medium text-sm" style={{ color: (itemStatus === "Expired" || itemStatus === "Low") ? C.red : C.text }}>{p.stock}</span>
+          <div className="flex items-center justify-center gap-1.5">
             {itemStatus !== "Active" && <AlertTriangle size={11} style={{ color: iconColor }} />}
+            <span className="font-medium text-sm" style={{ color: (itemStatus === "Expired" || itemStatus === "Low") ? C.red : C.text }}>{p.stock}</span>
           </div>
         );
       } },
@@ -119,11 +125,11 @@ export function StaffInventory() {
         );
       } },
     { key:"status", header:"Status", align:"center", width:"14%",
-      render: p => <div className="flex justify-center"><StatusBadge status={getStatus(p)} /></div> },
+      render: p => <div className="flex items-center justify-center gap-2"><StatusBadge status={getStatus(p)} /></div> },
   ];
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col min-h-full gap-4 overflow-hidden">
+    <div className="px-4 sm:px-6 pt-3 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden">
       {/* Header + notice - fixed */}
       <div className="flex-shrink-0 space-y-4">
         {/* Read-only notice */}
@@ -137,9 +143,9 @@ export function StaffInventory() {
       </div>
 
       {/* Single card: filter bar + table, no internal scroll, table paginates instead */}
-      <Card className="p-5 overflow-hidden">
+      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
         {/* Filter bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 shrink-0">
           {/* Search */}
           <div
             className={`${searchContainerClass} w-full sm:w-72`}
@@ -183,12 +189,13 @@ export function StaffInventory() {
         </div>
 
         {/* Table with real pagination, no internal scroll */}
-        <div className="overflow-x-auto">
+        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
           <EnhancedTable
+            rowHeight={56}
             columns={columns}
             data={filteredItems}
             rowKey={p => p.id}
-            pageSize={7}
+            pageCapacity={pageCapacity}
             searchable={false}
             showExport={false}
             showCount={false}

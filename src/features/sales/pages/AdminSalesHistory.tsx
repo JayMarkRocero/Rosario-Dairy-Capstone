@@ -1,3 +1,5 @@
+import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useMemo, useEffect } from "react";
 import { Printer } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
@@ -13,6 +15,7 @@ const PAYMENT_STYLE: Record<string, { bg: string; color: string }> = {
 const PAYMENT_METHODS = ["Cash", "Online"];
 
 export function AdminSalesHistory() {
+  const pageCapacity = useAdminAutoPageSize(56);
   const [records, setRecords] = useState<Sale[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(true);
   const [paymentFilter, setPaymentFilter] = useState("All");
@@ -22,7 +25,7 @@ export function AdminSalesHistory() {
     setRecordsLoading(true);
     salesService.getAll({ startDate: dateFilter || undefined, endDate: dateFilter || undefined })
       .then(setRecords)
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => setRecordsLoading(false));
   };
 
@@ -41,30 +44,30 @@ export function AdminSalesHistory() {
   }, [records]);
 
   const columns: Column<Sale>[] = [
-    { key:"receipt", header:"Receipt #", width:"16%", sortKey: r => r.receipt,
+    { key:"receipt", header:"Receipt #", align:"left", width:"15%", sortKey: r => r.receipt,
       render: r => <span className="font-mono text-xs whitespace-nowrap" style={{ color: C.muted }}>{r.receipt}</span> },
-    { key:"customer", header:"Customer", width:"18%", sortKey: r => r.customer,
+    { key:"customer", header:"Customer", align:"left", width:"22%", sortKey: r => r.customer,
       render: r => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{r.customer}</span> },
-    { key:"cashier", header:"Cashier", align:"center", width:"16%", sortKey: r => r.cashier,
+    { key:"cashier", header:"Cashier", align:"center", width:"14%", sortKey: r => r.cashier,
       render: r => <span className="text-xs whitespace-nowrap" style={{ color: C.muted }}>{r.cashier}</span> },
-    { key:"date", header:"Date", align:"center", width:"14%", sortKey: r => r.date,
+    { key:"date", header:"Date", align:"center", width:"15%", sortKey: r => r.date,
       render: r => <span className="text-xs whitespace-nowrap" style={{ color: C.muted }}>{r.date}</span> },
-    { key:"payment", header:"Payment", align:"center", width:"14%",
+    { key:"payment", header:"Payment", align:"center", width:"12%",
       render: r => {
         const pm = PAYMENT_STYLE[r.payment] ?? { bg: "#F5F5F5", color: C.muted };
         return (
-          <div className="flex justify-center">
+          <div className="flex items-center justify-center gap-1">
             <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ backgroundColor: pm.bg, color: pm.color }}>
               {r.payment}
             </span>
           </div>
         );
       } },
-    { key:"total", header:"Total", align:"center", width:"14%", sortKey: r => r.total,
+    { key:"total", header:"Total", align:"center", width:"12%", sortKey: r => r.total,
       render: r => <span className="font-semibold text-sm whitespace-nowrap" style={{ color: C.text }}>₱{r.total.toLocaleString()}</span> },
-    { key:"actions", header:"Actions", align:"center", width:"8%",
+    { key:"actions", header:"Actions", align:"center", width:"10%",
       render: () => (
-        <div className="flex justify-center" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
           <button className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" style={{ color: C.muted }}>
             <Printer size={13} />
           </button>
@@ -73,7 +76,7 @@ export function AdminSalesHistory() {
   ];
 
   return (
-    <div className="flex flex-col min-h-full gap-4 p-4 sm:p-6 max-w-[1400px] mx-auto w-full overflow-hidden">
+    <div className="flex flex-1 flex-col h-full min-h-0 gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full overflow-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
           <h2 className="text-lg font-bold" style={{ color: C.muted }}>Complete transaction records</h2>
@@ -81,14 +84,14 @@ export function AdminSalesHistory() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-shrink-0">
-        <Card className="p-4 min-w-0">
+        <Card className="px-3.5 py-3 min-w-0">
           <div className="font-bold text-xl truncate" style={{ color: C.blue, fontFamily: "Poppins, sans-serif" }}>
             ₱{summary.total.toLocaleString()}
           </div>
           <div className="font-medium text-sm mt-1" style={{ color: C.text }}>Total Revenue</div>
           <div className="text-xs mt-0.5" style={{ color: C.muted }}>{summary.count} transactions</div>
         </Card>
-        <Card className="p-4 min-w-0">
+        <Card className="px-3.5 py-3 min-w-0">
           <div className="font-bold text-xl truncate" style={{ color: C.green, fontFamily: "Poppins, sans-serif" }}>
             {summary.count}
           </div>
@@ -99,13 +102,17 @@ export function AdminSalesHistory() {
         </Card>
       </div>
 
-      <Card className="p-5 overflow-hidden">
-        <div className="overflow-x-auto">
+      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           <EnhancedTable
+            rowHeight={56}
+            fillHeight
+            scrollBody
+            disableScroll
             columns={columns}
             data={filteredRecords}
             rowKey={r => r.receipt}
-            pageSize={4}
+            pageCapacity={pageCapacity}
             searchable
             searchKeys={r => [r.receipt, r.cashier]}
             searchPlaceholder="Search transactions…"

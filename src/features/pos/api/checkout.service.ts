@@ -1,3 +1,4 @@
+import { reportsService } from "@/features/reports/api/reports.service";
 import http, { type CheckoutPayload, type DjangoTransaction } from "@/lib/api";
 
 export interface CheckoutCartItem {
@@ -23,13 +24,14 @@ export const checkoutService = {
   }): Promise<CheckoutResult> => {
     const payload: CheckoutPayload = {
       customer_id: input.customerId ?? null,
-      items: input.items.map(i => ({ product_id: i.productId, quantity: i.quantity })),
+      items: input.items.map(i => ({ product_id: i.productId, quantity: String(i.quantity) })),
       payment_method: input.paymentMethod === "Cash" ? "cash" : "online",
       discount_type: input.discountType,
-      discount_value: input.discountValue,
-      amount_tendered: input.paymentMethod === "Cash" ? input.amountTendered ?? null : null,
+      discount_value: String(input.discountValue),
+      amount_tendered: String(input.amountTendered ?? 0),
     };
     const { data: txn } = await http.post<DjangoTransaction>("/sales/checkout/", payload);
+    await reportsService.refreshAfterMutation();
     return {
       id: txn.id,
       subtotal: parseFloat(txn.subtotal),

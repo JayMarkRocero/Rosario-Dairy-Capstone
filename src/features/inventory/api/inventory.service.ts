@@ -34,14 +34,14 @@ function fefoStatus(days: number): { st: FEFOItem["st"]; priority: string } {
 }
 
 export const inventoryService = {
-  getAll: async (): Promise<InventoryItem[]> => {
+  getAll: async (staffVisibleOnly = false): Promise<InventoryItem[]> => {
   const [productsResponse, batchesResponse] = await Promise.all([
     http.get<DjangoProduct[]>("/inventory/products/"),
     http.get<DjangoProductBatch[]>("/inventory/product-batches/"),
   ]);
   const allProducts = productsResponse.data;
   const batches = batchesResponse.data;
-  const products = allProducts.filter((p: DjangoProduct) => p.is_active);
+  const products = allProducts.filter((p: DjangoProduct) => p.is_active && (!staffVisibleOnly || (p.category.is_active && p.category.is_visible_to_staff)));
 
 
     return products.map((p: DjangoProduct) => {
@@ -110,7 +110,7 @@ export const inventoryService = {
     products: activeProducts.filter((p: DjangoProduct) => p.category.id === c.id).length,
     desc: c.description ?? "",
     is_active: c.is_active,
-    is_visible_to_staff: c.is_visible_to_staff,
+    is_visible_to_staff: c.is_active && c.is_visible_to_staff,
   })).sort((a, b) => a.name.localeCompare(b.name));
 },
 
@@ -202,6 +202,8 @@ export const inventoryService = {
   // flag is flipped to false rather than the row being removed, so existing
   // products keep their category reference intact.
   deleteCategory: async (categoryId: number): Promise<string> => {
+    // Hide first so a deactivated category never remains staff-visible.
+    await http.patch(`/inventory/categories/${categoryId}/`, { is_visible_to_staff: false });
     const { data } = await http.delete<{ message: string }>(`/inventory/categories/${categoryId}/`);
     const { message } = data;
     return message;

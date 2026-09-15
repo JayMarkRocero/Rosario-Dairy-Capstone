@@ -1,3 +1,5 @@
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect, useMemo } from "react";
 import { BarChart2, Check, ClipboardList, Package } from "lucide-react";
 import { KPICard } from "@/components/data-display/KPICard";
@@ -14,6 +16,7 @@ function todayStr(): string {
 }
 
 export function StaffKPICards() {
+  const reportVersion = useReportVersion();
   const [loading, setLoading] = useState(true);
   const [sales, setSales] = useState<Sale[]>([]);
   const [orders, setOrders] = useState<OrderListItem[]>([]);
@@ -36,7 +39,7 @@ export function StaffKPICards() {
         setProducts(p);
         setUsername(user.username);
       })
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -44,7 +47,7 @@ export function StaffKPICards() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reportVersion]);
 
   const kpis = useMemo(() => {
     const today = todayStr();

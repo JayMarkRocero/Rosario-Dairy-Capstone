@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { ApiError, getRefreshToken, setRefreshToken, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
+import { ApiError, getApiErrorMessage, getRefreshToken, setRefreshToken, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
 import { toast } from "sonner";
 import { authService } from "@/features/auth/api/auth.service";
 
@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Capture authorization before clearing storage; logout still clears locally on failure.
       const request = refresh ? authService.logout(refresh) : Promise.resolve();
       clearSession(false);
-      void request.catch(() => toast.error("Signed out locally. Server logout could not be completed."));
+      void request.catch(error => toast.error(`Signed out locally. ${getApiErrorMessage(error, "Server logout could not be completed.")}`));
     },
     clearSessionExpiredFlag: () => setSessionExpired(false),
   };

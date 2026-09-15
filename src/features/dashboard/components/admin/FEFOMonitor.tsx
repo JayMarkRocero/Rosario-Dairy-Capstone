@@ -1,3 +1,5 @@
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect } from "react";
 import { AlertOctagon, AlertTriangle, PackageX, Wallet } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
@@ -30,6 +32,7 @@ function isExpired(expiry: string): boolean {
 }
 
 export function FEFOMonitor() {
+  const reportVersion = useReportVersion();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [fefoItems, setFefoItems] = useState<FEFOItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +46,7 @@ export function FEFOMonitor() {
         setItems(allItems);
         setFefoItems(fefo);
       })
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -51,7 +54,7 @@ export function FEFOMonitor() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reportVersion]);
 
   const expiredCount = items.filter(i => isExpired(i.expiry)).length;
   const nearExpiryCount = fefoItems.filter(i => i.days >= 0 && i.days <= 7 && !isExpired(i.expiry)).length;
@@ -141,13 +144,13 @@ export function FEFOMonitor() {
         ) : fefoItems.length === 0 ? (
           <p className="text-sm py-4" style={{ color: C.muted }}>No batches to monitor yet.</p>
         ) : (
-          <table className="w-full text-xs">
+          <table className="w-full table-fixed text-xs">
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.border}` }}>
                 {["", "Product", "Batch", "Qty", "Expiry", "Days", "Priority", "Status"].map(h => (
                   <th
                     key={h}
-                    className="text-left py-2.5 px-2 font-medium uppercase tracking-wide"
+                    className={`py-2.5 font-medium uppercase tracking-wide ${["Qty", "Days"].includes(h) ? "text-right pl-2 pr-6" : ["", "Priority", "Status"].includes(h) ? "text-center px-2" : "text-left px-2"}`}
                     style={{ color: C.muted }}
                   >
                     {h}
@@ -162,19 +165,19 @@ export function FEFOMonitor() {
                   className="hover:bg-gray-50 transition-colors"
                   style={{ borderBottom: `1px solid ${C.border}` }}
                 >
-                  <td className="py-2.5 px-2"><FEFODot st={item.st} /></td>
-                  <td className="py-2.5 px-2 font-medium whitespace-nowrap" style={{ color: C.text }}>{item.product}</td>
-                  <td className="py-2.5 px-2 font-mono whitespace-nowrap"   style={{ color: C.muted }}>{item.batch}</td>
-                  <td className="py-2.5 px-2 font-medium" style={{ color: C.text }}>{item.qty}</td>
-                  <td className="py-2.5 px-2 whitespace-nowrap"             style={{ color: C.text }}>{item.expiry}</td>
+                  <td className="py-2.5 text-center px-2"><FEFODot st={item.st} /></td>
+                  <td className="py-2.5 text-left px-2 font-medium whitespace-nowrap" style={{ color: C.text }}>{item.product}</td>
+                  <td className="py-2.5 text-left px-2 font-mono whitespace-nowrap"   style={{ color: C.muted }}>{item.batch}</td>
+                  <td className="py-2.5 text-right pl-2 pr-6 font-medium" style={{ color: C.text }}>{item.qty}</td>
+                  <td className="py-2.5 text-left px-2 whitespace-nowrap"             style={{ color: C.text }}>{item.expiry}</td>
                   <td
-                    className="py-2.5 px-2 font-semibold"
+                    className="py-2.5 text-right pl-2 pr-6 font-semibold"
                     style={{ color: item.days <= -1 ? C.red : item.days <= 7 ? C.orange : C.muted }}
                   >
                     {item.days}d
                   </td>
-                  <td className="py-2.5 px-2"><StatusBadge status={item.priority} /></td>
-                  <td className="py-2.5 px-2 whitespace-nowrap">
+                  <td className="py-2.5 text-center px-2"><StatusBadge status={item.priority} /></td>
+                  <td className="py-2.5 text-center px-2 whitespace-nowrap">
                     <span className="font-medium text-xs" style={{ color: STATUS_COLOR[item.st] }}>
                       {STATUS_LABEL[item.st]}
                     </span>

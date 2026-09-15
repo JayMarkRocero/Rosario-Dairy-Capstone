@@ -1,3 +1,4 @@
+import { toastApiError } from "@/lib/errorHandling";
 import { useState } from "react";
 import { ArrowUpRight, BarChart2, Download, FileText, LoaderCircle, Package, RefreshCw, TrendingUp, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -27,7 +28,7 @@ export function AdminReports() {
       await reportsService.downloadReportPDF(report.id);
       toast.success(`${report.title} downloaded.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to download report.");
+      toastApiError(error, "Failed to download report.");
     } finally {
       setExporting(null);
     }
@@ -39,7 +40,7 @@ export function AdminReports() {
       await reportsService.refreshReportCache();
       toast.success("Report data refreshed.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to refresh reports.");
+      toastApiError(error, "Failed to refresh reports.");
     } finally {
       setRefreshing(false);
     }

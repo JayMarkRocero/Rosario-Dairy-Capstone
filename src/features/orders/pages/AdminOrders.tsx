@@ -1,3 +1,5 @@
+import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
+import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
@@ -18,6 +20,7 @@ import { C } from "@/styles/tokens/colors";
 const STATUSES = ["Fulfilled", "Cancelled"];
 
 export function AdminOrders() {
+  const pageCapacity = useAdminAutoPageSize(56);
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [status, setStatus] = useState("All");
@@ -29,7 +32,7 @@ export function AdminOrders() {
 
   const load = () => {
     setLoadingList(true);
-    ordersService.getAll().then(setOrders).catch(() => toast.error("Failed to load orders."))
+    ordersService.getAll().then(setOrders).catch(error => toastApiError(error, "Failed to load orders."))
       .finally(() => setLoadingList(false));
   };
   useEffect(load, []);
@@ -43,29 +46,29 @@ export function AdminOrders() {
     ordersService.cancelOrder(selected.id).then(order => {
       if (order.warning) toast.warning(order.warning); else toast.success("Order cancelled.");
       setCancelOpen(false); setViewOpen(false); load();
-    }).catch((error: Error) => toast.error(error.message)).finally(() => setLoading(false));
+    }).catch((error: Error) => toastApiError(error)).finally(() => setLoading(false));
   };
 
   const columns: Column<OrderListItem>[] = [
-    { key:"id", header:"Order ID", render:o=><span className="font-mono text-xs" style={{color:C.muted}}>#{o.id}</span> },
-    { key:"customer", header:"Customer", sortKey:o=>o.customer, render:o=><span className="font-medium text-sm">{o.customer}</span> },
-    { key:"status", header:"Status", align:"center", render:o=><StatusBadge status={o.status}/> },
-    { key:"staff", header:"Staff", align:"center", render:o=><span className="text-xs" style={{color:C.muted}}>{o.staff}</span> },
-    { key:"date", header:"Date", align:"center", render:o=><span className="text-xs" style={{color:C.muted}}>{o.date}</span> },
-    { key:"total", header:"Total", align:"right", sortKey:o=>o.total, render:o=><span className="font-medium text-sm">₱{o.total.toLocaleString()}</span> },
-    { key:"actions", header:"Actions", align:"center", render:o=><div className="flex gap-1 justify-center" onClick={e=>e.stopPropagation()}>
+    { key:"id", header:"Order ID", align:"left", width:"12%", render:o=><span className="font-mono text-xs" style={{color:C.muted}}>#{o.id}</span> },
+    { key:"customer", header:"Customer", align:"left", width:"22%", sortKey:o=>o.customer, render:o=><span className="font-medium text-sm">{o.customer}</span> },
+    { key:"status", header:"Status", align:"center", width:"14%", render:o=><StatusBadge status={o.status}/> },
+    { key:"staff", header:"Staff", align:"center", width:"14%", render:o=><span className="text-xs" style={{color:C.muted}}>{o.staff}</span> },
+    { key:"date", header:"Date", align:"center", width:"14%", render:o=><span className="text-xs" style={{color:C.muted}}>{o.date}</span> },
+    { key:"total", header:"Total", align:"center", width:"12%", sortKey:o=>o.total, render:o=><span className="flex items-center justify-center gap-1.5 font-medium text-sm">₱{o.total.toLocaleString()}</span> },
+    { key:"actions", header:"Actions", align:"center", width:"12%", render:o=><div className="flex items-center justify-center gap-1.5" onClick={e=>e.stopPropagation()}>
       <ActionButton label="View details" onClick={()=>view(o)}><Eye size={13}/></ActionButton>
       {o.status === "Fulfilled" && <ActionButton label="Cancel order" destructive onClick={()=>openCancel(o)}><XCircle size={13}/></ActionButton>}
     </div> },
   ];
 
-  return <div className="flex flex-col min-h-full gap-4 p-4 sm:p-6 max-w-[1400px] mx-auto w-full">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Manage and track all customer orders</h2><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[
+  return <div className="flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 py-2 max-w-[1400px] mx-auto w-full">
+    <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Manage and track all customer orders</h2><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 flex-shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green],
       ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red], ["Warnings", orders.filter(o=>o.warning).length, C.orange],
-    ].map(([label,value,color])=><SummaryCard key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-    <Card className="p-5"><EnhancedTable columns={columns} data={data} rowKey={o=>o.id} pageSize={4} searchable
+    ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
+    <Card className="p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden"><EnhancedTable rowHeight={56} fillHeight scrollBody disableScroll columns={columns} data={data} rowKey={o=>o.id} pageCapacity={pageCapacity} searchable
       searchKeys={o=>[String(o.id),o.customer,o.staff]} onRowClick={view} showExport={false}
       emptyTitle={loadingList?"Loading orders…":"No orders found"} emptyDesc={loadingList?"Fetching data from the server.":"No orders match your filters."}
       extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/></Card>

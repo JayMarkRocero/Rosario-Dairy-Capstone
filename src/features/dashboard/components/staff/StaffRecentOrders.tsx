@@ -1,3 +1,5 @@
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect } from "react";
 import { Card } from "@/components/data-display/Card";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
@@ -8,6 +10,7 @@ import { ordersService } from "@/features/orders/api/orders.service";
 import type { OrderListItem } from "@/features/orders/types/order";
 
 export function StaffRecentOrders() {
+  const reportVersion = useReportVersion();
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -18,7 +21,7 @@ export function StaffRecentOrders() {
       .then((data) => {
         if (active) setOrders(data);
       })
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -26,7 +29,7 @@ export function StaffRecentOrders() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reportVersion]);
 
   return (
     <Card className="p-4 flex flex-col h-full min-h-0 overflow-hidden">
@@ -38,7 +41,7 @@ export function StaffRecentOrders() {
       ) : orders.length === 0 ? (
         <p className="text-sm py-4" style={{ color: C.muted }}>No recent orders.</p>
       ) : (
-        <DataTable scrollable
+        <DataTable scrollable alignments={["left", "left", "center", "left"]}
           headers={["Order #", "Customer", "Status", "Date"]}
           rows={orders.map(o => [
             <span key="id"   className="font-mono text-xs"   style={{ color: C.muted }}>#{o.id}</span>,

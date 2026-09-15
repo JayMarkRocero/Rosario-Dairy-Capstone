@@ -1,3 +1,5 @@
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { Card } from "@/components/data-display/Card";
@@ -6,6 +8,7 @@ import { C } from "@/styles/tokens/colors";
 import { reportsService, type CategorySales } from "@/features/reports/api/reports.service";
 
 export function SalesCategoryChart() {
+  const reportVersion = useReportVersion();
   const [categoryData, setCategoryData] = useState<CategorySales[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -16,7 +19,7 @@ export function SalesCategoryChart() {
       .then((data) => {
         if (active) setCategoryData(data);
       })
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -24,7 +27,7 @@ export function SalesCategoryChart() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reportVersion]);
 
   return (
     <Card className="p-5">

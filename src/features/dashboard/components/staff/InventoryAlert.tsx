@@ -1,3 +1,5 @@
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect } from "react";
 import { Card } from "@/components/data-display/Card";
 import { C } from "@/styles/tokens/colors";
@@ -26,6 +28,7 @@ function isNearExpiry(expiry: string): boolean {
 }
 
 export function InventoryAlert() {
+  const reportVersion = useReportVersion();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,7 +39,7 @@ export function InventoryAlert() {
       .then((data) => {
         if (active) setItems(data);
       })
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -44,7 +47,7 @@ export function InventoryAlert() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reportVersion]);
 
   const lowStockCount = items.filter(i => i.low).length;
   const nearExpiryCount = items.filter(i => isNearExpiry(i.expiry)).length;

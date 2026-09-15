@@ -1,4 +1,4 @@
-import http, { type CreateCustomerPayload, type DjangoCustomer, type DjangoOrder, type UpdateCustomerPayload } from "@/lib/api";
+import http, { getAllPages, type CreateCustomerPayload, type DjangoCustomer, type DjangoOrder, type UpdateCustomerPayload } from "@/lib/api";
 import type { Customer } from "@/features/customers/types/customer";
 
 function orderTotal(order: { items: { subtotal: string }[] }): number {
@@ -8,11 +8,11 @@ function orderTotal(order: { items: { subtotal: string }[] }): number {
 export const customersService = {
   getAll: async (): Promise<Customer[]> => {
     const [customersResponse, ordersResponse] = await Promise.all([
-      http.get<DjangoCustomer[]>("/sales/customers/"),
-      http.get<DjangoOrder[]>("/sales/orders/"),
+      getAllPages<DjangoCustomer>("/sales/customers/"),
+      getAllPages<DjangoOrder>("/sales/orders/"),
     ]);
-    const customers = customersResponse.data;
-    const orders = ordersResponse.data;
+    const customers = customersResponse;
+    const orders = ordersResponse;
 
     return customers.map(c => {
       const customerOrders = orders.filter(

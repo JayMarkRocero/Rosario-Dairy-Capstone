@@ -24,8 +24,6 @@ export function StaffLayout({ onLogout }: Props) {
   const [page, setPage] = useState<StaffPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuth();
-  const isPOS = page === "pos";
-  const isDashboard = page === "dashboard";
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: C.bg }}>
@@ -46,7 +44,7 @@ export function StaffLayout({ onLogout }: Props) {
           onMenuClick={() => setSidebarOpen(true)}
         />
         </div>
-        <main className={`flex-1 min-h-0 ${isPOS || isDashboard ? "overflow-hidden flex" : "overflow-y-auto"}`}>
+        <main className="flex-1 min-h-0 overflow-hidden flex">
           {page === "dashboard" && <StaffDashboard onNavigate={setPage} />}
           {page === "pos"       && <StaffPOS />}
           {page === "orders"    && <StaffOrders />}

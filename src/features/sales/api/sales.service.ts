@@ -1,4 +1,4 @@
-import http, { type DjangoTransaction } from "@/lib/api";
+import { getAllPages, type DjangoTransaction } from "@/lib/api";
 
 export interface Sale {
   receipt: string;
@@ -21,11 +21,8 @@ function transactionCustomerName(transaction: DjangoTransaction): string {
 
 export const salesService = {
   getAll: async (filters?: { startDate?: string; endDate?: string }): Promise<Sale[]> => {
-    const { data: transactions } = await http.get<DjangoTransaction[]>("/sales/transactions/", {
-      params: {
-        start_date: filters?.startDate,
-        end_date: filters?.endDate,
-      },
+    const transactions = await getAllPages<DjangoTransaction>("/sales/transactions/", {
+      start_date: filters?.startDate, end_date: filters?.endDate,
     });
 
     return transactions.map((t: DjangoTransaction) => ({

@@ -2,20 +2,20 @@ import { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card } from "@/components/data-display/Card";
 import { C } from "@/styles/tokens/colors";
-import { dailyRevData, weeklyRevData, monthlyRevData, yearlyRevData } from "@/features/dashboard/data/dummyData";
+import { useReportPreview, reportRows } from "@/features/reports/hooks/useReportPreview";
 
-type Period = "daily" | "weekly" | "monthly" | "yearly";
-
-const revMap: Record<Period, typeof dailyRevData> = {
-  daily:   dailyRevData,
-  weekly:  weeklyRevData,
-  monthly: monthlyRevData,
-  yearly:  yearlyRevData,
-};
+type Period = "daily" | "weekly" | "monthly";
 
 export function RevenueChart() {
   const [period, setPeriod] = useState<Period>("monthly");
-  const data = revMap[period];
+  const { data: report, loading, error } = useReportPreview(`${period}_sales`);
+  const totals = new Map<string, number>();
+  for (const row of reportRows(report)) {
+    if (typeof row.date !== "string") continue;
+    const value = Number(row.total_revenue);
+    if (Number.isFinite(value)) totals.set(row.date, (totals.get(row.date) ?? 0) + value);
+  }
+  const data = [...totals].sort(([a], [b]) => a.localeCompare(b)).map(([n, rev]) => ({ n, rev }));
 
   return (
     <Card className="p-5">
@@ -27,7 +27,7 @@ export function RevenueChart() {
           <p className="text-xs mt-0.5" style={{ color: C.muted }}>Total revenue over time</p>
         </div>
         <div className="flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1">
-          {(["daily", "weekly", "monthly", "yearly"] as Period[]).map(p => (
+          {(["daily", "weekly", "monthly"] as Period[]).map(p => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
@@ -44,7 +44,7 @@ export function RevenueChart() {
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={220}>
+      {loading || error || !data.length ? <p role={error ? "alert" : "status"} className="py-12 text-center text-sm text-slate-500">{loading ? "Loading revenue..." : error || "No dated revenue data is available for this period."}</p> : <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
           <defs>
             <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
@@ -74,7 +74,7 @@ export function RevenueChart() {
             activeDot={{ r: 5, fill: C.blue }}
           />
         </AreaChart>
-      </ResponsiveContainer>
+      </ResponsiveContainer>}
     </Card>
   );
 }

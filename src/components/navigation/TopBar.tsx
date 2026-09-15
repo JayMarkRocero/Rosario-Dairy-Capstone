@@ -1,3 +1,4 @@
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useRef, useEffect } from "react";
 import {
   Menu, Bell, AlertTriangle, Package, ClipboardList, CheckCircle,
@@ -48,7 +49,7 @@ function NotificationBell() {
       setLoading(true);
       notificationsService.getAll()
         .then(data => { if (active && request === generation) setNotifications(data); })
-        .catch(() => { if (active && request === generation) setNotifications([]); })
+        .catch(error => { if (active && request === generation) { setNotifications([]); toastApiError(error, "Unable to load notifications."); } })
         .finally(() => { if (active && request === generation) setLoading(false); });
     };
     refresh();

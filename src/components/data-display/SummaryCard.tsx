@@ -2,11 +2,12 @@ interface Props {
   label: string;
   value: string | number;
   color?: string;
+  compact?: boolean;
 }
 
-export function SummaryCard({ label, value, color = "#3b82f6" }: Props) {
+export function SummaryCard({ label, value, color = "#3b82f6", compact = false }: Props) {
   return (
-    <div className="flex h-24 items-center justify-between rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+    <div className={`flex items-center justify-between rounded-xl border border-slate-100 bg-white shadow-sm ${compact ? "h-20 p-3.5" : "h-24 p-4"}`}>
       <div className="flex min-w-0 items-center gap-3">
         <span className="h-10 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
         <div className="min-w-0">

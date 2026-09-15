@@ -1,3 +1,5 @@
+import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
+import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass, searchContainerClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { useEffect, useMemo, useState } from "react";
@@ -16,6 +18,7 @@ import { C } from "@/styles/tokens/colors";
 const STATUSES = ["Fulfilled", "Cancelled"];
 
 export function StaffOrders() {
+  const pageCapacity = useStaffAutoPageSize(56);
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -25,7 +28,7 @@ export function StaffOrders() {
   const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
-    ordersService.getAll().then(setOrders).catch(() => toast.error("Failed to load orders."))
+    ordersService.getAll().then(setOrders).catch(error => toastApiError(error, "Failed to load orders."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -36,23 +39,23 @@ export function StaffOrders() {
   const view = (order: OrderListItem) => { setSelected(order); setViewOpen(true); };
 
   const columns: Column<OrderListItem>[] = [
-    { key:"id", header:"Order ID", render:o=><span className="font-mono text-xs" style={{color:C.muted}}>#{o.id}</span> },
-    { key:"customer", header:"Customer", sortKey:o=>o.customer, render:o=><span className="font-medium text-sm">{o.customer}</span> },
-    { key:"status", header:"Status", align:"center", render:o=><StatusBadge status={o.status}/> },
-    { key:"date", header:"Date", align:"center", render:o=><span className="text-xs" style={{color:C.muted}}>{o.date}</span> },
-    { key:"total", header:"Total", align:"right", sortKey:o=>o.total, render:o=><span className="font-medium text-sm">₱{o.total.toLocaleString()}</span> },
-    { key:"actions", header:"Actions", align:"center", render:o=><ActionButton label="View details" onClick={()=>view(o)}><Eye size={13}/></ActionButton> },
+    { key:"id", header:"Order ID", align:"left", width:"15%", render:o=><span className="font-mono text-xs" style={{color:C.muted}}>#{o.id}</span> },
+    { key:"customer", header:"Customer", align:"left", width:"22%", sortKey:o=>o.customer, render:o=><span className="font-medium text-sm">{o.customer}</span> },
+    { key:"status", header:"Status", align:"center", width:"18%", render:o=><StatusBadge status={o.status}/> },
+    { key:"date", header:"Date", align:"center", width:"18%", render:o=><span className="text-xs" style={{color:C.muted}}>{o.date}</span> },
+    { key:"total", header:"Total", align:"center", width:"15%", sortKey:o=>o.total, render:o=><span className="font-medium text-sm">₱{o.total.toLocaleString()}</span> },
+    { key:"actions", header:"Actions", align:"center", width:"12%", render:o=><ActionButton label="View details" onClick={()=>view(o)}><Eye size={13}/></ActionButton> },
   ];
 
-  return <div className="p-4 sm:p-6 flex flex-col min-h-full gap-4 overflow-hidden">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><h3 style={{color:C.muted}}>View completed and cancelled orders</h3><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
-    <Card className="p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+  return <div className="px-4 sm:px-6 pt-3 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden">
+    <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><h3 style={{color:C.muted}}>View completed and cancelled orders</h3><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
+    <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 shrink-0">
         <div className={`${searchContainerClass} w-full sm:w-72`}><Search size={14} style={{color:C.muted}}/><input aria-label="Search records" className="h-full bg-transparent outline-none text-sm flex-1" placeholder="Search orders…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
         <select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>
         <span className="text-xs ml-auto" style={{color:C.muted}}>{loading?"Loading…":`${filtered.length} record${filtered.length===1?"":"s"}`}</span>
       </div>
-      <EnhancedTable columns={columns} data={filtered} rowKey={o=>o.id} pageSize={6} searchable={false} showExport={false} showCount={false} onRowClick={view} emptyTitle={loading?"Loading orders…":"No orders found"} emptyDesc={loading?"Fetching data from the server.":"No orders match your filters."}/>
+      <EnhancedTable rowHeight={56} fillHeight columns={columns} data={filtered} rowKey={o=>o.id} pageCapacity={pageCapacity} searchable={false} showExport={false} showCount={false} onRowClick={view} emptyTitle={loading?"Loading orders…":"No orders found"} emptyDesc={loading?"Fetching data from the server.":"No orders match your filters."}/>
     </Card>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md">
       {selected&&<div className="space-y-5">

@@ -5,7 +5,7 @@ const REFRESH_TOKEN_KEY = "rosario_refresh_token";
 const ACCESS_TOKEN_KEY = "rosario_access_token";
 
 const axiosInstance = axios.create({
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: import.meta.env?.VITE_API_BASE_URL || "http://127.0.0.1:8000",
   headers: { "Content-Type": "application/json" },
 });
 
@@ -51,7 +51,36 @@ export function getRefreshToken(): string | null {
   return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
-const PUBLIC_AUTH_PATHS = ["/accounts/login/", "/accounts/forgot-password/", "/accounts/reset-password/"];
+const PUBLIC_AUTH_PATHS = ["/accounts/login/", "/accounts/forgot-password/", "/accounts/reset-password/", "/accounts/refresh/"];
+
+let refreshRequest: Promise<string> | null = null;
+export function refreshAccessToken(): Promise<string> {
+  if (refreshRequest) return refreshRequest;
+  const refresh = getRefreshToken();
+  if (!refresh) return Promise.reject(new ApiError(401, "Please log in again."));
+  refreshRequest = axiosInstance.post<{ access: string; refresh?: string }>("/accounts/refresh/", { refresh })
+    .then(({ data }) => {
+      if (getRefreshToken() !== refresh) throw new ApiError(401, "Session changed. Please log in again.");
+      if (!data.access) throw new ApiError(401, "Unable to refresh your session.");
+      setAccessToken(data.access);
+      if (data.refresh) setRefreshToken(data.refresh);
+      return data.access;
+    }).finally(() => { refreshRequest = null; });
+  return refreshRequest;
+}
+
+export interface PaginatedResponse<T> { count: number; results: T[]; next?: string | null }
+export async function getAllPages<T>(url: string, params?: Record<string, unknown>): Promise<T[]> {
+  const rows: T[] = [];
+  let page = 1;
+  while (true) {
+    const { data } = await axiosInstance.get<T[] | PaginatedResponse<T>>(url, { params: { ...params, page } });
+    if (Array.isArray(data)) return [...rows, ...data];
+    rows.push(...data.results);
+    if (!data.results.length || rows.length >= data.count || data.next === null) return rows;
+    page += 1;
+  }
+}
 
 function appendTrailingSlash(url: string): string {
   const [pathAndQuery, hash = ""] = url.split("#", 2);
@@ -64,7 +93,7 @@ axiosInstance.interceptors.request.use((config) => {
   if (config.url) config.url = appendTrailingSlash(config.url);
 
   const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-  if (token && !PUBLIC_AUTH_PATHS.includes(config.url ?? "")) config.headers.Authorization = `Bearer ${token}`;
+  if (token && !config.headers.Authorization && !PUBLIC_AUTH_PATHS.includes(config.url ?? "")) config.headers.Authorization = `Bearer ${token}`;
 
   return config;
 });
@@ -84,7 +113,7 @@ function extractErrorMessage(data: unknown, fallback: string): string {
   return fieldMessages.join(" ") || fallback;
 }
 
-export function getApiErrorMessage(error: unknown, fallback: string): string {
+export function getApiErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
   if (axios.isAxiosError(error)) {
     return extractErrorMessage(error.response?.data, fallback);
   }
@@ -99,6 +128,18 @@ axiosInstance.interceptors.response.use(
     const status = error.response.status;
     const requestUrl = error.config?.url ?? "";
     const isPublicAuthRequest = PUBLIC_AUTH_PATHS.includes(requestUrl);
+    const config = error.config as (typeof error.config & { retried?: boolean });
+    if (status === 401 && !isPublicAuthRequest && requestUrl !== "/accounts/logout/" && config && !config.retried && getRefreshToken()) {
+      config.retried = true;
+      try {
+        const token = await refreshAccessToken();
+        config.headers.Authorization = `Bearer ${token}`;
+        return axiosInstance.request(config);
+      } catch (refreshError) {
+        // A temporary refresh outage must not discard a valid refresh token.
+        if (!(refreshError instanceof ApiError) || ![400, 401].includes(refreshError.status)) throw refreshError;
+      }
+    }
     const fallback = status === 429 ? "Too many attempts. Please wait before trying again." : `Request failed (${status})`;
     let data = error.response.data;
     if (data instanceof Blob) {
@@ -140,14 +181,7 @@ export interface CurrentUser {
   role: "admin" | "staff";
 }
 
-export interface CreateOrderPayload {
-  customer_id: number;
-  items: Array<{ product_id: number; quantity: number }>;
-  discount_type?: "none" | "percent" | "fixed";
-  discount_value?: number;
-  payment_method?: "cash" | "online";
-  amount_tendered?: number | null;
-}
+export type { CreateOrderPayload } from "@/features/orders/types/order";
 
 export interface DjangoCategory {
   id: number;
@@ -194,7 +228,7 @@ export interface CreateProductPayload {
   name: string;
   variant: string | null;
   unit: string;
-  unit_price: number;
+  unit_price: string | number;
   shelf_life: number;
   low_stock_threshold: number;
   category_id: number;
@@ -357,16 +391,16 @@ export type UpdateCustomerPayload = Partial<CreateCustomerPayload>;
 
 export interface CheckoutItemPayload {
   product_id: number;
-  quantity: number;
+  quantity: string;
 }
 
 export interface CheckoutPayload {
-  customer_id?: number | null;
+  customer_id: number | null;
   items: CheckoutItemPayload[];
   payment_method: "cash" | "online";
   discount_type: "none" | "percent" | "fixed";
-  discount_value: number;
-  amount_tendered: number | null;
+  discount_value: string;
+  amount_tendered: string;
 }
 
 export interface DjangoTransactionItem {

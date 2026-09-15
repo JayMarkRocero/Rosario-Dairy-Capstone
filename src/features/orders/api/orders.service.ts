@@ -1,4 +1,5 @@
-import http from "@/lib/api";
+import { reportsService } from "@/features/reports/api/reports.service";
+import http, { ApiError, getAllPages } from "@/lib/api";
 import type { CreateOrderPayload, Order, OrderItem, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
 
 function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
@@ -11,8 +12,9 @@ function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
 
 export const ordersService = {
   getAll: async (): Promise<OrderListItem[]> => {
-    const { data: orders } = await http.get<Order[]>("/sales/orders/");
-    return orders.map((o) => {
+    const orders = await getAllPages<Order>("/sales/orders/");
+    // Sort the complete list before either Orders view filters or paginates it.
+    return [...orders].sort((a, b) => b.id - a.id).map((o) => {
       const total = parseFloat(o.transaction.total_amount);
       return {
         id: o.id,
@@ -46,12 +48,20 @@ export const ordersService = {
   },
 
   createOrder: async (payload: CreateOrderPayload): Promise<Order> => {
-    const { data } = await http.post<Order>("/sales/orders/", payload);
+    if (!Number.isInteger(payload.customer_id) || payload.customer_id <= 0) throw new ApiError(400, "Select a valid customer.");
+    const { data } = await http.post<Order>("/sales/orders/", {
+      ...payload,
+      items: payload.items.map(item => ({ ...item, quantity: String(item.quantity) })),
+      ...(payload.discount_value !== undefined && { discount_value: String(payload.discount_value) }),
+      ...(payload.amount_tendered != null && { amount_tendered: String(payload.amount_tendered) }),
+    });
+    await reportsService.refreshAfterMutation();
     return data;
   },
 
   cancelOrder: async (orderId: number): Promise<Order> => {
     const { data } = await http.post<Order>(`/sales/orders/${orderId}/cancel/`);
+    await reportsService.refreshAfterMutation();
     return data;
   },
 

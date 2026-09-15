@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api";
 import http, { type DjangoBestSeller, type DjangoSalesByCategory } from "@/lib/api";
 
 export type ReportType = "daily_sales" | "weekly_sales" | "monthly_sales" | "inventory" | "sarima_forecast" | "customer";
@@ -43,7 +45,15 @@ export interface CategorySales {
 
 const CATEGORY_PALETTE = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#14B8A6"];
 
+export const REPORTS_UPDATED = "rosario:reports-updated";
+
 export const reportsService = {
+  refreshAfterMutation: async (): Promise<void> => {
+    try { await reportsService.refreshReportCache(); }
+    catch (error) {
+      toast.warning(`Saved successfully, but reports could not refresh: ${getApiErrorMessage(error, "Please retry refreshing reports.")}`);
+    }
+  },
   fetchReportPreview: async (type: ReportType): Promise<ReportPreview> => {
     const { data } = await http.get<ReportPreview>("/api/reports/preview/", { params: { type } });
     return data;
@@ -70,6 +80,7 @@ export const reportsService = {
 
   refreshReportCache: async (): Promise<void> => {
     await http.post("/api/reports/refresh/", {});
+    window.dispatchEvent(new Event(REPORTS_UPDATED));
   },
 
   getBestSellers: async (limit = 10): Promise<BestSeller[]> => {

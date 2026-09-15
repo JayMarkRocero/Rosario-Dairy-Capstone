@@ -1,3 +1,5 @@
+import { useReportPreview, reportNumber, useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect, useMemo } from "react";
 import { BarChart2, TrendingUp, ClipboardList, Users, Package, AlertTriangle } from "lucide-react";
 import { Modal } from "@/components/overlays/Modal";
@@ -64,6 +66,10 @@ function KPIDetailModal({ kpi, onClose }: { kpi: KPIConfig; onClose: ()=>void })
 }
 
 export function KPICards() {
+  const reportVersion = useReportVersion();
+  const dailyReport = useReportPreview("daily_sales");
+  const monthlyReport = useReportPreview("monthly_sales");
+  const inventoryReport = useReportPreview("inventory");
   const [activeKPI, setActiveKPI] = useState<KPIConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -87,7 +93,7 @@ export function KPICards() {
         setCustomers(c);
         setInventory(i);
       })
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -95,7 +101,7 @@ export function KPICards() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reportVersion]);
 
   const kpis: KPIConfig[] = useMemo(() => {
     const today = todayStr(0);
@@ -106,14 +112,14 @@ export function KPICards() {
     // ── Today's Sales ──
     const todaySales = sales.filter(s => s.date === today);
     const yesterdaySales = sales.filter(s => s.date === yesterday);
-    const todayTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
+    const todayTotal = reportNumber(dailyReport.data, "total_revenue") ?? todaySales.reduce((sum, s) => sum + s.total, 0);
     const yesterdayTotal = yesterdaySales.reduce((sum, s) => sum + s.total, 0);
     const todayTrend = pctChange(todayTotal, yesterdayTotal);
 
     // ── Monthly Revenue ──
     const thisMonthSales = sales.filter(s => s.date >= thisMonth.start && s.date <= thisMonth.end);
     const lastMonthSales = sales.filter(s => s.date >= lastMonth.start && s.date <= lastMonth.end);
-    const thisMonthTotal = thisMonthSales.reduce((sum, s) => sum + s.total, 0);
+    const thisMonthTotal = reportNumber(monthlyReport.data, "total_revenue") ?? thisMonthSales.reduce((sum, s) => sum + s.total, 0);
     const lastMonthTotal = lastMonthSales.reduce((sum, s) => sum + s.total, 0);
     const monthTrend = pctChange(thisMonthTotal, lastMonthTotal);
     const uniqueCustomersThisMonth = new Set(
@@ -163,7 +169,7 @@ export function KPICards() {
         change: `vs ${newLastMonth} new last month`,
       },
       {
-        title: "Products in Inventory", value: String(inventory.length), icon: <Package size={20}/>,
+        title: "Products in Inventory", value: String(reportNumber(inventoryReport.data, "total_products") ?? inventory.length), icon: <Package size={20}/>,
         trend: "neutral", trendLabel: "Live", color: C.orange,
         detail: `${categoryCount} categories · ${totalUnits.toLocaleString()} units total`,
         change: "Current snapshot",
@@ -178,7 +184,7 @@ export function KPICards() {
         change: lowStockItems.length > 0 ? "Restock required" : "All stock levels healthy",
       },
     ];
-  }, [sales, orders, customers, inventory]);
+  }, [sales, orders, customers, inventory, dailyReport.data, monthlyReport.data, inventoryReport.data]);
 
   if (loading) {
     return (

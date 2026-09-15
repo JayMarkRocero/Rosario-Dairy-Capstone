@@ -1,3 +1,5 @@
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect } from "react";
 import { Card } from "@/components/data-display/Card";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
@@ -5,6 +7,7 @@ import { C } from "@/styles/tokens/colors";
 import { reportsService, type BestSeller } from "@/features/reports/api/reports.service";
 
 export function BestSellersChart() {
+  const reportVersion = useReportVersion();
   const [bestSellers, setBestSellers] = useState<BestSeller[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -15,7 +18,7 @@ export function BestSellersChart() {
       .then((data) => {
         if (active) setBestSellers(data);
       })
-      .catch(() => {})
+      .catch(error => toastApiError(error))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -23,7 +26,7 @@ export function BestSellersChart() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reportVersion]);
 
   const maxSales = bestSellers[0]?.sales ?? 1;
 

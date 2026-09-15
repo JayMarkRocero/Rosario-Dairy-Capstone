@@ -1,3 +1,5 @@
+import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
+import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
@@ -52,6 +54,7 @@ function CustomerForm({ form, onChange }: { form: FormState; onChange: (f: FormS
 }
 
 export function AdminCustomers() {
+  const pageCapacity = useAdminAutoPageSize(56);
   const [list, setList] = useState<Customer[]>([]);
   const [listLoading, setListLoading] = useState(true);
 
@@ -59,7 +62,7 @@ export function AdminCustomers() {
     setListLoading(true);
     customersService.getAll()
       .then(setList)
-      .catch(() => toast.error("Failed to load customers."))
+      .catch(error => toastApiError(error, "Failed to load customers."))
       .finally(() => setListLoading(false));
   };
 
@@ -98,7 +101,7 @@ export function AdminCustomers() {
           setForm(EMPTY);
           loadCustomers();
         })
-        .catch((err: Error) => toast.error(err.message))
+        .catch((err: Error) => toastApiError(err))
         .finally(() => setLoading(false));
     } else {
       if (!selected) { setLoading(false); return; }
@@ -109,7 +112,7 @@ export function AdminCustomers() {
           setForm(EMPTY);
           loadCustomers();
         })
-        .catch((err: Error) => toast.error(err.message))
+        .catch((err: Error) => toastApiError(err))
         .finally(() => setLoading(false));
     }
   };
@@ -123,12 +126,12 @@ export function AdminCustomers() {
         setDeleteOpen(false);
         loadCustomers();
       })
-      .catch((err: Error) => toast.error(err.message || "Cannot delete a customer with existing orders."))
+      .catch((err: Error) => toastApiError(err, "Cannot delete a customer with existing orders."))
       .finally(() => setLoading(false));
   };
 
   const columns: Column<Customer>[] = [
-    { key:"name", header:"Customer", width:"28%", sortKey:r=>r.name,
+    { key:"name", header:"Customer", align:"left", width:"28%", sortKey:r=>r.name,
       render:r=>(
         <div className="flex items-center gap-2.5">
           <Avatar name={r.name} size={9}/>
@@ -138,17 +141,17 @@ export function AdminCustomers() {
           </div>
         </div>
       )},
-    { key:"phone", header:"Phone", align:"center", width:"16%",
+    { key:"phone", header:"Phone", align:"center", width:"18%",
       render:r=><span className="text-sm" style={{color:C.muted}}>{r.phone}</span> },
-    { key:"orders", header:"Orders", align:"right", width:"12%", sortKey:r=>r.orders,
+    { key:"orders", header:"Orders", align:"center", width:"12%", sortKey:r=>r.orders,
       render:r=><span className="font-medium text-sm" style={{color:C.text}}>{r.orders}</span> },
-    { key:"total", header:"Lifetime Value", align:"right", width:"16%", sortKey:r=>r.total,
+    { key:"total", header:"Lifetime Value", align:"center", width:"16%", sortKey:r=>r.total,
       render:r=><span className="font-medium text-sm" style={{color:C.green}}>₱{r.total.toLocaleString()}</span> },
     { key:"last", header:"Last Order", align:"center", width:"14%", sortKey:r=>r.last,
       render:r=><span className="text-xs" style={{color:C.muted}}>{r.last}</span> },
-    { key:"actions", header:"Actions", align:"center", width:"14%",
+    { key:"actions", header:"Actions", align:"center", width:"12%",
       render:r=>(
-        <div className="flex gap-1 justify-center" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center justify-center gap-1" onClick={e=>e.stopPropagation()}>
           <ActionButton label="View details" onClick={()=>openView(r)}><Eye size={13}/></ActionButton>
           <ActionButton label="Edit" onClick={()=>openEdit(r)}><Edit size={13}/></ActionButton>
           <ActionButton label="Delete" destructive onClick={()=>{setSelected(r);setDeleteOpen(true);}}><Trash2 size={13}/></ActionButton>
@@ -157,7 +160,7 @@ export function AdminCustomers() {
   ];
 
   return (
-    <div className="flex flex-col min-h-full gap-4 p-4 sm:p-6 max-w-[1400px] mx-auto w-full">
+    <div className="flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <h2 className="text-lg font-bold" style={{color:C.muted}}>
           Manage customer accounts and purchase history
@@ -175,16 +178,17 @@ export function AdminCustomers() {
         ? `₱${Math.round(list.reduce((a,c)=>a+c.total,0)/list.reduce((a,c)=>a+c.orders,0)).toLocaleString()}`
         : "₱0", color:C.navy },
   ].map(s=>(
-    <SummaryCard key={s.l} label={s.l} value={s.v} color={s.color} />
+    <SummaryCard compact key={s.l} label={s.l} value={s.v} color={s.color} />
   ))}
 </div>
 
-      <Card className="p-5">
+      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
         <EnhancedTable
+          rowHeight={56}
           columns={columns}
           data={filteredList}
           rowKey={r=>r.id}
-          pageSize={4}
+          pageCapacity={pageCapacity}
           searchable
           searchKeys={r=>[r.name,r.email,r.phone]}
           searchPlaceholder="Search customers…"
