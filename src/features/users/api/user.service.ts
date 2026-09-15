@@ -1,4 +1,5 @@
-import http, { type RegisterUserPayload, type ResetPasswordPayload, type UpdateUserPayload, type DjangoUserListItem } from "@/lib/api";
+import http, { ApiError, type DeactivationReason, type RegisterUserPayload, type ResetPasswordPayload, type UpdateUserPayload, type DjangoUserListItem } from "@/lib/api";
+import { DEACTIVATION_OPTIONS } from "@/features/users/types/user";
 import type { SystemUser } from "@/features/users/types/user";
 
 function toDisplayRole(role: "admin" | "staff"): "Administrator" | "Staff" {
@@ -27,6 +28,7 @@ export const userService = {
       email: u.email,
       role: toDisplayRole(u.role),
       status: u.is_active ? "Active" : "Inactive",
+      deactivationReason: u.deactivation_reason,
       last: formatLastLogin(u.last_login),
       phone: u.phone_number ?? "—", // blank until backend list endpoint includes it
       address: u.address ?? "—",    // blank until backend list endpoint includes it
@@ -74,8 +76,14 @@ export const userService = {
     await http.patch<{ message: string }>(`/accounts/users/${userId}/`, payload);
   },
 
-  deactivateUser: async (userId: number, reason: string): Promise<void> => {
+  deactivateUser: async (userId: number, reason: DeactivationReason): Promise<void> => {
+    if (!DEACTIVATION_OPTIONS.some(option => option.value === reason)) throw new ApiError(400, "Select a valid deactivation reason.");
     await http.delete(`/accounts/users/${userId}/`, { data: { reason } });
+  },
+
+  reactivateUser: async (userId: number): Promise<void> => {
+    const payload: UpdateUserPayload = { is_active: true };
+    await http.patch<{ message: string }>(`/accounts/users/${userId}/`, payload);
   },
 
   resetPassword: async (username: string, newPassword: string): Promise<void> => {

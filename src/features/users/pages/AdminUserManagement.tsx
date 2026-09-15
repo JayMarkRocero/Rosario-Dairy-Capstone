@@ -4,7 +4,7 @@ import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useEffect } from "react";
-import { Plus, Eye, Edit, Trash2, Lock, PenBox, KeyIcon } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Lock, PenBox, KeyIcon, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
@@ -16,6 +16,8 @@ import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTa
 import { C } from "@/styles/tokens/colors";
 import { userService } from "@/features/users/api/user.service";
 import type { SystemUser } from "@/features/users/types/user";
+import { DEACTIVATION_OPTIONS, canReactivateUser } from "@/features/users/types/user";
+import type { DeactivationReason } from "@/lib/api";
 import { isValidPhoneNumber, PHONE_FORMAT_HINT } from "@/lib/validators";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
@@ -23,7 +25,6 @@ const inputStyle = { borderColor:C.border, color:C.text, backgroundColor:"#F8FAF
 const readOnlyStyle = { borderColor:C.border, color:C.muted, backgroundColor:"#F1F3F5" };
 
 const ROLES = ["Administrator", "Staff"];
-const DEACTIVATION_REASONS = ["suspended", "resigned", "terminated", "on_leave"];
 
 interface FormState {
   username: string;
@@ -137,12 +138,13 @@ export function AdminUserManagement() {
   const [addOpen,     setAddOpen]     = useState(false);
   const [editOpen,    setEditOpen]    = useState(false);
   const [deleteOpen,  setDeleteOpen]  = useState(false);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
   const [resetOpen,   setResetOpen]   = useState(false);
   const [selected,    setSelected]    = useState<SystemUser | null>(null);
   const [loading,     setLoading]     = useState(false);
   const [role,        setRole]        = useState<"Administrator"|"Staff">("Staff");
   const [form,        setForm]        = useState<FormState>(EMPTY_FORM);
-  const [deactivateReason, setDeactivateReason] = useState(DEACTIVATION_REASONS[0]);
+  const [deactivateReason, setDeactivateReason] = useState<DeactivationReason>("suspended");
   const [newPassword, setNewPassword] = useState("");
 
   const summary = useMemo(() => {
@@ -239,7 +241,7 @@ export function AdminUserManagement() {
   };
 
   const handleDeactivate = () => {
-    if (!selected) return;
+    if (!selected || selected.status !== "Active" || loading) return;
     setLoading(true);
     userService.deactivateUser(selected.id, deactivateReason)
       .then(() => {
@@ -265,6 +267,20 @@ export function AdminUserManagement() {
       })
       .catch((err: Error) => toastApiError(err))
       .finally(() => setLoading(false));
+  };
+
+  const handleReactivate = async () => {
+    if (!selected || !canReactivateUser(selected) || loading) return;
+    setLoading(true);
+    try {
+      await userService.reactivateUser(selected.id);
+      toast.success(`${selected.name} reactivated.`);
+      setReactivateOpen(false);
+      setSelected({ ...selected, status: "Active", deactivationReason: "none" });
+      loadUsers();
+    } catch (error) {
+      toastApiError(error, "Unable to reactivate account.");
+    } finally { setLoading(false); }
   };
 
   const columns: Column<SystemUser>[] = [
@@ -301,7 +317,8 @@ export function AdminUserManagement() {
           <ActionButton label="View details" onClick={()=>openView(r)}><Eye size={13}/></ActionButton>
           <ActionButton label="Edit" onClick={()=>openEdit(r)}><Edit size={13}/></ActionButton>
           <ActionButton label="Reset password" onClick={()=>{setSelected(r);setResetOpen(true);}}><KeyIcon size={13}/></ActionButton>
-          <ActionButton label="Deactivate" destructive onClick={()=>{setSelected(r);setDeleteOpen(true);}}><Trash2 size={13}/></ActionButton>
+          {r.status === "Active" ? <ActionButton label="Deactivate" destructive disabled={loading} onClick={()=>{setSelected(r);setDeactivateReason("suspended");setDeleteOpen(true);}}><Trash2 size={13}/></ActionButton>
+            : <ActionButton label={canReactivateUser(r) ? "Reactivate Account" : "Reactivation unavailable for resigned or terminated accounts"} disabled={loading || !canReactivateUser(r)} onClick={()=>{setSelected(r);setReactivateOpen(true);}}><UserCheck size={13}/></ActionButton>}
         </div>
       )},
   ];
@@ -367,6 +384,10 @@ export function AdminUserManagement() {
               <h3 className="font-bold text-lg" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
               <p className="text-sm" style={{color:C.muted}}>{selected.role}</p>
               <div className="mt-2"><StatusBadge status={selected.status}/></div>
+              {selected.status === "Inactive" && <p className="mt-2 text-xs" style={{color:C.muted}}>
+                {DEACTIVATION_OPTIONS.find(option => option.value === selected.deactivationReason)?.label ?? "Inactive"}
+                {!canReactivateUser(selected) && " · This account cannot be reactivated directly."}
+              </p>}
             </div>
             {[
               {l:"Username",v:selected.username},
@@ -417,8 +438,14 @@ export function AdminUserManagement() {
       </Modal>
 
       {/* Deactivate Confirm */}
-      <Modal open={deleteOpen} onClose={()=>setDeleteOpen(false)} title="Deactivate User" subtitle={selected?.name} size="sm"
-        footer={<><Btn variant="secondary" onClick={()=>setDeleteOpen(false)}>Cancel</Btn>
+      <Modal open={reactivateOpen} onClose={()=>{if (!loading) setReactivateOpen(false);}} title="Reactivate Account" subtitle={selected?.name} size="sm"
+        footer={<><Btn variant="secondary" disabled={loading} onClick={()=>setReactivateOpen(false)}>Cancel</Btn>
+          <Btn variant="primary" disabled={loading || !selected || !canReactivateUser(selected)} onClick={handleReactivate}>{loading ? "Reactivating..." : "Reactivate Account"}</Btn></>}>
+        <p className="text-sm" style={{color:C.muted}}>Reactivate {selected?.name}? This restores the account's active status so they can sign in with their existing credentials.</p>
+      </Modal>
+
+      <Modal open={deleteOpen} onClose={()=>{if (!loading) setDeleteOpen(false);}} title="Deactivate User" subtitle={selected?.name} size="sm"
+        footer={<><Btn variant="secondary" disabled={loading} onClick={()=>setDeleteOpen(false)}>Cancel</Btn>
           <Btn variant="danger" onClick={handleDeactivate} disabled={loading}>{loading?"Deactivating…":"Deactivate User"}</Btn></>}>
         <div className="space-y-4">
           <p className="text-sm" style={{color:C.muted}}>
@@ -426,9 +453,9 @@ export function AdminUserManagement() {
           </p>
           <div>
             <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Reason</label>
-            <select className={inputClass} style={inputStyle} value={deactivateReason}
-              onChange={e => setDeactivateReason(e.target.value)}>
-              {DEACTIVATION_REASONS.map(r => <option key={r} value={r}>{r.replace("_", " ")}</option>)}
+            <select disabled={loading} className={inputClass} style={inputStyle} value={deactivateReason}
+              onChange={e => { const option = DEACTIVATION_OPTIONS.find(item => item.value === e.target.value); if (option) setDeactivateReason(option.value); }}>
+              {DEACTIVATION_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </div>
         </div>

@@ -1,231 +1,114 @@
-import { useReportPreview, reportNumber, useReportVersion } from "@/features/reports/hooks/useReportPreview";
+﻿import { useEffect, useState } from "react";
+import { AlertTriangle, Calendar, ClipboardList, DollarSign } from "lucide-react";
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
 import { toastApiError } from "@/lib/errorHandling";
-import { useState, useEffect, useMemo } from "react";
-import { BarChart2, TrendingUp, ClipboardList, Users, Package, AlertTriangle } from "lucide-react";
-import { Modal } from "@/components/overlays/Modal";
+import { getAllPages, type DjangoProduct, type DjangoProductBatch, type DjangoTransaction } from "@/lib/api";
 import { C } from "@/styles/tokens/colors";
-import type { Trend } from "@/lib/types/common";
-import { salesService, type Sale } from "@/features/sales/api/sales.service";
-import { ordersService } from "@/features/orders/api/orders.service";
-import { customersService } from "@/features/customers/api/customers.service";
-import { inventoryService } from "@/features/inventory/api/inventory.service";
-import type { OrderListItem } from "@/features/orders/types/order";
-import type { Customer } from "@/features/customers/types/customer";
-import type { InventoryItem } from "@/features/inventory/types/inventory";
 
-interface KPIConfig {
-  title: string; value: string; icon: React.ReactNode;
-  trend: Trend; trendLabel: string; color: string;
-  detail: string; change: string;
+interface Props {
+  /** Override when pending orders are managed outside the current sales API. */
+  pendingOrderCount?: number;
+}
+interface Metrics {
+  todaySales: number; yesterdaySales: number; lowStock: number; expiringSoon: number; pendingOrders: number;
 }
 
-function todayStr(offsetDays = 0): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
+// Align with Django's Manila business day, including around UTC midnight.
+function businessDate(offsetDays = 0): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: string) => parts.find(value => value.type === type)!.value;
+  const date = new Date(`${part("year")}-${part("month")}-${part("day")}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
 }
+const php = (value: number) => `₱${value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const neutralBadge = "text-slate-600 bg-slate-100";
 
-function monthRange(monthOffset: number): { start: string; end: string } {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + monthOffset);
-  const start = d.toISOString().slice(0, 10);
-  const endDate = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  const end = endDate.toISOString().slice(0, 10);
-  return { start, end };
-}
-
-function pctChange(current: number, previous: number): { trend: Trend; label: string } {
-  if (previous === 0) {
-    if (current === 0) return { trend: "neutral", label: "No change" };
-    return { trend: "up", label: "New" };
-  }
-  const pct = ((current - previous) / previous) * 100;
-  const trend: Trend = pct > 0.5 ? "up" : pct < -0.5 ? "down" : "neutral";
-  const sign = pct > 0 ? "+" : "";
-  return { trend, label: `${sign}${pct.toFixed(1)}%` };
-}
-
-function KPIDetailModal({ kpi, onClose }: { kpi: KPIConfig; onClose: ()=>void }) {
-  return (
-    <Modal open onClose={onClose} title={kpi.title} subtitle={kpi.detail} size="sm">
-      <div className="space-y-4 pt-2">
-        <div className="flex items-center gap-4 p-5 rounded-2xl" style={{backgroundColor:kpi.color+"10"}}>
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{backgroundColor:kpi.color+"20"}}>
-            <span style={{color:kpi.color}}>{kpi.icon}</span>
-          </div>
-          <div>
-            <div className="text-3xl font-bold" style={{color:kpi.color,fontFamily:"Poppins,sans-serif"}}>{kpi.value}</div>
-            <div className="text-xs mt-1" style={{color:C.muted}}>{kpi.change}</div>
-          </div>
-        </div>
-        <div className="p-3 rounded-xl text-sm" style={{backgroundColor:C.bg,color:C.muted}}>{kpi.detail}</div>
-      </div>
-    </Modal>
-  );
-}
-
-export function KPICards() {
+export function KPICards({ pendingOrderCount }: Props = {}) {
   const reportVersion = useReportVersion();
-  const dailyReport = useReportPreview("daily_sales");
-  const monthlyReport = useReportPreview("monthly_sales");
-  const inventoryReport = useReportPreview("inventory");
-  const [activeKPI, setActiveKPI] = useState<KPIConfig | null>(null);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [orders, setOrders] = useState<OrderListItem[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
-
+    setLoading(true);
+    setFailed(false);
+    const today = businessDate();
+    const yesterday = businessDate(-1);
+    const expiryLimit = businessDate(7);
     Promise.all([
-      salesService.getAll(),
-      ordersService.getAll(),
-      customersService.getAll(),
-      inventoryService.getAll(),
-    ])
-      .then(([s, o, c, i]) => {
-        if (!active) return;
-        setSales(s);
-        setOrders(o);
-        setCustomers(c);
-        setInventory(i);
-      })
-      .catch(error => toastApiError(error))
-      .finally(() => {
-        if (active) setLoading(false);
+      getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: today, end_date: today }),
+      getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: yesterday, end_date: yesterday }),
+      getAllPages<DjangoProduct>("/inventory/products/"),
+      getAllPages<DjangoProductBatch>("/inventory/product-batches/"),
+      pendingOrderCount === undefined ? getAllPages<{ status: string }>("/sales/orders/") : Promise.resolve([]),
+    ]).then(([todayTransactions, yesterdayTransactions, products, batches, orders]) => {
+      if (!active) return;
+      const total = (rows: DjangoTransaction[]) => rows.reduce((sum, row) => sum + Number(row.total_amount), 0);
+      setMetrics({
+        todaySales: total(todayTransactions), yesterdaySales: total(yesterdayTransactions),
+        lowStock: products.filter(product => product.is_active && Number(product.total_stock) < product.low_stock_threshold).length,
+        expiringSoon: batches.filter(batch => batch.product.is_active && batch.status === "available"
+          && Number(batch.remaining_quantity) > 0 && batch.expiration_date >= today && batch.expiration_date <= expiryLimit).length,
+        pendingOrders: orders.filter(order => ["pending", "unfulfilled", "processing"].includes(order.status.toLowerCase())).length,
       });
+    }).catch(error => {
+      if (active) { setFailed(true); toastApiError(error); }
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reportVersion, pendingOrderCount]);
 
-    return () => {
-      active = false;
-    };
-  }, [reportVersion]);
+  if (loading) return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" aria-label="Loading operational metrics" aria-busy="true">
+      {Array.from({ length: 4 }, (_, index) => <div key={index} className="bg-white rounded-2xl p-5 shadow-sm animate-pulse min-h-40 border border-slate-200" />)}
+    </div>
+  );
 
-  const kpis: KPIConfig[] = useMemo(() => {
-    const today = todayStr(0);
-    const yesterday = todayStr(-1);
-    const thisMonth = monthRange(0);
-    const lastMonth = monthRange(-1);
-
-    // ── Today's Sales ──
-    const todaySales = sales.filter(s => s.date === today);
-    const yesterdaySales = sales.filter(s => s.date === yesterday);
-    const todayTotal = reportNumber(dailyReport.data, "total_revenue") ?? todaySales.reduce((sum, s) => sum + s.total, 0);
-    const yesterdayTotal = yesterdaySales.reduce((sum, s) => sum + s.total, 0);
-    const todayTrend = pctChange(todayTotal, yesterdayTotal);
-
-    // ── Monthly Revenue ──
-    const thisMonthSales = sales.filter(s => s.date >= thisMonth.start && s.date <= thisMonth.end);
-    const lastMonthSales = sales.filter(s => s.date >= lastMonth.start && s.date <= lastMonth.end);
-    const thisMonthTotal = reportNumber(monthlyReport.data, "revenue") ?? thisMonthSales.reduce((sum, s) => sum + s.total, 0);
-    const lastMonthTotal = lastMonthSales.reduce((sum, s) => sum + s.total, 0);
-    const monthTrend = pctChange(thisMonthTotal, lastMonthTotal);
-    const uniqueCustomersThisMonth = new Set(
-      orders.filter(o => o.date >= thisMonth.start && o.date <= thisMonth.end).map(o => o.customerId)
-    ).size;
-
-    // ── Orders ──
-    const fulfilledCount = orders.filter(o => o.status === "Fulfilled").length;
-    const cancelledCount = orders.filter(o => o.status === "Cancelled").length;
-    const thisMonthOrders = orders.filter(o => o.date >= thisMonth.start && o.date <= thisMonth.end);
-    const lastMonthOrders = orders.filter(o => o.date >= lastMonth.start && o.date <= lastMonth.end);
-    const ordersTrend = pctChange(thisMonthOrders.length, lastMonthOrders.length);
-
-    // ── Customers ──
-    const newThisMonth = customers.filter(c => c.createdAt >= thisMonth.start && c.createdAt <= thisMonth.end).length;
-    const newLastMonth = customers.filter(c => c.createdAt >= lastMonth.start && c.createdAt <= lastMonth.end).length;
-    const customersTrend = pctChange(newThisMonth, newLastMonth);
-
-    // ── Inventory ──
-    const categoryCount = new Set(inventory.map(i => i.cat)).size;
-    const totalUnits = inventory.reduce((sum, i) => sum + i.stock, 0);
-    const lowStockItems = inventory.filter(i => i.low);
-
-    return [
-      {
-        title: "Today's Sales", value: `₱${todayTotal.toLocaleString()}`, icon: <BarChart2 size={20}/>,
-        trend: todayTrend.trend, trendLabel: todayTrend.label, color: C.blue,
-        detail: `${todaySales.length} transaction${todaySales.length !== 1 ? "s" : ""} completed today`,
-        change: `vs ₱${yesterdayTotal.toLocaleString()} yesterday`,
-      },
-      {
-        title: "Monthly Revenue", value: `₱${thisMonthTotal.toLocaleString()}`, icon: <TrendingUp size={20}/>,
-        trend: monthTrend.trend, trendLabel: monthTrend.label, color: C.green,
-        detail: `${thisMonthOrders.length} orders across ${uniqueCustomersThisMonth} customers`,
-        change: `vs ₱${lastMonthTotal.toLocaleString()} last month`,
-      },
-      {
-        title: "Total Orders", value: String(orders.length), icon: <ClipboardList size={20}/>,
-        trend: ordersTrend.trend, trendLabel: ordersTrend.label, color: C.navy,
-        detail: `${fulfilledCount} fulfilled · ${cancelledCount} cancelled`,
-        change: `vs ${lastMonthOrders.length} orders last month`,
-      },
-      {
-        title: "Total Customers", value: String(customers.length), icon: <Users size={20}/>,
-        trend: customersTrend.trend, trendLabel: customersTrend.label, color: "#9B59B6",
-        detail: `${newThisMonth} new customer${newThisMonth !== 1 ? "s" : ""} this month`,
-        change: `vs ${newLastMonth} new last month`,
-      },
-      {
-        title: "Products in Inventory", value: String(reportNumber(inventoryReport.data, "total_products") ?? inventory.length), icon: <Package size={20}/>,
-        trend: "neutral", trendLabel: "Live", color: C.orange,
-        detail: `${categoryCount} categories · ${totalUnits.toLocaleString()} units total`,
-        change: "Current snapshot",
-      },
-      {
-        title: "Low Stock Alerts", value: String(lowStockItems.length), icon: <AlertTriangle size={20}/>,
-        trend: lowStockItems.length > 0 ? "down" : "neutral", trendLabel: lowStockItems.length > 0 ? "Alert" : "Clear",
-        color: C.red,
-        detail: lowStockItems.length > 0
-          ? lowStockItems.slice(0, 3).map(i => i.name).join(", ") + (lowStockItems.length > 3 ? "…" : "")
-          : "No products below threshold",
-        change: lowStockItems.length > 0 ? "Restock required" : "All stock levels healthy",
-      },
-    ];
-  }, [sales, orders, customers, inventory, dailyReport.data, monthlyReport.data, inventoryReport.data]);
-
-  if (loading) {
-    return (
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-2xl p-5 shadow-sm animate-pulse" style={{ border:`1px solid ${C.border}`, minHeight: 120 }} />
-        ))}
-      </div>
-    );
-  }
+  const available = !failed && metrics !== null;
+  const today = metrics?.todaySales ?? 0;
+  const yesterday = metrics?.yesterdaySales ?? 0;
+  const change = yesterday > 0 ? ((today - yesterday) / yesterday) * 100 : null;
+  const salesBadge = change === null
+    ? today === 0 ? "0.0% vs. yesterday" : "No sales yesterday"
+    : `${change > 0 ? "+" : ""}${change.toFixed(1)}% vs. yesterday`;
+  const lowStock = metrics?.lowStock ?? 0;
+  const expiringSoon = metrics?.expiringSoon ?? 0;
+  const pending = pendingOrderCount ?? metrics?.pendingOrders ?? 0;
+  const cards = [
+    { title: "Today's Sales", value: php(today), icon: DollarSign, color: C.green,
+      badge: salesBadge, badgeClass: change !== null && change > 0 ? "text-green-700 bg-green-50" : change !== null && change < 0 ? "text-red-700 bg-red-50" : neutralBadge,
+      detail: `Completed sales · ${php(yesterday)} yesterday` },
+    { title: "Low Stock Alerts", value: String(lowStock), icon: AlertTriangle, color: C.red,
+      badge: lowStock > 0 ? "Action Required" : "All Clear", badgeClass: lowStock > 0 ? "text-red-700 bg-red-50" : neutralBadge,
+      detail: "Products below reorder threshold" },
+    { title: "Expiring Soon", value: String(expiringSoon), icon: Calendar, color: C.orange,
+      badge: "Next 7 Days", badgeClass: expiringSoon > 0 ? "text-orange-700 bg-orange-50" : neutralBadge,
+      detail: "In-stock dairy batches, including today" },
+    { title: "Pending Orders", value: String(pending), icon: ClipboardList, color: C.blue,
+      badge: "Needs Action", badgeClass: pending > 0 ? "text-blue-700 bg-blue-50" : neutralBadge,
+      detail: "Unfulfilled or processing orders" },
+  ];
 
   return (
-    <>
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {kpis.map(k => (
-          <button
-            key={k.title}
-            onClick={() => setActiveKPI(k)}
-            className="bg-white rounded-2xl p-5 shadow-sm text-left group transition-all hover:shadow-lg hover:-translate-y-0.5"
-            style={{ border:`1px solid ${C.border}` }}
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110"
-                style={{backgroundColor:k.color+"18"}}>
-                <span style={{color:k.color}}>{k.icon}</span>
-              </div>
-              <div className={`flex items-center gap-1 text-xs font-medium rounded-full px-2 py-0.5 ${
-                k.trend==="up" ? "text-green-700 bg-green-50" :
-                k.trend==="down"? "text-red-600 bg-red-50" : "text-gray-500 bg-gray-100"
-              }`}>
-                {k.trendLabel}
-              </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {cards.map(({ title, value, icon: Icon, color, badge, badgeClass, detail }) => (
+        <section key={title} aria-label={title} className="min-w-0 bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-4">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${color}18`, color }}>
+              <Icon size={22} aria-hidden="true" />
             </div>
-            <div className="text-2xl font-bold tracking-tight"
-              style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{k.value}</div>
-            <div className="text-xs mt-0.5" style={{color:C.muted}}>{k.title}</div>
-          </button>
-        ))}
-      </div>
-
-      {activeKPI && <KPIDetailModal kpi={activeKPI} onClose={()=>setActiveKPI(null)}/>}
-    </>
+            <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${available ? badgeClass : neutralBadge}`}>
+              {available ? badge : "Unavailable"}
+            </span>
+          </div>
+          <div className="text-2xl font-bold tracking-tight break-words" style={{ color: C.text, fontFamily: "Poppins,sans-serif" }}>{available ? value : "—"}</div>
+          <h3 className="text-sm font-medium mt-1" style={{ color: C.text }}>{title}</h3>
+          <p className="text-xs mt-2" style={{ color: C.muted }}>{available ? detail : "Unable to load current metrics."}</p>
+        </section>
+      ))}
+    </div>
   );
 }

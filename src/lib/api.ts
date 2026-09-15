@@ -323,13 +323,15 @@ export interface CreateCategoryPayload {
 
 export type UpdateCategoryPayload = Partial<CreateCategoryPayload>;
 
+export type DeactivationReason = "leave" | "suspended" | "resigned" | "terminated";
+
 export interface DjangoUserListItem {
   id: number;
   username: string;
   email: string;
   role: "admin" | "staff";
   is_active: boolean;
-  deactivation_reason: string;
+  deactivation_reason: DeactivationReason | "none";
   first_name: string;
   last_name: string;
   last_login: string | null;

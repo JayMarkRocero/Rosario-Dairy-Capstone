@@ -22,6 +22,8 @@ const compiled = buildSync({
     export * from './src/features/reports/api/reports.service';
     export * from './src/lib/notifications.service';
     export * from './src/features/dashboard/components/admin/RevenueChart';
+    export * from './src/features/users/api/user.service';
+    export * from './src/features/users/types/user';
   `, resolveDir: root },
   define: { 'import.meta.env': '{}' },
   bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false,
@@ -302,4 +304,39 @@ test('expired logout refreshes captured credentials and blacklists without resto
   assert.deepEqual(calls.map(call => call.url), ['/accounts/logout/', '/accounts/refresh/', '/accounts/logout/']);
   assert.equal(api.getAccessToken(), null);
   assert.equal(api.getRefreshToken(), null);
+});
+
+test('deactivation sends only Django reason values and rejects legacy on_leave', async () => {
+  assert.deepEqual(api.DEACTIVATION_OPTIONS.map(option => option.value), ['leave', 'suspended', 'resigned', 'terminated']);
+  assert.equal(api.DEACTIVATION_OPTIONS[0].label, 'On Leave');
+  for (const reason of ['leave', 'suspended', 'resigned', 'terminated']) {
+    await api.userService.deactivateUser(7, reason);
+    assert.equal(calls.at(-1).method, 'delete');
+    assert.equal(calls.at(-1).url, '/accounts/users/7/');
+    assert.deepEqual(JSON.parse(calls.at(-1).data), { reason });
+  }
+  await assert.rejects(api.userService.deactivateUser(7, 'on_leave'), { status: 400 });
+  assert.equal(calls.length, 4);
+});
+
+test('reactivation patches a boolean active flag and preserves backend restrictions', async () => {
+  await api.userService.reactivateUser(7);
+  assert.equal(calls[0].method, 'patch');
+  assert.equal(calls[0].url, '/accounts/users/7/');
+  assert.deepEqual(JSON.parse(calls[0].data), { is_active: true });
+  for (const reason of ['none', 'leave', 'suspended', 'resigned', 'terminated']) {
+    assert.equal(api.canReactivateUser({ status: 'Inactive', deactivationReason: reason }), !['resigned', 'terminated'].includes(reason));
+    assert.equal(api.canReactivateUser({ status: 'Active', deactivationReason: reason }), false);
+  }
+  responseStatus = 400;
+  responseData = { error: 'This user was Resigned and cannot be reactivated directly.' };
+  await assert.rejects(api.userService.reactivateUser(7), { status: 400, message: responseData.error });
+});
+
+test('user list retains inactive account reasons for recovery eligibility', async () => {
+  responseData = [{ id: 7, username: 'staff', first_name: 'Test', last_name: 'User', email: 'staff@example.com', role: 'staff', is_active: false, deactivation_reason: 'leave', last_login: null }];
+  const [user] = await api.userService.getAll();
+  assert.equal(user.status, 'Inactive');
+  assert.equal(user.deactivationReason, 'leave');
+  assert.equal(api.canReactivateUser(user), true);
 });
