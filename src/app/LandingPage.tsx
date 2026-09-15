@@ -122,7 +122,7 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
 function DashboardShowcase() {
   const forecast = "0,62 30,55 60,58 90,40 120,44 150,25 180,31 210,12";
   return (
-    <motion.div initial={{ opacity: 0, y: 28, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.65, delay: 0.15 }} className="relative w-full max-w-xl">
+    <motion.div initial={{ opacity: 0, y: 28, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.65, delay: 0.15 }} className="relative w-full max-w-lg lg:justify-self-end">
       <div className="absolute -inset-5 -z-10 rounded-[32px] opacity-70 blur-2xl" style={{ background: `linear-gradient(135deg, ${C.blue}20, ${C.green}12)` }} />
       <div className="overflow-hidden rounded-3xl border p-5 sm:p-6" style={{ backgroundColor: C.white, borderColor: C.border, boxShadow: "0 28px 70px -32px rgba(23,55,94,0.42)" }}>
         <div className="mb-6 flex items-center justify-between">
@@ -169,17 +169,13 @@ function HeroSection({ onLogin }: { onLogin?: () => void }) {
   return (
     <section id="home" className="relative overflow-hidden py-20 sm:py-28" style={{ backgroundColor: C.bg }}>
       <div className="absolute inset-0 opacity-60" style={{ background: `radial-gradient(circle at 15% 10%, ${C.blue}12, transparent 34%), radial-gradient(circle at 90% 80%, ${C.green}0D, transparent 30%)` }} />
-      <div className="relative mx-auto grid max-w-7xl items-center gap-16 px-5 sm:px-8 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="relative mx-auto grid max-w-7xl items-center gap-12 md:gap-16 lg:gap-24 px-5 sm:px-8 lg:grid-cols-[0.9fr_1.1fr]">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold" style={{ color: C.blue, borderColor: `${C.blue}25`, backgroundColor: `${C.blue}08` }}><ShieldCheck size={14} />Purpose-built operations platform</span>
           <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.08] sm:text-5xl lg:text-[3.5rem]" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>Control dairy operations with clarity and confidence.</h1>
           <p className="mt-6 max-w-xl text-base leading-8 sm:text-lg" style={{ color: C.muted }}>Unify batch-level inventory, point-of-sale activity, management reporting, and demand forecasting in one dependable operating system.</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="inline-flex items-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold text-white shadow-lg" style={{ backgroundColor: C.blue, boxShadow: `0 14px 28px -14px ${C.blue}` }}>Access the platform <ArrowRight size={16} /></motion.button>
             <button onClick={() => scrollToId("features")} className="rounded-xl border px-6 py-3.5 text-sm font-semibold transition-colors hover:bg-white" style={{ color: C.navy, borderColor: C.border }}>Explore capabilities</button>
-          </div>
-          <div className="mt-9 flex flex-wrap gap-x-6 gap-y-3 text-xs font-medium" style={{ color: C.muted }}>
-            {["FEFO batch control", "Role-based workflows", "Decision-ready analytics"].map((item) => <span key={item} className="flex items-center gap-2"><CheckCircle2 size={15} style={{ color: C.green }} />{item}</span>)}
           </div>
         </motion.div>
         <DashboardShowcase />

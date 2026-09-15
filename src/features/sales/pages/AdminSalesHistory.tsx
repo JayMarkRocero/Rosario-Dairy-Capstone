@@ -1,7 +1,8 @@
 import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { useState, useMemo, useEffect } from "react";
-import { Printer } from "lucide-react";
+import { Eye } from "lucide-react";
+import { TransactionDetails } from "@/features/sales/components/TransactionDetails";
 import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
@@ -20,6 +21,7 @@ export function AdminSalesHistory() {
   const [recordsLoading, setRecordsLoading] = useState(true);
   const [paymentFilter, setPaymentFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("");
+  const [selected, setSelected] = useState<Sale | null>(null);
 
   const loadSales = () => {
     setRecordsLoading(true);
@@ -66,11 +68,9 @@ export function AdminSalesHistory() {
     { key:"total", header:"Total", align:"center", width:"12%", sortKey: r => r.total,
       render: r => <span className="font-semibold text-sm whitespace-nowrap" style={{ color: C.text }}>₱{r.total.toLocaleString()}</span> },
     { key:"actions", header:"Actions", align:"center", width:"10%",
-      render: () => (
+      render: r => (
         <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
-          <button className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" style={{ color: C.muted }}>
-            <Printer size={13} />
-          </button>
+          <button type="button" aria-label="View Details" title="View Details" onClick={() => setSelected(r)} className="text-gray-500 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><Eye size={16} aria-hidden="true"/></button>
         </div>
       ) },
   ];
@@ -151,6 +151,7 @@ export function AdminSalesHistory() {
           />
         </div>
       </Card>
+      <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>
     </div>
   );
 }

@@ -1,32 +1,48 @@
 import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { useMemo, useState, useEffect } from "react";
-import { Search, Printer } from "lucide-react";
+import { Search, Eye } from "lucide-react";
+import { TransactionDetails } from "@/features/sales/components/TransactionDetails";
+import { useAuth } from "@/features/auth/context/AuthContext";
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
 import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
-import { authService } from "@/features/auth/api/auth.service";
 
 const PAYMENT_STYLE: Record<string, { bg: string; color: string }> = {
   Cash:   { bg: C.green + "15", color: C.green },
   Online: { bg: C.blue  + "15", color: C.blue  },
 };
 
+function staffSalesDate(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const part = (type: string) => parts.find(value => value.type === type)!.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
 export function StaffSalesHistory() {
+  const { user } = useAuth();
+  const reportVersion = useReportVersion();
   const pageCapacity = useStaffAutoPageSize(56, 200);
   const [myRecords, setMyRecords] = useState<Sale[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(true);
+  const [selected, setSelected] = useState<Sale | null>(null);
 
   useEffect(() => {
+    let active = true;
+    setMyRecords([]);
+    setSelected(null);
+    if (!user) { setRecordsLoading(false); return; }
     setRecordsLoading(true);
-    Promise.all([salesService.getAll(), authService.getCurrentUser()])
-      .then(([sales, user]) => {
-        setMyRecords(sales.filter(s => s.cashier === user.username));
-      })
-      .catch(error => toastApiError(error))
-      .finally(() => setRecordsLoading(false));
-  }, []);
+    salesService.getMine()
+      .then(sales => { if (active) setMyRecords(sales.map(sale => ({ ...sale, date: staffSalesDate(sale.transaction.created_at) }))); })
+      .catch(error => { if (active) toastApiError(error); })
+      .finally(() => { if (active) setRecordsLoading(false); });
+    return () => { active = false; };
+  }, [user, reportVersion]);
 
   const [search, setSearch] = useState("");
   const [payment, setPayment] = useState("All");
@@ -51,19 +67,11 @@ export function StaffSalesHistory() {
   }, [myRecords, search, payment, date]);
 
   const summary = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = staffSalesDate(new Date().toISOString());
     const today = myRecords.filter(r => r.date === todayStr);
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 6);
-    const weekAgoStr = weekAgo.toISOString().slice(0, 10);
-    const thisWeek = myRecords.filter(r => r.date >= weekAgoStr && r.date <= todayStr);
     return {
       todayTotal: today.reduce((s, r) => s + r.total, 0),
       todayCount: today.length,
-      weekTotal: thisWeek.reduce((s, r) => s + r.total, 0),
-      weekCount: thisWeek.length,
-      allTotal: myRecords.reduce((s, r) => s + r.total, 0),
-      allCount: myRecords.length,
     };
   }, [myRecords]);
 
@@ -87,11 +95,11 @@ export function StaffSalesHistory() {
       } },
     { key:"total", header:"Total", align:"center", width:"14%",
       render: s => <span className="font-semibold text-sm whitespace-nowrap" style={{ color: C.text }}>₱{s.total.toLocaleString()}</span> },
-    { key:"receipt_action", header:"Receipt", align:"center", width:"10%",
-      render: () => (
-        <div className="flex items-center justify-center gap-1">
-          <button className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" style={{ color: C.muted }}>
-            <Printer size={13} />
+    { key:"actions", header:"Actions", align:"center", width:"10%",
+      render: sale => (
+        <div className="flex items-center justify-center gap-1" onClick={event => event.stopPropagation()}>
+          <button type="button" aria-label="View Details" title="View Details" onClick={() => setSelected(sale)} className="text-gray-500 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <Eye size={16} aria-hidden="true" />
           </button>
         </div>
       ) },
@@ -107,15 +115,14 @@ export function StaffSalesHistory() {
       </div>
 
       {/* Stat cards - fixed */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 flex-shrink-0">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 flex-shrink-0">
         {[
-          { label: "Today",       value: `₱${summary.todayTotal.toLocaleString()}`, sub: `${summary.todayCount} transactions` },
-          { label: "Last 7 Days", value: `₱${summary.weekTotal.toLocaleString()}`,  sub: `${summary.weekCount} transactions`  },
-          { label: "All Time",    value: `₱${summary.allTotal.toLocaleString()}`,   sub: `${summary.allCount} transactions`   },
+          { label: "Today's Sales", value: `₱${summary.todayTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: "Sales you processed today" },
+          { label: "Today's Transactions", value: String(summary.todayCount), sub: "Transactions you processed today" },
         ].map(s => (
           <Card key={s.label} className="p-4 min-w-0">
             <div className="font-bold text-xl truncate" style={{ color: C.blue, fontFamily: "Poppins, sans-serif" }}>
-              {s.value}
+              {recordsLoading ? "..." : s.value}
             </div>
             <div className="font-medium text-sm mt-1" style={{ color: C.text }}>{s.label}</div>
             <div className="text-xs mt-0.5" style={{ color: C.muted }}>{s.sub}</div>
@@ -181,6 +188,7 @@ export function StaffSalesHistory() {
           />
         </div>
       </Card>
+      <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>
     </div>
   );
 }

@@ -46,24 +46,29 @@ export function AdminReports() {
     }
   };
 
-  return <div className="p-4 sm:p-6 space-y-5">
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  return <div className="w-full h-full min-h-0 flex flex-col gap-4 p-4 sm:p-6">
+    <div className="flex shrink-0 flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <h2 className="text-lg font-bold" style={{color:C.muted}}>Generate and export business intelligence reports</h2>
       <Btn variant="primary" size="sm" icon={refreshing?<LoaderCircle size={13} className="animate-spin"/>:<RefreshCw size={13}/>} onClick={refresh} disabled={refreshing}>{refreshing?"Refreshing…":"Refresh Data"}</Btn>
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    <Card className="w-full flex-1 flex flex-col justify-center p-4 sm:p-5">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {REPORTS.map(report=>{
         const downloading=exporting===report.id;
-        return <Card key={report.id} className="p-4 flex flex-col">
-          <div className="flex items-start gap-3 mb-4">
-            <div className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center" style={{backgroundColor:report.color+"15",color:report.color}}>{report.icon}</div>
-            <div><h3 className="font-medium text-sm" style={{color:C.text}}>{report.title}</h3><p className="text-xs mt-0.5" style={{color:C.muted}}>{report.desc}</p></div>
+        return <Card key={report.id} className="p-6 min-w-0 flex flex-col gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-12 h-12 shrink-0 rounded-xl flex items-center justify-center [&>svg]:w-6 [&>svg]:h-6" style={{backgroundColor:report.color+"15",color:report.color}}>{report.icon}</div>
+            <div className="min-w-0"><h3 className="text-lg font-semibold leading-snug text-gray-900">{report.title}</h3><p className="text-sm mt-1 leading-snug text-gray-600">{report.desc}</p></div>
           </div>
           <div className="mt-auto pt-4 border-t border-slate-100">
-            <Btn variant="primary" size="sm" icon={downloading?<LoaderCircle size={12} className="animate-spin"/>:<Download size={12}/>} onClick={()=>download(report)} disabled={downloading}>{downloading?"Generating PDF…":"Download PDF"}</Btn>
+            <button type="button" onClick={()=>download(report)} disabled={downloading} className="w-full h-10 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+              {downloading ? <LoaderCircle size={16} className="animate-spin" aria-hidden="true"/> : <Download size={16} aria-hidden="true"/>}
+              {downloading ? "Generating PDF…" : "Download PDF"}
+            </button>
           </div>
         </Card>;
       })}
     </div>
+    </Card>
   </div>;
 }

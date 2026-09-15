@@ -10,7 +10,7 @@ export interface Column<T> {
   key:       string;
   header:    string;
   render?:   (row: T, index: number) => React.ReactNode;
-  sortKey?:  (row: T) => string | number;
+  sortKey?:  (row: T) => string | number | null;
   width?:    string;
   align?:    "left" | "right" | "center";
 }
@@ -92,6 +92,9 @@ export function EnhancedTable<T>({
     return [...filtered].sort((a, b) => {
       const av = col.sortKey!(a);
       const bv = col.sortKey!(b);
+      // Missing values stay at the end in either manual sort direction.
+      if (av == null) return bv == null ? 0 : 1;
+      if (bv == null) return -1;
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -195,12 +198,12 @@ export function EnhancedTable<T>({
                 {columns.map(col => (
                   <th
                     key={col.key}
+                    aria-sort={col.sortKey ? sortCol === col.key && sortDir ? sortDir === "asc" ? "ascending" : "descending" : "none" : undefined}
                     className={`py-3 pl-4 ${alignmentClasses(col.align)} font-semibold text-xs text-slate-500 uppercase tracking-wider select-none whitespace-nowrap ${col.sortKey ? "cursor-pointer hover:bg-gray-100" : ""}`}
                     style={{ width: scrollBody ? undefined : col.width }}
-                    onClick={() => handleSort(col)}
                   >
                     <div className={`relative flex items-center ${col.align === "right" ? "justify-end gap-1" : col.align === "center" ? `justify-center ${col.sortKey ? "gap-1" : "gap-2"}` : "justify-start gap-1"}`}>
-                      {col.header}
+                      {col.sortKey ? <button type="button" onClick={() => handleSort(col)} className="uppercase tracking-wider font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded" aria-label={`Sort by ${col.header}`}>{col.header}</button> : col.header}
                       {col.sortKey && (
                         <span className={`flex flex-col ${col.align === "right" ? "absolute -right-3.5" : ""}`} style={{ color: sortCol === col.key ? C.blue : C.border }}>
                           <ChevronUp   size={10} style={{ opacity: sortCol === col.key && sortDir === "asc"  ? 1 : 0.4, marginBottom: -2 }} />

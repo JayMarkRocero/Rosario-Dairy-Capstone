@@ -422,7 +422,7 @@ export interface CheckoutPayload {
 export interface DjangoTransactionItem {
   id: number;
   product_batch: DjangoProductBatch;
-  quantity: number;
+  quantity: string | number;
   unit_price: string;
 }
 
@@ -440,6 +440,7 @@ export interface DjangoTransaction {
   change_due: string | null;
   payment_method: string;
   delivery_status: string | null;
+  is_voided?: boolean;
   items: DjangoTransactionItem[];
   created_at: string;
 }

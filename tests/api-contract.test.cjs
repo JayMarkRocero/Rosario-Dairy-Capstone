@@ -24,6 +24,7 @@ const compiled = buildSync({
     export * from './src/features/dashboard/components/admin/RevenueChart';
     export * from './src/features/users/api/user.service';
     export * from './src/features/users/types/user';
+    export * from './src/features/sales/utils/receiptDetails';
   `, resolveDir: root },
   define: { 'import.meta.env': '{}' },
   bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false,
@@ -339,4 +340,61 @@ test('user list retains inactive account reasons for recovery eligibility', asyn
   assert.equal(user.status, 'Inactive');
   assert.equal(user.deactivationReason, 'leave');
   assert.equal(api.canReactivateUser(user), true);
+});
+
+test('default user sorting groups active accounts and compares raw login instants', () => {
+  const rows = [
+    { id: 1, status: 'Inactive', lastLogin: '2026-09-15T12:00:00Z' },
+    { id: 2, status: 'Active', lastLogin: null },
+    { id: 3, status: 'Active', lastLogin: '2026-09-15T09:00:00+08:00' },
+    { id: 4, status: 'Active', lastLogin: '2026-09-15T02:00:00Z' },
+    { id: 5, status: 'Inactive' },
+  ];
+  assert.deepEqual([...rows].sort(api.compareUsersByStatusAndLogin).map(row => row.id), [4, 3, 2, 1, 5]);
+  assert.deepEqual(rows.filter(row => row.status === 'Inactive').sort(api.compareUsersByStatusAndLogin).map(row => row.id), [1, 5]);
+  assert.equal(api.userLastLoginTimestamp({ lastLogin: 'invalid' }), null);
+  assert.equal(api.userLastLoginTimestamp({}), null);
+});
+
+function receiptFixture(payment = 'cash', itemCount = 1) {
+  return {
+    receipt: 'TXN-000007', customer: payment === 'cash' ? 'Walk-in' : 'Customer', cashier: 'staff', payment: payment === 'cash' ? 'Cash' : 'Online', total: 25,
+    transaction: { id: 7, created_at: '2026-09-15T01:00:00Z', payment_method: payment, subtotal: '30.00', discount_amount: '5.00', total_amount: '25.00', amount_tendered: '30.00', change_due: '5.00', delivery_status: null,
+      items: Array.from({ length: itemCount }, (_, id) => ({ id, quantity: '1.50', unit_price: '20.00', product_batch: { batch_number: 'PRD-0001', product: { name: 'Fresh Milk', variant: '1 L' } } })) },
+  };
+}
+
+test('receipt details preserve itemized API values without inventing order metadata', () => {
+  const receipt = api.receiptDetails(receiptFixture());
+  assert.equal(receipt.title, 'Official Sales Receipt');
+  assert.equal(receipt.items[0].subtotal, 'PHP 30.00');
+  assert.deepEqual(receipt.totals.at(-1), ['Change', 'PHP 5.00']);
+  const voucher = api.receiptDetails(receiptFixture('online'));
+  assert.equal(voucher.title, 'Sales Invoice & Fulfillment Voucher');
+  for (const label of ['Order #', 'Fulfillment Type', 'Payment Status']) assert.equal(voucher.fields.find(field => field[0] === label)[1], 'Not provided');
+  assert.equal(api.receiptMoney(null), 'Not provided');
+  assert.equal(api.receiptMoney('0'), 'PHP 0.00');
+});
+
+test('staff history scopes every page by JWT user ID and rejects other cashiers', async () => {
+  api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id: 7 })).toString('base64url')}.signature`);
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    const response = { status: 200, config, headers: {} };
+    if (config.url === '/accounts/user/') return { ...response, data: { username: 'staff', role: 'staff' } };
+    assert.equal(config.params.handled_by, 7);
+    const own = config.params.page === 2;
+    return { ...response, data: { count: 2, next: own ? null : 'next', results: [{ id: config.params.page, handled_by: { id: own ? 7 : 8, username: 'staff' }, created_at: '2026-09-15T00:00:00Z', total_amount: '20', payment_method: 'cash' }] } };
+  };
+  const sales = await api.salesService.getMine();
+  assert.equal(sales.length, 1);
+  assert.equal(sales[0].transaction.handled_by.id, 7);
+  assert.deepEqual(calls.filter(call => call.url === '/sales/transactions/').map(call => call.params.page), [1, 2]);
+});
+
+test('staff history never issues an unscoped query when user ID is missing', async () => {
+  api.setAccessToken(`header.${Buffer.from('{}').toString('base64url')}.signature`);
+  responseData = { username: 'staff', role: 'staff' };
+  await assert.rejects(api.salesService.getMine(), { status: 401 });
+  assert.deepEqual(calls.map(call => call.url), ['/accounts/user/']);
 });

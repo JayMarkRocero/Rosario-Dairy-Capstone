@@ -5,6 +5,21 @@ export interface RecoveryResetPayload extends RecoveryIdentity { otp: string; ne
 
 export const authService = {
   refresh: refreshAccessToken,
+  getCurrentUserId: async (): Promise<number> => {
+    // Validate/refresh the session before reading the identity claim for query scoping.
+    await authService.getCurrentUser();
+    try {
+      const encoded = getAccessToken()?.split(".")[1];
+      if (!encoded) throw new Error("Missing token");
+      const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+      const claims = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
+      const id = Number(claims.user_id);
+      if (!Number.isSafeInteger(id) || id <= 0) throw new Error("Missing identity");
+      return id;
+    } catch {
+      throw new ApiError(401, "Unable to identify your account. Please log in again.");
+    }
+  },
   logout: async (refreshToken: string): Promise<void> => {
     const blacklist = (access: string, refresh: string) => http.post("/accounts/logout/", { refresh_token: refresh }, {
       headers: { Authorization: `Bearer ${access}` },

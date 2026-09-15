@@ -16,7 +16,7 @@ import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTa
 import { C } from "@/styles/tokens/colors";
 import { userService } from "@/features/users/api/user.service";
 import type { SystemUser } from "@/features/users/types/user";
-import { DEACTIVATION_OPTIONS, canReactivateUser } from "@/features/users/types/user";
+import { DEACTIVATION_OPTIONS, canReactivateUser, compareUsersByStatusAndLogin, userLastLoginTimestamp } from "@/features/users/types/user";
 import type { DeactivationReason } from "@/lib/api";
 import { isValidPhoneNumber, PHONE_FORMAT_HINT } from "@/lib/validators";
 
@@ -134,6 +134,7 @@ export function AdminUserManagement() {
   }, []);
 
   const [roleFilter,  setRoleFilter]  = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [viewOpen,    setViewOpen]    = useState(false);
   const [addOpen,     setAddOpen]     = useState(false);
   const [editOpen,    setEditOpen]    = useState(false);
@@ -161,9 +162,10 @@ export function AdminUserManagement() {
   }, [users]);
 
   const filteredUsers = useMemo(() => {
-    if (roleFilter === "All") return users;
-    return users.filter(u => u.role === roleFilter);
-  }, [users, roleFilter]);
+    return users.filter(u => (roleFilter === "All" || u.role === roleFilter)
+      && (statusFilter === "All" || u.status === statusFilter))
+      .sort(compareUsersByStatusAndLogin);
+  }, [users, roleFilter, statusFilter]);
 
   const openView = (u:SystemUser) => { setSelected(u); setViewOpen(true); };
 
@@ -307,9 +309,9 @@ export function AdminUserManagement() {
           </span>
         </div>
       )},
-    { key:"status", header:"Status", align:"center", width:"13%",
+    { key:"status", header:"Status", align:"center", width:"13%", sortKey:r=>r.status,
       render:r=><div className="flex items-center justify-center gap-2"><StatusBadge status={r.status}/></div> },
-    { key:"last", header:"Last Login", align:"center", width:"24%", sortKey:r=>r.last,
+    { key:"last", header:"Last Login", align:"center", width:"24%", sortKey:userLastLoginTimestamp,
       render:r=><span className="text-xs" style={{color:C.muted}}>{r.last}</span> },
     { key:"actions", header:"Actions", align:"center", width:"16%",
       render:r=>(
@@ -358,7 +360,9 @@ export function AdminUserManagement() {
           emptyTitle={usersLoading ? "Loading users…" : "No users found"}
           emptyDesc={usersLoading ? "Fetching data from the server." : "Add your first user to get started."}
           extraControls={
+            <>
             <select
+              aria-label="Role"
               value={roleFilter}
               onChange={e => setRoleFilter(e.target.value)}
               className={filterSelectClass}
@@ -366,6 +370,12 @@ export function AdminUserManagement() {
               <option value="All">All Roles</option>
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
+            <select aria-label="Status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={filterSelectClass}>
+              <option value="All">All Statuses</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+            </>
           }
         />
       </Card>

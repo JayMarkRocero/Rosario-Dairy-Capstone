@@ -30,6 +30,7 @@ export const userService = {
       status: u.is_active ? "Active" : "Inactive",
       deactivationReason: u.deactivation_reason,
       last: formatLastLogin(u.last_login),
+      lastLogin: u.last_login ?? null,
       phone: u.phone_number ?? "—", // blank until backend list endpoint includes it
       address: u.address ?? "—",    // blank until backend list endpoint includes it
     }));
