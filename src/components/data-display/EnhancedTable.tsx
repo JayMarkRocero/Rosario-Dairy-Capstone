@@ -191,7 +191,7 @@ export function EnhancedTable<T>({
 
       {/* Table */}
       <div ref={autoPageSize && desktopTable ? capacity.containerRef : undefined} className={`relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
-        <div className="record-list-scroll xl:hidden overflow-visible">
+        <div className={`record-list-scroll xl:hidden overflow-visible ${pageData.length === 0 ? "flex min-h-64 items-center justify-center" : ""}`}>
           {sorted.length > 0 && columns.some(col => col.sortKey) && <div className="mb-3 flex justify-end">
             <select aria-label="Sort records" value={sortCol && sortDir ? `${sortCol}:${sortDir}` : ""}
               onChange={event => {
@@ -258,10 +258,10 @@ export function EnhancedTable<T>({
                 ))}
               </tr>
             </thead>
-            <tbody style={stretchRows && scrollBody ? { display: "grid", gridAutoRows: `calc(100% / ${pageSize})`, alignContent: "start" } : undefined} className={scrollBody ? "block flex-1 min-h-0 overflow-hidden" : undefined}>
+            <tbody style={stretchRows && scrollBody && pageData.length > 0 ? { display: "grid", gridAutoRows: `calc(100% / ${pageSize})`, alignContent: "start" } : undefined} className={scrollBody ? `${pageData.length === 0 ? "flex flex-col" : "block"} flex-1 min-h-0 overflow-hidden` : undefined}>
               {pageData.length === 0 ? (
-                <tr>
-                  <td colSpan={columns.length} className={scrollBody ? "block w-full" : undefined}>
+                <tr className={scrollBody ? "flex flex-1 min-h-0" : undefined}>
+                  <td colSpan={columns.length} className={scrollBody ? "flex flex-1 min-w-0 items-center justify-center" : "text-center"}>
                     <EmptyState title={emptyTitle} description={emptyDesc} />
                   </td>
                 </tr>
