@@ -10,7 +10,15 @@ export function DataTable({ headers, rows, alignments = [], scrollable = false }
   const alignment = (i: number) => alignments[i] === "right" ? "text-right pl-4 pr-6" : alignments[i] === "center" ? "text-center px-4" : "text-left px-4";
   return (
     <div className={`${scrollable ? "flex-1 min-h-0 overflow-auto" : "overflow-x-auto"} rounded-xl border border-slate-100 bg-white shadow-sm`}>
-      <table className="w-full table-fixed text-sm text-slate-700">
+      <div className="sm:hidden divide-y" style={{ borderColor: "var(--border)" }}>
+        {rows.map((row, ri) => <div key={ri} className="space-y-2.5 p-3">
+          {row.map((cell, ci) => <div key={ci} className="flex items-start justify-between gap-3 text-xs">
+            <span className="shrink-0 font-medium text-slate-500">{headers[ci]}</span>
+            <span className="min-w-0 text-right break-words text-slate-700">{cell}</span>
+          </div>)}
+        </div>)}
+      </div>
+      <table className="hidden sm:table w-full table-fixed text-sm text-slate-700">
         <thead className={`${scrollable ? "sticky top-0 z-10 bg-slate-50" : "bg-slate-50/80"} border-b border-slate-100`}>
           <tr>
             {headers.map((h, i) => (

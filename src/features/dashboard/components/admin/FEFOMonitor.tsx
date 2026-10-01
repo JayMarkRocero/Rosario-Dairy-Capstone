@@ -3,24 +3,11 @@ import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect } from "react";
 import { AlertOctagon, AlertTriangle, PackageX, Wallet } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
+import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
-import { FEFODot } from "@/components/data-display/FEFODot";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { FEFOItem, InventoryItem } from "@/features/inventory/types/inventory";
-
-const STATUS_LABEL: Record<string, string> = {
-  green:  "Good",
-  yellow: "Watch",
-  orange: "Alert",
-  red:    "Expired",
-};
-const STATUS_COLOR: Record<string, string> = {
-  green:  C.green,
-  yellow: "#b8b80e",
-  orange: C.orange,
-  red:    C.red,
-};
 
 function isExpired(expiry: string): boolean {
   if (!expiry) return false;
@@ -67,22 +54,22 @@ export function FEFOMonitor() {
   const SUMMARY_STATS = [
     {
       label: "Expired", value: String(expiredCount),
-      color: "#B91C1C", bg: "#FEE2E2", icon: AlertOctagon,
+      color: C.red, bg: "var(--status-red)", icon: AlertOctagon,
       emphasis: expiredCount > 0,
     },
     {
       label: "Near Expiry", value: String(nearExpiryCount),
-      color: "#B45309", bg: "#FEF3C7", icon: AlertTriangle,
+      color: C.orange, bg: "var(--status-amber)", icon: AlertTriangle,
       emphasis: false,
     },
     {
       label: "Low Stock", value: String(lowStockCount),
-      color: C.orange, bg: "#FFF3E0", icon: PackageX,
+      color: C.orange, bg: "var(--status-amber)", icon: PackageX,
       emphasis: false,
     },
     {
       label: "Inv. Value", value: `₱${invValue.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
-      color: C.green, bg: "#E8F5E9", icon: Wallet,
+      color: C.green, bg: "var(--status-green)", icon: Wallet,
       emphasis: false,
     },
   ];
@@ -90,7 +77,7 @@ export function FEFOMonitor() {
   return (
     <Card className="p-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+      <div className="mb-1">
         <div>
           <h2 className="font-semibold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
             Inventory Monitor
@@ -98,18 +85,6 @@ export function FEFOMonitor() {
           <p className="text-xs mt-0.5" style={{ color: C.muted }}>
             First Expired, First Out — Priority Queue
           </p>
-        </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs" style={{ color: C.muted }}>
-          {[
-            { c: "red",    l: "Critical" },
-            { c: "orange", l: "High"     },
-            { c: "yellow", l: "Medium"   },
-            { c: "green",  l: "Low"      },
-          ].map(i => (
-            <div key={i.l} className="flex items-center gap-1.5">
-              <FEFODot st={i.c as any} />{i.l}
-            </div>
-          ))}
         </div>
       </div>
 
@@ -138,19 +113,44 @@ export function FEFOMonitor() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div>
         {loading ? (
-          <p className="text-sm py-4" style={{ color: C.muted }}>Loading…</p>
+          <EmptyState compact loading title="Checking batches" />
         ) : fefoItems.length === 0 ? (
-          <p className="text-sm py-4" style={{ color: C.muted }}>No batches to monitor yet.</p>
+          <EmptyState compact title="No batches to monitor" description="Active batches will appear here." />
         ) : (
-          <table className="w-full table-fixed text-xs">
+          <>
+          <div className="divide-y xl:hidden" style={{ borderColor: C.border }}>
+            {fefoItems.map(item => <div key={item.id} className="py-3.5 first:pt-1 last:pb-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-medium" style={{ color: C.text }}>{item.product}</p>
+                  <p className="mt-0.5 break-all font-mono text-xs" style={{ color: C.muted }}>{item.batch}</p>
+                </div>
+                <span className="shrink-0"><StatusBadge status={item.priority} /></span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                <div><p style={{ color: C.muted }}>Quantity</p><p className="mt-0.5 font-medium" style={{ color: C.text }}>{item.qty}</p></div>
+                <div><p style={{ color: C.muted }}>Expiry</p><p className="mt-0.5 font-medium" style={{ color: C.text }}>{item.expiry}</p></div>
+                <div className="text-right"><p style={{ color: C.muted }}>Days left</p><p className="mt-0.5 font-semibold" style={{ color: item.days <= -1 ? C.red : item.days <= 7 ? C.orange : C.text }}>{item.days}d</p></div>
+              </div>
+            </div>)}
+          </div>
+          <div className="hidden overflow-x-auto xl:block"><table className="w-full min-w-[680px] table-fixed text-xs">
+            <colgroup>
+              <col className="w-[27%]" />
+              <col className="w-[27%]" />
+              <col className="w-[10%]" />
+              <col className="w-[16%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+            </colgroup>
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                {["", "Product", "Batch", "Qty", "Expiry", "Days", "Priority", "Status"].map(h => (
+                {["Product", "Batch", "Qty", "Expiry", "Days", "Priority"].map(h => (
                   <th
                     key={h}
-                    className={`py-2.5 font-medium uppercase tracking-wide ${["Qty", "Days"].includes(h) ? "text-right pl-2 pr-6" : ["", "Priority", "Status"].includes(h) ? "text-center px-2" : "text-left px-2"}`}
+                    className={`py-2.5 font-medium uppercase tracking-wide ${["Qty", "Days"].includes(h) ? "text-right pl-2 pr-4" : h === "Priority" ? "text-center px-2" : "text-left px-2"}`}
                     style={{ color: C.muted }}
                   >
                     {h}
@@ -165,27 +165,22 @@ export function FEFOMonitor() {
                   className="hover:bg-gray-50 transition-colors"
                   style={{ borderBottom: `1px solid ${C.border}` }}
                 >
-                  <td className="py-2.5 text-center px-2"><FEFODot st={item.st} /></td>
-                  <td className="py-2.5 text-left px-2 font-medium whitespace-nowrap" style={{ color: C.text }}>{item.product}</td>
-                  <td className="py-2.5 text-left px-2 font-mono whitespace-nowrap"   style={{ color: C.muted }}>{item.batch}</td>
-                  <td className="py-2.5 text-right pl-2 pr-6 font-medium" style={{ color: C.text }}>{item.qty}</td>
+                  <td className="overflow-hidden text-ellipsis whitespace-nowrap py-2.5 px-2 text-left font-medium" title={item.product} style={{ color: C.text }}>{item.product}</td>
+                  <td className="overflow-hidden text-ellipsis whitespace-nowrap py-2.5 px-2 text-left font-mono" title={item.batch} style={{ color: C.muted }}>{item.batch}</td>
+                  <td className="py-2.5 text-right pl-2 pr-4 font-medium" style={{ color: C.text }}>{item.qty}</td>
                   <td className="py-2.5 text-left px-2 whitespace-nowrap"             style={{ color: C.text }}>{item.expiry}</td>
                   <td
-                    className="py-2.5 text-right pl-2 pr-6 font-semibold"
+                    className="py-2.5 text-right pl-2 pr-4 font-semibold"
                     style={{ color: item.days <= -1 ? C.red : item.days <= 7 ? C.orange : C.muted }}
                   >
                     {item.days}d
                   </td>
                   <td className="py-2.5 text-center px-2"><StatusBadge status={item.priority} /></td>
-                  <td className="py-2.5 text-center px-2 whitespace-nowrap">
-                    <span className="font-medium text-xs" style={{ color: STATUS_COLOR[item.st] }}>
-                      {STATUS_LABEL[item.st]}
-                    </span>
-                  </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
+          </>
         )}
       </div>
     </Card>

@@ -35,7 +35,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 const inputClass = `w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100`;
-const inputStyle = { borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" };
+const inputStyle = { borderColor: "var(--border)", color: "var(--foreground)", backgroundColor: "var(--input-background)" };
 
 // Compares expiry date against today. A product expiring "today" is not yet
 // expired — it becomes expired starting the day after.
@@ -98,13 +98,13 @@ function ProductForm({ form, onChange, categories, mode }: {
       </Field>
       <Field label="Stock Quantity">
         <input className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
-          style={{...inputStyle, backgroundColor: mode === "edit" ? "#E5E7EB" : inputStyle.backgroundColor}}
+          style={{...inputStyle, backgroundColor: mode === "edit" ? "var(--surface-inset)" : inputStyle.backgroundColor}}
           type="number" value={form.stock} onChange={set("stock")} placeholder="0"
           disabled={mode === "edit"}/>
       </Field>
       <Field label="Expiry Date">
         <input className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
-          style={{...inputStyle, backgroundColor: mode === "edit" ? "#E5E7EB" : inputStyle.backgroundColor}}
+          style={{...inputStyle, backgroundColor: mode === "edit" ? "var(--surface-inset)" : inputStyle.backgroundColor}}
           type="date" value={form.expiry} onChange={set("expiry")} disabled={mode === "edit"}/>
       </Field>
       {mode === "edit" && (
@@ -134,7 +134,7 @@ function ProductDetail({ p }: { p: InventoryItem }) {
     { label:"FEFO Status",   value: statusLabel },
   ];
   return (
-    <div className="space-y-5 p-6">
+    <div className="space-y-5 sm:p-6">
       <div
         className="rounded-2xl p-4 text-center"
         style={{ backgroundColor: accentColor + "08", border:`1px solid ${accentColor}20` }}
@@ -148,11 +148,11 @@ function ProductDetail({ p }: { p: InventoryItem }) {
         <div className="font-bold text-base" style={{ color:C.text,fontFamily:"Poppins,sans-serif" }}>{p.name}</div>
         <div className="mt-1"><StatusBadge status={status}/></div>
       </div>
-      <div className="space-y-5 p-6">
+      <div className="space-y-2 sm:space-y-5 sm:p-6">
         {rows.map(r => (
-          <div key={r.label} className="flex justify-between py-2" style={{borderBottom:`1px solid ${C.border}`}}>
+          <div key={r.label} className="flex flex-col gap-1 py-2 sm:flex-row sm:justify-between sm:gap-3" style={{borderBottom:`1px solid ${C.border}`}}>
             <span className="text-sm" style={{color:C.muted}}>{r.label}</span>
-            <span className="text-sm font-semibold" style={{color:C.text}}>{r.value}</span>
+            <span className="min-w-0 break-words text-sm font-semibold sm:text-right" style={{color:C.text}}>{r.value}</span>
           </div>
         ))}
       </div>
@@ -394,7 +394,7 @@ export function AdminInventory() {
   );
 
   return (
-    <div className="flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
@@ -421,7 +421,7 @@ export function AdminInventory() {
       </div>
 
       {/* Table */}
-      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+      <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
         <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
           <EnhancedTable
             rowHeight={56}
@@ -433,8 +433,9 @@ export function AdminInventory() {
             searchKeys={r => [r.name, r.cat]}
             searchPlaceholder="Search products…"
             onRowClick={openView}
-            emptyTitle={itemsLoading ? "Loading inventory…" : "No products found"}
-            emptyDesc={itemsLoading ? "Fetching data from the server." : "Add your first product to get started."}
+            loading={itemsLoading}
+            emptyTitle="No products found"
+            emptyDesc="Add your first product to get started."
             showExport={false}
             extraControls={
               <div className="flex flex-wrap gap-2">

@@ -8,7 +8,7 @@ export const DEACTIVATION_OPTIONS: { value: DeactivationReason; label: string }[
 ];
 
 export function canReactivateUser(user: SystemUser): boolean {
-  return user.status === "Inactive" && ["none", "leave", "suspended"].includes(user.deactivationReason);
+  return user.status === "Inactive";
 }
 
 export type UserRole = "Administrator" | "Staff";

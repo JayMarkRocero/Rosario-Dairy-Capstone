@@ -1,3 +1,4 @@
+import { Inbox } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 
 interface Props {
@@ -5,34 +6,34 @@ interface Props {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  compact?: boolean;
+  loading?: boolean;
 }
 
-function DefaultIcon() {
-  return (
-    <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
-      <rect x="10" y="20" width="60" height="45" rx="8" fill={C.border} />
-      <rect x="20" y="30" width="40" height="6" rx="3" fill={C.muted} opacity="0.4" />
-      <rect x="20" y="42" width="30" height="6" rx="3" fill={C.muted} opacity="0.25" />
-      <rect x="20" y="54" width="20" height="6" rx="3" fill={C.muted} opacity="0.15" />
-      <circle cx="40" cy="12" r="8" fill={C.blue} opacity="0.15" />
-      <circle cx="40" cy="12" r="4" fill={C.blue} opacity="0.3" />
-    </svg>
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <span aria-hidden="true" className={`skeleton block rounded-lg ${className}`} />;
+}
+
+export function EmptyState({ icon, title, description, action, compact = false, loading = false }: Props) {
+  if (loading) return (
+    <div role="status" aria-label={title} aria-busy="true" className={`w-full mx-auto ${compact ? "max-w-sm space-y-3 px-4 py-5" : "max-w-md space-y-4 px-5 py-10"}`}>
+      <span className="sr-only">{title}</span>
+      <Skeleton className="h-4 w-2/5" />
+      <Skeleton className="h-3 w-4/5" />
+      <Skeleton className="h-3 w-3/5" />
+      {!compact && <Skeleton className="h-3 w-2/3" />}
+    </div>
   );
-}
 
-export function EmptyState({ icon, title, description, action }: Props) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-      <div className="mb-5 opacity-70">{icon ?? <DefaultIcon />}</div>
-      <h3
-        className="font-semibold text-base mb-1"
-        style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
-      >
-        {title}
-      </h3>
-      {description && (
-        <p className="text-sm mb-5 max-w-xs" style={{ color: C.muted }}>{description}</p>
-      )}
+    <div className={`flex flex-col items-center justify-center px-4 text-center ${compact ? "py-5" : "py-12 sm:py-16"}`}>
+      <div className={`flex items-center justify-center rounded-2xl ${compact ? "mb-3 size-10" : "mb-4 size-14"}`}
+        style={{ color: C.muted, backgroundColor: C.bg }}>
+        {icon ?? <Inbox size={compact ? 19 : 25} strokeWidth={1.5} aria-hidden="true" />}
+      </div>
+      <h3 className={`font-semibold mb-1 ${compact ? "text-sm" : "text-base"}`}
+        style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{title}</h3>
+      {description && <p className={`${compact ? "text-xs" : "text-sm"} max-w-xs ${action ? "mb-4" : ""}`} style={{ color: C.muted }}>{description}</p>}
       {action}
     </div>
   );

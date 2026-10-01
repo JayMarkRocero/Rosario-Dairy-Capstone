@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { Plus, Edit, Trash2, Eye, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
+import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { Btn } from "@/components/buttons/Btn";
 import { Modal } from "@/components/overlays/Modal";
@@ -12,16 +13,18 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { Drawer } from "@/components/overlays/Drawer";
 import { CategoryIcon } from "@/components/data-display/CategoryIcon";
 import { C } from "@/styles/tokens/colors";
+import { filterSelectClass } from "@/styles/controlClasses";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { Category } from "@/features/inventory/types/inventory";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
-const inputStyle = { borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" };
+const inputStyle = { borderColor: "var(--border)", color: "var(--foreground)", backgroundColor: "var(--input-background)" };
 
-interface FormState { name: string; desc: string; is_visible_to_staff: boolean }
-const EMPTY: FormState = { name:"", desc:"", is_visible_to_staff:true };
+interface FormState { name: string; desc: string; is_active: boolean; is_visible_to_staff: boolean }
+const EMPTY: FormState = { name:"", desc:"", is_active:true, is_visible_to_staff:true };
+type CategoryStatus = "All" | "Active" | "Inactive";
 
-function CategoryForm({ form, setForm }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>> }) {
+function CategoryForm({ form, setForm, showStatus = false }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>>; showStatus?: boolean }) {
   return (
     <div className="space-y-4">
       <div>
@@ -34,6 +37,16 @@ function CategoryForm({ form, setForm }: { form: FormState; setForm: React.Dispa
         <input className={inputClass} style={inputStyle} value={form.desc}
           onChange={e => setForm(f=>({...f,desc:e.target.value}))} placeholder="Short description"/>
       </div>
+      {showStatus && <div>
+        <label htmlFor="edit-category-status" className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Status</label>
+        <select id="edit-category-status" className={inputClass} style={inputStyle}
+          value={form.is_active ? "active" : "inactive"}
+          onChange={e => setForm(f => ({ ...f, is_active: e.target.value === "active" }))}>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        <p className="mt-1.5 text-xs" style={{ color: C.muted }}>Deactivating hides this category from new selections. Existing product associations stay intact.</p>
+      </div>}
     </div>
   );
 }
@@ -64,19 +77,13 @@ export function AdminCategories() {
   const [selected,   setSelected]   = useState<Category | null>(null);
   const [form,       setForm]       = useState<FormState>(EMPTY);
   const [loading,    setLoading]    = useState(false);
-  const [showInactive, setShowInactive] = useState(false);
-  const [page, setPage] = useState(1);
-  const { pageSize, containerRef, headerRef } = useAdminAutoPageSize(56);
-  useEffect(() => { setPage(1); }, [pageSize]);
+  const [statusFilter, setStatusFilter] = useState<CategoryStatus>("All");
+  const pageCapacity = useAdminAutoPageSize(56);
 
-  const visibleCategories = showInactive
-    ? cats
-    : cats.filter((cat) => cat.is_active);
+  const visibleCategories = cats.filter(cat =>
+    statusFilter === "All" || cat.is_active === (statusFilter === "Active")
+  );
   const sortedCategories = [...visibleCategories].sort((a, b) => a.name.localeCompare(b.name));
-
-  const totalPages = Math.max(1, Math.ceil(sortedCategories.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pageCategories = sortedCategories.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const syncCategory = (id: number, changes: Partial<Category>) => {
     setCats(current => current.map(cat => cat.id === id ? { ...cat, ...changes } : cat));
@@ -84,7 +91,7 @@ export function AdminCategories() {
   };
 
   const openEdit = (c: Category) => {
-    setSelected(c); setForm({ name:c.name, desc:c.desc, is_visible_to_staff:c.is_visible_to_staff }); setEditOpen(true);
+    setSelected(c); setForm({ name:c.name, desc:c.desc, is_active:c.is_active, is_visible_to_staff:c.is_visible_to_staff }); setEditOpen(true);
   };
 
   const save = async (mode:"add"|"edit") => {
@@ -98,13 +105,21 @@ export function AdminCategories() {
           setAddOpen(false);
       } else {
         if (!selected) return;
-        await inventoryService.updateCategory(selected.id, form);
-          toast.success("Category updated!");
-          setEditOpen(false);
+        await inventoryService.updateCategory(selected.id, {
+          name: form.name, desc: form.desc,
+          is_visible_to_staff: form.is_active && form.is_visible_to_staff,
+        });
+        if (form.is_active !== selected.is_active) {
+          if (form.is_active) await inventoryService.reactivateCategory(selected.id);
+          else await inventoryService.deleteCategory(selected.id);
+        }
+        toast.success(form.is_active === selected.is_active ? "Category updated!" : `Category ${form.is_active ? "reactivated" : "deactivated"}.`);
+        setEditOpen(false);
       }
       setForm(EMPTY);
       await loadCategories();
     } catch (err) {
+      if (mode === "edit") await loadCategories();
       toastApiError(err, `Failed to ${mode === "add" ? "add" : "update"} category.`);
     } finally {
       setLoading(false);
@@ -158,125 +173,72 @@ export function AdminCategories() {
     }
   };
 
+  const columns: Column<Category>[] = [
+    { key: "name", header: "Category", align: "left", width: "22%", sortKey: cat => cat.name,
+      render: cat => <div className="flex items-center gap-3 min-w-0">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: C.blue + "12" }}>
+          <CategoryIcon name={cat.name} size={18} color={C.blue} />
+        </div>
+        <span className="truncate font-medium" title={cat.name}>{cat.name}</span>
+      </div> },
+    { key: "desc", header: "Description", align: "left", width: "26%",
+      render: cat => <span className="truncate" title={cat.desc} style={{ color: C.muted }}>{cat.desc || "—"}</span> },
+    { key: "products", header: "Products", align: "center", width: "12%", sortKey: cat => cat.products,
+      render: cat => <span className="text-xs font-semibold px-2.5 py-1 rounded-md inline-flex items-center border border-blue-200/60"
+        style={{ backgroundColor: C.blue + "15", color: C.blue }}>{cat.products}</span> },
+    { key: "status", header: "Status", align: "center", width: "12%", sortKey: cat => cat.is_active ? "Active" : "Inactive",
+      render: cat => <StatusBadge status={cat.is_active ? "Active" : "Inactive"} /> },
+    { key: "visibility", header: "Staff Visibility", align: "center", width: "16%", sortKey: cat => cat.is_active && cat.is_visible_to_staff ? "Visible" : "Hidden",
+      render: cat => <div className="flex items-center justify-center gap-2" onClick={event => event.stopPropagation()}>
+        <StatusBadge status={cat.is_active && cat.is_visible_to_staff ? "Visible" : "Hidden"} />
+        <button type="button" disabled={loading || !cat.is_active} onClick={() => handleStaffVisibility(cat)}
+          className="w-9 h-5 shrink-0 rounded-full transition-colors relative disabled:opacity-50"
+          style={{ backgroundColor: cat.is_active && cat.is_visible_to_staff ? C.successAction : C.border }}
+          aria-label={`${cat.is_active && cat.is_visible_to_staff ? "Hide" : "Show"} ${cat.name} for staff`}>
+          <span className="ui-switch-thumb absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
+            style={{ left: cat.is_active && cat.is_visible_to_staff ? "calc(100% - 18px)" : "2px" }} />
+        </button>
+      </div> },
+    { key: "actions", header: "Actions", align: "center", width: "12%",
+      render: cat => <div className="flex items-center justify-center gap-1.5" onClick={event => event.stopPropagation()}>
+        {!cat.is_active && <button type="button" onClick={() => handleReactivate(cat)} disabled={loading}
+          title="Restore category" className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50">
+          <RotateCcw size={13} /> Reactivate
+        </button>}
+        <ActionButton label="View details" onClick={() => { setSelected(cat); setViewOpen(true); }}><Eye size={14} /></ActionButton>
+        <ActionButton label="Edit category" onClick={() => openEdit(cat)}><Edit size={14} /></ActionButton>
+        {cat.is_active && <ActionButton label="Deactivate category" destructive disabled={loading}
+          onClick={() => { setSelected(cat); setDeleteOpen(true); }}><Trash2 size={14} /></ActionButton>}
+      </div> },
+  ];
+
   return (
-    <div className="flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 w-full">
+    <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 w-full">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
           <h2 className="text-lg font-bold" style={{color:C.muted}}>Organize products by type</h2>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm cursor-pointer" style={{color:C.muted}}>
-            <input type="checkbox" checked={showInactive}
-              onChange={e => { setShowInactive(e.target.checked); setPage(1); }} className="accent-blue-600"/>
-            Show Inactive Categories
-          </label>
           <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
             Add Category
           </Btn>
         </div>
       </div>
 
-      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden">
-          <table className="w-full table-fixed text-sm text-slate-700">
-            <thead ref={headerRef} className="bg-slate-50/80 border-b border-slate-100">
-              <tr>
-                <th className="w-[22%] text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Category</th>
-                <th className="w-[26%] text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Description</th>
-                <th className="w-[12%] text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Products</th>
-                <th className="w-[12%] text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Status</th>
-                <th className="w-[16%] text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Staff Visibility</th>
-                <th className="w-[12%] text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {catsLoading && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-sm" style={{color:C.muted}}>
-                    Loading categories…
-                  </td>
-                </tr>
-              )}
-
-              {!catsLoading && visibleCategories.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-sm" style={{color:C.muted}}>
-                    {showInactive ? "No categories found." : "No active categories found."}
-                  </td>
-                </tr>
-              )}
-
-              {!catsLoading && pageCategories.map(cat => (
-                <tr key={cat.id} className="h-14 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors">
-                  <td className="text-left px-4 py-2">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{backgroundColor:C.blue+"12"}}>
-                        <CategoryIcon name={cat.name} size={18} color={C.blue}/>
-                      </div>
-                      <span className="truncate font-medium text-slate-700" title={cat.name}>
-                        {cat.name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="text-left px-4 py-2 max-w-xs truncate" style={{color:C.muted}}>
-                    {cat.desc}
-                  </td>
-                  <td className="text-center px-4 py-2">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-md inline-flex items-center gap-1 border border-blue-200/60"
-                      style={{backgroundColor:C.blue+"15",color:C.blue}}>
-                      {cat.products}
-                    </span>
-                  </td>
-                  <td className="text-center px-4 py-2">
-                    <StatusBadge status={cat.is_active?"Active":"Inactive"}/>
-                  </td>
-                  <td className="text-center px-4 py-2">
-                    <div className="flex items-center justify-center gap-2">
-                      <StatusBadge status={(cat.is_active && cat.is_visible_to_staff)?"Visible":"Hidden"}/>
-                      <button type="button" disabled={loading || !cat.is_active} onClick={()=>handleStaffVisibility(cat)}
-                        className="w-9 h-5 shrink-0 rounded-full transition-colors relative disabled:opacity-50"
-                        style={{backgroundColor:(cat.is_active && cat.is_visible_to_staff)?C.green:C.border}}
-                        aria-label={`${(cat.is_active && cat.is_visible_to_staff)?"Hide":"Show"} ${cat.name} for staff`}>
-                        <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
-                          style={{left:(cat.is_active && cat.is_visible_to_staff)?"calc(100% - 18px)":"2px"}}/>
-                      </button>
-                    </div>
-                  </td>
-                  <td className="text-center px-4 py-2">
-                    <div className="flex items-center justify-center gap-2">
-                      {!cat.is_active && (
-                        <button onClick={()=>handleReactivate(cat)} disabled={loading}
-                          title="Restore category" className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50">
-                          <RotateCcw size={13}/> Reactivate
-                        </button>
-                      )}
-                      <ActionButton label="View details" onClick={()=>{setSelected(cat);setViewOpen(true);}}>
-                        <Eye size={14}/>
-                      </ActionButton>
-                      <ActionButton label="Edit category" onClick={()=>openEdit(cat)}>
-                        <Edit size={14}/>
-                      </ActionButton>
-                      {cat.is_active && <ActionButton label="Deactivate category" destructive disabled={loading} onClick={()=>{setSelected(cat);setDeleteOpen(true);}}>
-                        <Trash2 size={14}/>
-                      </ActionButton>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-auto pt-3 border-t border-slate-100 flex shrink-0 items-center justify-between gap-3 text-xs text-slate-500">
-          <span>Page {currentPage} of {totalPages}</span>
-          <div className="flex gap-1">
-            <button type="button" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} className="h-8 w-8 rounded-lg border disabled:opacity-40">&lt;</button>
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => Math.max(1, Math.min(currentPage - 2, totalPages - 4)) + i).map(number => (
-              <button key={number} type="button" aria-current={number === currentPage ? "page" : undefined} onClick={() => setPage(number)} className={`h-8 w-8 rounded-lg border ${number === currentPage ? "bg-blue-600 text-white border-blue-600" : "hover:bg-slate-100"}`}>{number}</button>
-            ))}
-            <button type="button" aria-label="Next page" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)} className="h-8 w-8 rounded-lg border disabled:opacity-40">&gt;</button>
-          </div>
-        </div>
+      <Card className="records-card p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+        <EnhancedTable rowHeight={56} fillHeight scrollBody disableScroll columns={columns}
+          data={sortedCategories} rowKey={cat => cat.id} pageCapacity={pageCapacity}
+          searchable searchKeys={cat => [cat.name, cat.desc]} searchPlaceholder="Search categories…"
+          onRowClick={cat => { setSelected(cat); setViewOpen(true); }}
+          showExport={false} loading={catsLoading}
+          emptyTitle={statusFilter === "Inactive" ? "No inactive categories" : statusFilter === "Active" ? "No active categories" : "No categories found"}
+          emptyDesc={statusFilter === "Inactive" ? "Deactivated categories will appear here." : statusFilter === "Active" ? "Reactivate a category or add a new one." : "Add a category to organize your products."}
+          extraControls={<select aria-label="Category status" value={statusFilter}
+            onChange={event => setStatusFilter(event.target.value as CategoryStatus)} className={filterSelectClass}>
+            <option value="All">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>} />
       </Card>
 
       {/* Add Modal */}
@@ -290,7 +252,7 @@ export function AdminCategories() {
       <Modal open={editOpen} onClose={()=>setEditOpen(false)} title="Edit Category" subtitle={selected?.name}
         footer={<><Btn variant="secondary" onClick={()=>setEditOpen(false)}>Cancel</Btn>
           <Btn variant="primary" onClick={()=>save("edit")} disabled={loading}>{loading?"Saving…":"Save Changes"}</Btn></>}>
-        <CategoryForm form={form} setForm={setForm}/>
+        <CategoryForm form={form} setForm={setForm} showStatus />
       </Modal>
 
       {/* View Drawer */}
@@ -324,4 +286,3 @@ export function AdminCategories() {
     </div>
   );
 }
-

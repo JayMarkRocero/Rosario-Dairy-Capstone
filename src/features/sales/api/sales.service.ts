@@ -31,6 +31,7 @@ export const salesService = {
     const transactions = await getAllPages<DjangoTransaction>("/sales/transactions/", {
       start_date: filters?.startDate, end_date: filters?.endDate,
       handled_by: filters?.handledBy,
+      page_size: 200,
     });
 
     return transactions.map((t: DjangoTransaction) => ({

@@ -28,8 +28,8 @@ interface Props {
   onBack?: () => void;
 }
 
-const LOGO_SRC = "assets/images/logo.jpg";
-const BG_SRC = "assets/images/bg.jpg";
+import LOGO_SRC from "../../assets/images/logo.jpg";
+import BG_SRC from "../../assets/images/bg.jpg";
 
 /* ------------------------------------------------------------------ */
 /*  Entrance animation styles — scoped, reduced-motion safe            */
@@ -100,7 +100,7 @@ function BrandMark({ size = 64 }: { size?: number }) {
   return (
     <div
       className="flex items-center justify-center rounded-full flex-shrink-0"
-      style={{ width: size, height: size, backgroundColor: C.blue }}
+      style={{ width: size, height: size, backgroundColor: C.action }}
     >
       <Milk size={size * 0.5} className="text-white" aria-hidden="true" />
     </div>
@@ -335,14 +335,14 @@ export function Login({ onBack }: Props) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row overflow-x-hidden" style={{ backgroundColor: "#EEF2F6" }}>
+    <div className="min-h-screen flex flex-col md:flex-row overflow-x-hidden" style={{ backgroundColor: C.bg }}>
       <LoginAnimationStyles />
 
       {/* Left branding panel — hidden on mobile, visible from md up */}
       <div
         className="hidden md:flex md:w-1/2 lg:w-3/5 flex-col justify-between p-10 lg:p-14 relative rd-anim-bg"
         style={{
-          backgroundColor: C.navy,
+          backgroundColor: C.sidebar,
           backgroundImage: bgFailed
             ? undefined
             : `radial-gradient(ellipse at center, rgba(15,42,74,0.45) 0%, rgba(15,42,74,0.55) 45%, rgba(15,42,74,0.88) 100%), url(${BG_SRC})`,
@@ -406,7 +406,7 @@ export function Login({ onBack }: Props) {
           backgroundImage: `radial-gradient(circle at 82% 28%, ${C.blue}14, transparent 55%)`,
         }}
       >
-        <div className="p-6 sm:p-10 pb-0">
+        <div className="p-6 sm:p-10 pb-0 flex items-center justify-between">
           {onBack && (
             <button
               onClick={onBack}
@@ -423,7 +423,7 @@ export function Login({ onBack }: Props) {
           <div className="flex md:hidden items-center gap-3 mb-8">
             <BrandMark size={44} />
             <div>
-              <h1 className="text-xl font-bold" style={{ color: C.navy, fontFamily: "Poppins, sans-serif" }}>
+              <h1 className="text-xl font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
                 Rosario Dairy
               </h1>
               <p className="text-xs" style={{ color: C.muted }}>
@@ -461,7 +461,7 @@ export function Login({ onBack }: Props) {
                   </label>
                   <div
                     className="flex items-center gap-2.5 rounded-xl px-4 py-3 border transition-all focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
-                    style={{ borderColor: error ? C.red : C.border, backgroundColor: "#F8FAFC" }}
+                    style={{ borderColor: error ? C.red : C.border, backgroundColor: "var(--input-background)" }}
                   >
                     <User size={16} style={{ color: C.muted }} aria-hidden="true" />
                     <input
@@ -486,7 +486,7 @@ export function Login({ onBack }: Props) {
                   </label>
                   <div
                     className="flex items-center gap-2.5 rounded-xl px-4 py-3 border transition-all focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
-                    style={{ borderColor: error ? C.red : C.border, backgroundColor: "#F8FAFC" }}
+                    style={{ borderColor: error ? C.red : C.border, backgroundColor: "var(--input-background)" }}
                   >
                     <Lock size={16} style={{ color: C.muted }} aria-hidden="true" />
                     <input
@@ -562,7 +562,7 @@ export function Login({ onBack }: Props) {
                   type="submit"
                   disabled={loading}
                   className="rd-signin-btn rd-anim-field-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-60 hover:opacity-90 hover:shadow-lg hover:-translate-y-0.5"
-                  style={{ backgroundColor: C.navy }}
+                  style={{ backgroundColor: C.action }}
                 >
                   {loading ? (
                     <>

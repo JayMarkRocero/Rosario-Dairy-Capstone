@@ -62,23 +62,23 @@ export function AdminOrders() {
     </div> },
   ];
 
-  return <div className="flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 py-2 max-w-[1400px] mx-auto w-full">
+  return <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 py-2 max-w-[1400px] mx-auto w-full">
     <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Manage and track all customer orders</h2><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 flex-shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green],
       ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red], ["Warnings", orders.filter(o=>o.warning).length, C.orange],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-    <Card className="p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden"><EnhancedTable rowHeight={56} fillHeight scrollBody disableScroll columns={columns} data={data} rowKey={o=>o.id} pageCapacity={pageCapacity} searchable
+    <Card className="records-card p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden"><EnhancedTable rowHeight={56} fillHeight scrollBody disableScroll columns={columns} data={data} rowKey={o=>o.id} pageCapacity={pageCapacity} searchable
       searchKeys={o=>[String(o.id),o.customer,o.staff]} onRowClick={view} showExport={false}
-      emptyTitle={loadingList?"Loading orders…":"No orders found"} emptyDesc={loadingList?"Fetching data from the server.":"No orders match your filters."}
+      loading={loadingList} emptyTitle="No orders found" emptyDesc="No orders match your filters."
       extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/></Card>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md"
       footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn>{selected?.status==="Fulfilled"&&<Btn variant="secondary" onClick={()=>setCancelOpen(true)}>Cancel Order</Btn>}</>}>
       {selected&&<div className="space-y-5">
-        <div className="grid grid-cols-2 gap-3">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="p-3 rounded-xl" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="font-medium text-sm">{v}</div></div>)}</div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>
         <StatusBadge status={selected.status}/>
         {selected.warning&&<div className="p-3 rounded-xl text-sm" style={{backgroundColor:C.orange+"12",color:C.orange}}>{selected.warning}</div>}
-        <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>{selected.items.map((item,i)=><div key={i} className="flex justify-between px-3 py-2 text-sm"><span>{item.product}</span><span style={{color:C.muted}}>{item.quantity} pcs — ₱{item.subtotal.toLocaleString()}</span></div>)}</div>
+        <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>{selected.items.map((item,i)=><div key={i} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:justify-between sm:gap-3"><span className="min-w-0 break-words">{item.product}</span><span className="shrink-0" style={{color:C.muted}}>{item.quantity} pcs — ₱{item.subtotal.toLocaleString()}</span></div>)}</div>
         <div className="space-y-1 p-4 rounded-2xl text-sm" style={{backgroundColor:C.navy+"08"}}><div className="flex justify-between"><span>Subtotal</span><span>₱{selected.subtotal.toLocaleString()}</span></div><div className="flex justify-between"><span>Discount</span><span>−₱{selected.discountAmount.toLocaleString()}</span></div><div className="flex justify-between font-bold text-base"><span>Total</span><span style={{color:C.blue}}>₱{selected.total.toLocaleString()}</span></div><div className="text-xs" style={{color:C.muted}}>Payment: {selected.paymentMethod}</div></div>
       </div>}
     </Drawer>

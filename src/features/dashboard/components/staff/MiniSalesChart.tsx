@@ -3,6 +3,7 @@ import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect, useMemo } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Card } from "@/components/data-display/Card";
+import { SectionHeader } from "@/components/data-display/SectionHeader";
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
 import { authService } from "@/features/auth/api/auth.service";
@@ -40,7 +41,9 @@ export function MiniSalesChart() {
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
+      const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+      const part = (type: string) => parts.find(value => value.type === type)!.value;
+      const dateStr = `${part("year")}-${part("month")}-${part("day")}`;
       const dayTotal = mySales
         .filter(s => s.date === dateStr)
         .reduce((sum, s) => sum + s.total, 0);
@@ -50,17 +53,10 @@ export function MiniSalesChart() {
   }, [sales, username]);
 
   return (
-    <Card className="p-3.5 flex-1 min-h-0 flex flex-col overflow-hidden">
-      <h3
-        className="font-semibold text-sm mb-3 flex-shrink-0"
-        style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
-      >
-        My Weekly Sales
-      </h3>
-      <div className="flex-1 min-h-0 min-w-0">
-      {loading ? (
-        <div className="h-full flex items-center justify-center text-xs" style={{ color: C.muted }}>Loading…</div>
-      ) : (
+    <Card className="p-4 sm:p-5 min-w-0" aria-busy={loading}>
+      <SectionHeader title="My weekly sales" subtitle="Last 7 days" />
+      <div className="h-[220px] min-w-0 overflow-x-auto">
+      <div className="h-full min-w-[380px]">
         <ResponsiveContainer width="100%" height="100%" minHeight={0} minWidth={0}>
           <AreaChart
             data={chartData}
@@ -83,7 +79,7 @@ export function MiniSalesChart() {
               padding={{ left: 10, right: 10 }}
             />
 
-            <YAxis hide domain={["dataMin - 500", "dataMax + 500"]} />
+            <YAxis hide domain={[0, "auto"]} />
 
             <Area
               type="monotone"
@@ -98,6 +94,8 @@ export function MiniSalesChart() {
             <Tooltip
               formatter={(v: number) => [`₱${v.toLocaleString()}`, "Sales"]}
               contentStyle={{
+                backgroundColor: "var(--popover)",
+                color: "var(--popover-foreground)",
                 borderRadius: 10,
                 fontSize: 12,
                 border: `1px solid ${C.border}`,
@@ -106,7 +104,7 @@ export function MiniSalesChart() {
             />
           </AreaChart>
         </ResponsiveContainer>
-      )}
+      </div>
       </div>
     </Card>
   );

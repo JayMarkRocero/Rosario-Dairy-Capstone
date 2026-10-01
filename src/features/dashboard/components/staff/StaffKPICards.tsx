@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { BarChart2, Check, ClipboardList, Package } from "lucide-react";
 import { KPICard } from "@/components/data-display/KPICard";
 import { C } from "@/styles/tokens/colors";
+import { useTheme } from "@/styles/ThemeProvider";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
 import { ordersService } from "@/features/orders/api/orders.service";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
@@ -12,12 +13,18 @@ import type { OrderListItem } from "@/features/orders/types/order";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: string) => parts.find(value => value.type === type)!.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 export function StaffKPICards() {
+  const { theme } = useTheme();
   const reportVersion = useReportVersion();
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [products, setProducts] = useState<InventoryItem[]>([]);
@@ -25,6 +32,8 @@ export function StaffKPICards() {
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setFailed(false);
 
     Promise.all([
       salesService.getAll(),
@@ -39,7 +48,7 @@ export function StaffKPICards() {
         setProducts(p);
         setUsername(user.username);
       })
-      .catch(error => toastApiError(error))
+      .catch(error => { if (active) { setFailed(true); toastApiError(error); } })
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -62,36 +71,32 @@ export function StaffKPICards() {
     return [
       {
         title: "My Sales Today", value: `₱${myTotalToday.toLocaleString()}`, icon: <BarChart2 size={20}/>,
-        trend: "neutral" as const, trendLabel: "Live", color: C.blue,
+        trend: "neutral" as const, trendLabel: "Today", color: C.blue,
+        detail: "Completed sales you processed",
       },
       {
         title: "My Transactions Today", value: String(mySalesToday.length), icon: <Check size={20}/>,
         trend: "neutral" as const, trendLabel: "Today", color: C.green,
+        detail: "Transactions you processed",
       },
       {
         title: "Fulfilled Orders", value: String(fulfilledOrders.length), icon: <ClipboardList size={20}/>,
-        trend: "neutral" as const, trendLabel: `${fulfilledOrders.length} completed`, color: C.orange,
+        trend: "neutral" as const, trendLabel: "All time", color: C.orange,
+        detail: "Completed customer orders",
       },
       {
         title: "Available Products", value: `${availableProducts} / ${products.length}`, icon: <Package size={20}/>,
         trend: "neutral" as const, trendLabel: "In stock", color: C.navy,
+        detail: "Active products with available stock",
       },
     ];
-  }, [sales, orders, products, username]);
-
-  if (loading) {
-    return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 flex-shrink-0">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-2xl p-3.5 shadow-sm animate-pulse" style={{ border: `1px solid ${C.border}`, minHeight: 100 }} />
-        ))}
-      </div>
-    );
-  }
+  }, [sales, orders, products, username, theme]);
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 flex-shrink-0">
-      {kpis.map(k => <KPICard key={k.title} {...k} compact />)}
+    <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={loading}>
+      {kpis.map(k => <KPICard key={k.title} {...k} value={failed ? "—" : k.value}
+        trendLabel={failed ? "Unavailable" : loading ? "Updating" : k.trendLabel}
+        detail={failed ? "Unable to load current metrics." : k.detail} compact />)}
     </div>
   );
 }

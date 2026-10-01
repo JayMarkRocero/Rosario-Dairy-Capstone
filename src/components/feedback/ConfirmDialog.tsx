@@ -15,17 +15,16 @@ interface Props {
   loading?: boolean;
 }
 
-const VARIANT_CONFIG: Record<Variant, { icon: React.ReactNode; bg: string; color: string; btnBg: string }> = {
-  danger:  { icon: <Trash2 size={28} />,     bg: "#FFEBEE", color: C.red,    btnBg: C.red    },
-  warning: { icon: <AlertTriangle size={28}/>,bg: "#FFF3E0", color: C.orange, btnBg: C.orange },
-  info:    { icon: <RefreshCw size={28}/>,    bg: "#EBF3FF", color: C.blue,   btnBg: C.blue   },
-};
-
 export function ConfirmDialog({
   open, onClose, onConfirm, title, description,
   confirmLabel = "Confirm", variant = "danger", loading,
 }: Props) {
-  const cfg = VARIANT_CONFIG[variant];
+  const cfg: Record<Variant, { icon: React.ReactNode; bg: string; color: string; btnBg: string }> = {
+    danger:  { icon: <Trash2 size={28} />,      bg: "var(--status-red)", color: C.red, btnBg: C.dangerAction },
+    warning: { icon: <AlertTriangle size={28}/>, bg: "var(--status-amber)", color: C.orange, btnBg: C.warningAction },
+    info:    { icon: <RefreshCw size={28}/>,     bg: "var(--status-blue)", color: C.blue, btnBg: C.action },
+  };
+  const current = cfg[variant];
 
   return (
     <Modal
@@ -38,7 +37,7 @@ export function ConfirmDialog({
       <div className="flex flex-col items-center text-center py-2">
         <div
           className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5"
-          style={{ backgroundColor: cfg.bg, color: cfg.color }}
+          style={{ backgroundColor: current.bg, color: current.color }}
         >
           {cfg.icon}
         </div>
@@ -62,7 +61,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={loading}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: cfg.btnBg }}
+            style={{ backgroundColor: current.btnBg }}
           >
             {loading ? "Processing…" : confirmLabel}
           </button>

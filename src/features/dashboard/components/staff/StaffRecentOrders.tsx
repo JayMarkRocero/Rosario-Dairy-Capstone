@@ -2,6 +2,7 @@ import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
 import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect } from "react";
 import { Card } from "@/components/data-display/Card";
+import { EmptyState } from "@/components/EmptyState";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
 import { DataTable } from "@/components/data-display/DataTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
@@ -32,16 +33,16 @@ export function StaffRecentOrders() {
   }, [reportVersion]);
 
   return (
-    <Card className="p-4 flex flex-col h-full min-h-0 overflow-hidden">
+    <Card className="p-4 sm:p-5 h-full min-w-0">
       <div className="flex-shrink-0">
         <SectionHeader title="Recent Orders" subtitle="Today's transactions" />
       </div>
       {loading ? (
-        <p className="text-sm py-4" style={{ color: C.muted }}>Loading…</p>
+        <EmptyState compact loading title="Gathering recent orders" />
       ) : orders.length === 0 ? (
-        <p className="text-sm py-4" style={{ color: C.muted }}>No recent orders.</p>
+        <EmptyState compact title="No recent orders" description="New orders will show up here." />
       ) : (
-        <DataTable scrollable alignments={["left", "left", "center", "left"]}
+        <DataTable alignments={["left", "left", "center", "left"]}
           headers={["Order #", "Customer", "Status", "Date"]}
           rows={orders.map(o => [
             <span key="id"   className="font-mono text-xs"   style={{ color: C.muted }}>#{o.id}</span>,

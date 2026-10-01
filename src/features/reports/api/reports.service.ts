@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/api";
 import http, { type DjangoBestSeller, type DjangoSalesByCategory } from "@/lib/api";
+import type { RevenueBucket, RevenuePeriod } from "@/features/reports/utils/revenueWindow";
 
 export type ReportType = "daily_sales" | "weekly_sales" | "monthly_sales" | "inventory" | "sarima_forecast" | "customer";
 export type ReportScalar = string | number | boolean | null;
@@ -53,14 +54,20 @@ const CATEGORY_PALETTE = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
 export const REPORTS_UPDATED = "rosario:reports-updated";
 
 export const reportsService = {
+  getRevenue: async (period: RevenuePeriod, startDate: string, endDate: string, signal?: AbortSignal): Promise<RevenueBucket[]> => {
+    const { data } = await http.get<RevenueBucket[]>("/sales/reports/revenue/", {
+      params: { period, start_date: startDate, end_date: endDate }, signal,
+    });
+    return data;
+  },
   refreshAfterMutation: async (): Promise<void> => {
     try { await reportsService.refreshReportCache(); }
     catch (error) {
       toast.warning(`Saved successfully, but reports could not refresh: ${getApiErrorMessage(error, "Please retry refreshing reports.")}`);
     }
   },
-  fetchReportPreview: async (type: ReportType): Promise<ReportPreviewResponse> => {
-    const { data } = await http.get<ReportPreviewResponse>("/api/reports/preview/", { params: { type } });
+  fetchReportPreview: async (type: ReportType, period?: "weekly" | "monthly" | "yearly"): Promise<ReportPreviewResponse> => {
+    const { data } = await http.get<ReportPreviewResponse>("/api/reports/preview/", { params: { type, ...(period ? { period } : {}) } });
     return data;
   },
 

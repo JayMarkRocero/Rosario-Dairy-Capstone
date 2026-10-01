@@ -50,7 +50,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
       style={{ transition: "all 0.2s ease" }}
     >
       {/* Backdrop */}
@@ -74,7 +74,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
       >
         {/* Header */}
         <div
-          className="flex items-start justify-between px-7 py-5 flex-shrink-0"
+          className="flex items-start justify-between px-4 sm:px-7 py-4 sm:py-5 flex-shrink-0"
           style={{ borderBottom: `1px solid ${C.border}` }}
         >
           <div>
@@ -100,12 +100,12 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-7 py-5">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4 sm:px-7 py-4 sm:py-5">{children}</div>
 
         {/* Footer */}
         {footer && (
           <div
-            className="flex items-center justify-end gap-3 px-7 py-4 flex-shrink-0"
+            className="flex flex-wrap items-center justify-end gap-3 px-4 sm:px-7 py-4 flex-shrink-0"
             style={{ borderTop: `1px solid ${C.border}` }}
           >
             {footer}

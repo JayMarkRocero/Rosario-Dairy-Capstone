@@ -74,9 +74,9 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
     >
       <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 sm:px-8">
         <button onClick={() => navigate("home")} className="flex min-w-0 items-center gap-3 text-left">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm" style={{ backgroundColor: C.navy }}>RD</span>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm" style={{ backgroundColor: C.action }}>RD</span>
           <span className="min-w-0 leading-tight">
-            <span className="block truncate text-sm font-bold" style={{ color: C.navy, fontFamily: "Poppins, sans-serif" }}>Rosario Dairy</span>
+            <span className="block truncate text-sm font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>Rosario Dairy</span>
             <span className="block truncate text-xs" style={{ color: C.muted }}>Operations Intelligence</span>
           </span>
         </button>
@@ -93,12 +93,14 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
           })}
         </nav>
 
-        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="hidden rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm md:block" style={{ backgroundColor: C.blue }}>
-          Sign in
-        </motion.button>
-        <button className="rounded-lg p-2 md:hidden" style={{ color: C.navy }} onClick={() => setMobileOpen((open) => !open)} aria-label="Toggle navigation menu" aria-expanded={mobileOpen}>
-          {mobileOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="hidden rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm md:block" style={{ backgroundColor: C.action }}>
+            Sign in
+          </motion.button>
+        <button className="rounded-lg p-2 md:hidden" style={{ color: C.text }} onClick={() => setMobileOpen((open) => !open)} aria-label="Toggle navigation menu" aria-expanded={mobileOpen}>
+            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -110,7 +112,7 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
                   {link.label}
                 </button>
               ))}
-              <button onClick={onLogin} className="mt-2 rounded-xl px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: C.blue }}>Sign in</button>
+              <button onClick={onLogin} className="mt-2 rounded-xl px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: C.action }}>Sign in</button>
             </nav>
           </motion.div>
         )}
@@ -174,8 +176,8 @@ function HeroSection({ onLogin }: { onLogin?: () => void }) {
           <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.08] sm:text-5xl lg:text-[3.5rem]" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>Control dairy operations with clarity and confidence.</h1>
           <p className="mt-6 max-w-xl text-base leading-8 sm:text-lg" style={{ color: C.muted }}>Unify batch-level inventory, point-of-sale activity, management reporting, and demand forecasting in one dependable operating system.</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="inline-flex items-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold text-white shadow-lg" style={{ backgroundColor: C.blue, boxShadow: `0 14px 28px -14px ${C.blue}` }}>Access the platform <ArrowRight size={16} /></motion.button>
-            <button onClick={() => scrollToId("features")} className="rounded-xl border px-6 py-3.5 text-sm font-semibold transition-colors hover:bg-white" style={{ color: C.navy, borderColor: C.border }}>Explore capabilities</button>
+            <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="inline-flex items-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold text-white shadow-lg" style={{ backgroundColor: C.action, boxShadow: `0 14px 28px -14px ${C.action}` }}>Access the platform <ArrowRight size={16} /></motion.button>
+            <button onClick={() => scrollToId("features")} className="rounded-xl border px-6 py-3.5 text-sm font-semibold transition-colors hover:bg-white" style={{ color: C.text, borderColor: C.border }}>Explore capabilities</button>
           </div>
         </motion.div>
         <DashboardShowcase />
@@ -261,7 +263,7 @@ function WorkflowSection({ onLogin }: { onLogin?: () => void }) {
           <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: "#93C5FD" }}>Rosario Dairy Management System</p>
           <h2 className="mx-auto mt-3 max-w-2xl text-2xl font-bold text-white sm:text-3xl" style={{ fontFamily: "Poppins, sans-serif" }}>Move from manual coordination to informed operational control.</h2>
           <p className="mx-auto mt-4 max-w-xl text-sm leading-6" style={{ color: "#CBD5E1" }}>Access inventory, POS, analytics, and forecasting through one secure workspace.</p>
-          <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="mt-7 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white" style={{ backgroundColor: C.blue }}>Sign in to continue <ArrowRight size={16} /></motion.button>
+          <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="mt-7 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white" style={{ backgroundColor: C.action }}>Sign in to continue <ArrowRight size={16} /></motion.button>
         </motion.div>
       </div>
     </section>
@@ -273,7 +275,7 @@ function Footer() {
     <footer id="contact" className="border-t pt-14 pb-7" style={{ backgroundColor: "#0F1E33", borderColor: "rgba(255,255,255,0.08)" }}>
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <div className="grid gap-10 border-b pb-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_0.8fr_1fr]" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-          <div className="max-w-sm"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: C.blue }}>RD</div><div><p className="text-sm font-bold text-white" style={{ fontFamily: "Poppins, sans-serif" }}>Rosario Dairy</p><p className="text-xs" style={{ color: "#94A3B8" }}>Integrated Inventory &amp; POS System</p></div></div><p className="mt-4 text-sm leading-6" style={{ color: "#94A3B8" }}>A unified operations platform for perishable inventory, sales control, and forward planning.</p></div>
+          <div className="max-w-sm"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: C.action }}>RD</div><div><p className="text-sm font-bold text-white" style={{ fontFamily: "Poppins, sans-serif" }}>Rosario Dairy</p><p className="text-xs" style={{ color: "#94A3B8" }}>Integrated Inventory &amp; POS System</p></div></div><p className="mt-4 text-sm leading-6" style={{ color: "#94A3B8" }}>A unified operations platform for perishable inventory, sales control, and forward planning.</p></div>
           <div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "#64748B" }}>Navigate</p><div className="mt-4 flex flex-col gap-3">{NAV_LINKS.map((link) => <button key={link.id} onClick={() => scrollToId(link.id)} className="text-left text-sm transition-colors hover:text-white" style={{ color: "#CBD5E1" }}>{link.label}</button>)}</div></div>
           <div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "#64748B" }}>Contact</p><div className="mt-4 flex flex-col gap-3 text-sm" style={{ color: "#CBD5E1" }}><a className="flex items-center gap-2 hover:text-white" href="mailto:rocerojaymark31@gmail.com"><Mail size={15} />rocerojaymark31@gmail.com</a><a className="flex items-center gap-2 hover:text-white" href="tel:+639125096057"><Phone size={15} />0912 509 6057</a><p className="flex items-center gap-2"><MapPin size={15} />Rosario, Batangas, Philippines</p></div></div>
         </div>

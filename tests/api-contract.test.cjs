@@ -22,6 +22,8 @@ const compiled = buildSync({
     export * from './src/features/reports/api/reports.service';
     export * from './src/lib/notifications.service';
     export * from './src/features/dashboard/components/admin/RevenueChart';
+    export * from './src/features/dashboard/components/admin/ForecastChart';
+    export * from './src/features/reports/utils/revenueWindow';
     export * from './src/features/users/api/user.service';
     export * from './src/features/users/types/user';
     export * from './src/features/sales/utils/receiptDetails';
@@ -156,14 +158,32 @@ test('all inventory alert endpoints accept empty arrays with no inventory fallba
   assert.equal(calls.length, 6);
 });
 
-test('disabled alerts produce no notifications and skip orders', async () => {
-  api.http.defaults.adapter = async config => {
-    calls.push(config);
-    return { data: config.url === '/settings/' ? { notifications: { new_order_alerts: false } } : [], status: 200, headers: {}, config };
-  };
+test('notification feed trusts backend unread and dismissed state without reconstructing alerts', async () => {
+  responseData = [{ id: 'low-stock-products', revision: 'a'.repeat(64), unread: false, dismissed: true }];
+  assert.deepEqual(await api.notificationsService.getAll(), responseData);
+  assert.equal(calls[0].url, '/settings/inbox/');
+  responseData = [];
   assert.deepEqual(await api.notificationsService.getAll(), []);
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 2);
 });
+
+test('notification actions send only stable references and support read, dismiss and restore', async () => {
+  const item = { id: 'expiry-product-1', revision: 'b'.repeat(64), body: 'Private alert text', unread: true };
+  for (const action of ['read', 'dismiss', 'restore']) {
+    await api.notificationsService.update(action, [item]);
+    assert.equal(calls.at(-1).url, '/settings/inbox/');
+    assert.equal(calls.at(-1).method, 'post');
+    assert.deepEqual(JSON.parse(calls.at(-1).data), { action, notifications: [{ id: item.id, revision: item.revision }] });
+  }
+  await api.notificationsService.update('read', []);
+  assert.equal(calls.length, 3);
+});
+
+test('notification save failures remain errors instead of pretending an alert was acknowledged', async () => {
+  responseStatus = 409; responseData = { detail: 'Alert changed. Refresh and try again.' };
+  await assert.rejects(api.notificationsService.update('read', [{ id: 'low-stock-products', revision: 'c'.repeat(64) }]), { status: 409, message: responseData.detail });
+});
+
 
 test('PDF download requests a blob and converts JSON blob errors to useful messages', async () => {
   responseData = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
@@ -179,6 +199,14 @@ test('PDF download requests a blob and converts JSON blob errors to useful messa
   responseStatus = 400;
   responseData = new Blob([JSON.stringify({ error: 'Report unavailable.' })], { type: 'application/json' });
   await assert.rejects(api.reportsService.downloadReportPDF('daily_sales'), { message: 'Report unavailable.' });
+});
+
+test('forecast periods request separate evaluations and explain withheld estimates', async () => {
+  await api.reportsService.fetchReportPreview('sarima_forecast', 'weekly');
+  assert.deepEqual(calls[0].params, { type: 'sarima_forecast', period: 'weekly' });
+  assert.match(api.forecastExplanation({ status: 'rejected', accuracy_target_percent: 30, metrics: { combined: { rows: 12, wape_percent: 35.8 } } }), /35\.8%.*30%/);
+  assert.match(api.forecastExplanation({ status: 'insufficient_evaluation', metrics: { combined: { rows: 4 } } }), /only 4 complete periods/);
+  assert.match(api.forecastExplanation({ status: 'pending_update' }), /offline evaluation/);
 });
 
 
@@ -272,12 +300,46 @@ test('nested low-stock rows are unwrapped for products and ingredients', async (
   assert.deepEqual(await api.inventoryService.getLowStockIngredients(), [{ id: 2, name: 'Raw milk', total_stock: '3.25' }]);
 });
 
-test('revenue chart maps Django daily totals and weekly/monthly breakdowns', () => {
-  assert.deepEqual(api.normalizeRevenueChart({ date: '2026-09-15', total_revenue: '42.50', items: [{ total_revenue: '99' }] }, 'daily'), [{ n: '2026-09-15', rev: 42.5 }]);
-  assert.deepEqual(api.normalizeRevenueChart({ daily_breakdown: [{ date: '2026-09-15', revenue: '0.00' }, { date: '2026-09-14', revenue: '20.00' }] }, 'weekly'), [{ n: '2026-09-14', rev: 20 }, { n: '2026-09-15', rev: 0 }]);
-  assert.deepEqual(api.normalizeRevenueChart({ weekly_breakdown: [{ week_start: '2026-09-07', week_end: '2026-09-13', revenue: '125.50' }] }, 'monthly'), [{ n: '2026-09-07', rev: 125.5 }]);
-  assert.deepEqual(api.normalizeRevenueChart(null, 'daily'), []);
+test('revenue windows show seven days, seven Monday weeks and five months', () => {
+  const daily = api.revenueWindow('daily', 0, '2026-09-30');
+  assert.equal(daily.buckets.length, 7);
+  assert.deepEqual([daily.start, daily.end], ['2026-09-24', '2026-09-30']);
+  const weekly = api.revenueWindow('weekly', 0, '2026-09-30');
+  assert.equal(weekly.buckets.length, 7);
+  assert.deepEqual([weekly.start, weekly.end, weekly.buckets.at(-1)], ['2026-08-17', '2026-09-30', '2026-09-28']);
+  const monthly = api.revenueWindow('monthly', 0, '2026-09-30');
+  assert.deepEqual(monthly.buckets, ['2026-05-01', '2026-06-01', '2026-07-01', '2026-08-01', '2026-09-01']);
+  assert.equal(monthly.end, '2026-09-30');
 });
+
+test('revenue navigation has contiguous windows across leap days and year boundaries', () => {
+  assert.deepEqual(api.revenueWindow('daily', -1, '2026-01-03'), {
+    start: '2025-12-21', end: '2025-12-27', buckets: ['2025-12-21','2025-12-22','2025-12-23','2025-12-24','2025-12-25','2025-12-26','2025-12-27'],
+  });
+  const previousWeeks = api.revenueWindow('weekly', -1, '2026-09-30');
+  assert.deepEqual([previousWeeks.start, previousWeeks.end], ['2026-06-29', '2026-08-16']);
+  const previousMonths = api.revenueWindow('monthly', -1, '2026-09-30');
+  assert.deepEqual([previousMonths.start, previousMonths.end], ['2025-12-01', '2026-04-30']);
+  assert.equal(api.revenueWindow('monthly', -1, '2024-07-31').end, '2024-02-29');
+  assert.equal(api.revenueWindow('weekly', 0, '2026-09-28').buckets.at(-1), '2026-09-28');
+  assert.equal(api.revenueBusinessDate(new Date('2026-09-30T16:30:00Z')), '2026-10-01');
+});
+
+test('revenue buckets retain zero-sales periods and normalize Django datetime buckets', () => {
+  const window = api.revenueWindow('monthly', 0, '2026-09-30');
+  const series = api.revenueSeries([{ date: '2026-05-01T00:00:00+08:00', rev: '125.50' }, { date: '2026-09-01T00:00:00+08:00', rev: 80 }], window);
+  assert.deepEqual(series.map(r => r.rev), [125.5, 0, 0, 0, 80]);
+  assert.equal(api.revenueSeries([], api.revenueWindow('daily', 0, '2026-09-30')).length, 7);
+});
+
+test('revenue requests use matching aggregation and explicit date boundaries', async () => {
+  responseData = [{ date: '2026-08-17T00:00:00+08:00', rev: 400 }];
+  const result = await api.reportsService.getRevenue('weekly', '2026-08-17', '2026-09-30');
+  assert.equal(calls[0].url, '/sales/reports/revenue/');
+  assert.deepEqual(calls[0].params, { period: 'weekly', start_date: '2026-08-17', end_date: '2026-09-30' });
+  assert.deepEqual(result, responseData);
+});
+
 
 test('category patch excludes read-only activation even from untyped callers', async () => {
   await api.inventoryService.updateCategory(1, { name: 'Dairy', is_active: false });
@@ -320,17 +382,17 @@ test('deactivation sends only Django reason values and rejects legacy on_leave',
   assert.equal(calls.length, 4);
 });
 
-test('reactivation patches a boolean active flag and preserves backend restrictions', async () => {
+test('reactivation patches a boolean active flag for every inactive reason', async () => {
   await api.userService.reactivateUser(7);
   assert.equal(calls[0].method, 'patch');
   assert.equal(calls[0].url, '/accounts/users/7/');
   assert.deepEqual(JSON.parse(calls[0].data), { is_active: true });
   for (const reason of ['none', 'leave', 'suspended', 'resigned', 'terminated']) {
-    assert.equal(api.canReactivateUser({ status: 'Inactive', deactivationReason: reason }), !['resigned', 'terminated'].includes(reason));
+    assert.equal(api.canReactivateUser({ status: 'Inactive', deactivationReason: reason }), true);
     assert.equal(api.canReactivateUser({ status: 'Active', deactivationReason: reason }), false);
   }
   responseStatus = 400;
-  responseData = { error: 'This user was Resigned and cannot be reactivated directly.' };
+  responseData = { error: 'Unable to reactivate user.' };
   await assert.rejects(api.userService.reactivateUser(7), { status: 400, message: responseData.error });
 });
 
@@ -397,4 +459,17 @@ test('staff history never issues an unscoped query when user ID is missing', asy
   responseData = { username: 'staff', role: 'staff' };
   await assert.rejects(api.salesService.getMine(), { status: 401 });
   assert.deepEqual(calls.map(call => call.url), ['/accounts/user/']);
+});
+
+test('POS catalog retains variants so different package sizes can be distinguished', async () => {
+  api.http.defaults.adapter = async config => ({
+    status: 200, config, headers: {}, data: config.url === '/inventory/products/'
+      ? [
+        { id: 1, name: 'Fresh Milk', variant: '1000ml', is_active: true, category: { name: 'Milk' }, unit_price: '138.00', total_stock: '20', low_stock_threshold: 10 },
+        { id: 2, name: 'Fresh Milk', variant: '300ml', is_active: true, category: { name: 'Milk' }, unit_price: '45.00', total_stock: '30', low_stock_threshold: 10 },
+      ] : [],
+  });
+  const products = await api.inventoryService.getAll();
+  assert.deepEqual(products.map(p => p.name), ['Fresh Milk 1000ml', 'Fresh Milk 300ml']);
+  assert.deepEqual(products.map(p => p.price), [138, 45]);
 });

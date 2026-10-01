@@ -3,6 +3,7 @@ import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { Card } from "@/components/data-display/Card";
+import { EmptyState } from "@/components/EmptyState";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
 import { C } from "@/styles/tokens/colors";
 import { reportsService, type CategorySales } from "@/features/reports/api/reports.service";
@@ -34,9 +35,9 @@ export function SalesCategoryChart() {
       <SectionHeader title="Sales by Category" subtitle="Current month breakdown" />
 
       {loading ? (
-        <p className="text-sm py-4" style={{ color: C.muted }}>Loading…</p>
+        <EmptyState compact loading title="Gathering category sales" />
       ) : categoryData.length === 0 ? (
-        <p className="text-sm py-4" style={{ color: C.muted }}>No sales data yet.</p>
+        <EmptyState compact title="No category sales yet" description="Sales will appear once transactions are completed." />
       ) : (
         <>
           <ResponsiveContainer width="100%" height={200}>
@@ -56,7 +57,7 @@ export function SalesCategoryChart() {
               </Pie>
               <Tooltip
                 formatter={(v: number) => [`${v}%`, ""]}
-                contentStyle={{ borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 11 }}
+                contentStyle={{ backgroundColor: "var(--popover)", color: "var(--popover-foreground)", borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 11 }}
               />
             </PieChart>
           </ResponsiveContainer>

@@ -13,7 +13,7 @@ export function useReportVersion() {
   return version;
 }
 
-export function useReportPreview(type: ReportType) {
+export function useReportPreview(type: ReportType, period?: "weekly" | "monthly" | "yearly") {
   const version = useReportVersion();
   const [data, setData] = useState<ReportPreview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,11 +21,11 @@ export function useReportPreview(type: ReportType) {
   useEffect(() => {
     let active = true;
     setLoading(true); setData(null); setError("");
-    reportsService.fetchReportPreview(type).then(result => { if (active) setData(result.data); })
+    reportsService.fetchReportPreview(type, period).then(result => { if (active) setData(result.data); })
       .catch(error => { if (active) { setError(getApiErrorMessage(error, "Unable to load report.")); toastApiError(error, "Unable to load report."); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [type, version]);
+  }, [type, period, version]);
   return { data, loading, error };
 }
 

@@ -61,13 +61,7 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
     return () => { active = false; };
   }, [reportVersion, pendingOrderCount]);
 
-  if (loading) return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" aria-label="Loading operational metrics" aria-busy="true">
-      {Array.from({ length: 4 }, (_, index) => <div key={index} className="bg-white rounded-2xl p-5 shadow-sm animate-pulse min-h-40 border border-slate-200" />)}
-    </div>
-  );
-
-  const available = !failed && metrics !== null;
+  const available = !failed;
   const today = metrics?.todaySales ?? 0;
   const yesterday = metrics?.yesterdaySales ?? 0;
   const change = yesterday > 0 ? ((today - yesterday) / yesterday) * 100 : null;
@@ -93,7 +87,7 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={loading}>
       {cards.map(({ title, value, icon: Icon, color, badge, badgeClass, detail }) => (
         <section key={title} aria-label={title} className="min-w-0 bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
           <div className="flex flex-wrap items-start justify-between gap-2 mb-4">
@@ -101,7 +95,7 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
               <Icon size={22} aria-hidden="true" />
             </div>
             <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${available ? badgeClass : neutralBadge}`}>
-              {available ? badge : "Unavailable"}
+              {failed ? "Unavailable" : loading ? "Updating" : badge}
             </span>
           </div>
           <div className="text-2xl font-bold tracking-tight break-words" style={{ color: C.text, fontFamily: "Poppins,sans-serif" }}>{available ? value : "—"}</div>

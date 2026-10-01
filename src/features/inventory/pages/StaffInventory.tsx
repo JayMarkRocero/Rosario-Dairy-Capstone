@@ -1,8 +1,9 @@
 import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
-import { filterSelectClass, searchContainerClass } from "@/styles/controlClasses";
+import { filterSelectClass } from "@/styles/controlClasses";
+import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useMemo, useState, useEffect } from "react";
-import { AlertTriangle, Search } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
@@ -57,7 +58,6 @@ export function StaffInventory() {
       .finally(() => setItemsLoading(false));
   }, []);
 
-  const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [status, setStatus] = useState("All");
 
@@ -69,7 +69,6 @@ export function StaffInventory() {
  const filteredItems = useMemo(() => {
   return items
     .filter(p => {
-      const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
       const matchesCategory = category === "All" || p.cat === category;
       const itemStatus = getStatus(p);
       const matchesStatus =
@@ -78,7 +77,7 @@ export function StaffInventory() {
          status === "Near Expiry" ? itemStatus === "Near Expiry" :
          status === "Expired" ? itemStatus === "Expired" :
          itemStatus === "Active");
-      return matchesSearch && matchesCategory && matchesStatus;
+      return matchesCategory && matchesStatus;
     })
     // FEFO ordering: soonest expiry first. Items with no expiry date sort last.
     .sort((a, b) => {
@@ -87,7 +86,7 @@ export function StaffInventory() {
       if (!b.expiry) return -1;
       return a.expiry.localeCompare(b.expiry);
     });
-}, [items, search, category, status]);
+}, [items, category, status]);
 
   const columns: Column<InventoryItem>[] = [
     { key:"name", header:"Product", align:"left", width:"26%",
@@ -106,7 +105,7 @@ export function StaffInventory() {
     { key:"stock", header:"Available Qty", align:"center", width:"15%",
       render: p => {
         const itemStatus = getStatus(p);
-        const iconColor = itemStatus === "Expired" ? C.red : itemStatus === "Low" ? C.orange : itemStatus === "Near Expiry" ? "#F59E0B" : undefined;
+        const iconColor = itemStatus === "Expired" ? C.red : itemStatus === "Low" || itemStatus === "Near Expiry" ? C.orange : undefined;
         return (
           <div className="flex items-center justify-center gap-1.5">
             {itemStatus !== "Active" && <AlertTriangle size={11} style={{ color: iconColor }} />}
@@ -119,7 +118,7 @@ export function StaffInventory() {
         const expired = isExpired(p.expiry);
         const near = !expired && isNearExpiry(p.expiry);
         return (
-          <span className="text-xs whitespace-nowrap" style={{ color: expired ? C.red : near ? "#F59E0B" : C.muted, fontWeight: (expired || near) ? 600 : 400 }}>
+          <span className="text-xs whitespace-nowrap" style={{ color: expired ? C.red : near ? C.orange : C.muted, fontWeight: (expired || near) ? 600 : 400 }}>
             {p.expiry}
           </span>
         );
@@ -129,80 +128,18 @@ export function StaffInventory() {
   ];
 
   return (
-    <div className="px-4 sm:px-6 pt-3 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden">
-      {/* Header + notice - fixed */}
-      <div className="flex-shrink-0 space-y-4">
-        {/* Read-only notice */}
-        <div
-          className="p-3 rounded-xl flex items-center gap-3 text-sm"
-          style={{ backgroundColor: C.orange + "15", border: `1px solid ${C.orange}30`, color: C.orange }}
-        >
-          <AlertTriangle size={16} className="flex-shrink-0" />
-          <span>You have read-only access to inventory. Contact an administrator for edits.</span>
-        </div>
+    <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden max-w-[1400px] mx-auto w-full">
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Products and stock levels</h2>
+        <span className="text-xs" style={{color:C.muted}}>Read-only access</span>
       </div>
-
-      {/* Single card: filter bar + table, no internal scroll, table paginates instead */}
-      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        {/* Filter bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 shrink-0">
-          {/* Search */}
-          <div
-            className={`${searchContainerClass} w-full sm:w-72`}
-          >
-            <Search size={14} style={{ color: C.muted }} />
-            <input
-              aria-label="Search records" className="h-full bg-transparent outline-none text-sm flex-1 min-w-0"
-              placeholder="Search products..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ color: C.text }}
-            />
-          </div>
-
-          {/* Category filter */}
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className={filterSelectClass}
-          >
-            {categories.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-
-          {/* Status filter */}
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className={filterSelectClass}
-          >
-            {STATUSES.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-
-          {/* Results count */}
-          <span className="text-xs sm:ml-auto" style={{ color: C.muted }}>
-            {itemsLoading ? "Loading…" : `${filteredItems.length} of ${items.length} products`}
-          </span>
-        </div>
-
-        {/* Table with real pagination, no internal scroll */}
-        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-          <EnhancedTable
-            rowHeight={56}
-            columns={columns}
-            data={filteredItems}
-            rowKey={p => p.id}
-            pageCapacity={pageCapacity}
-            searchable={false}
-            showExport={false}
-            showCount={false}
-            emptyTitle={itemsLoading ? "Loading products…" : "No products found"}
-            emptyDesc={itemsLoading ? "Fetching data from the server." : "No products match your filters."}
-          />
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">{[
+        ["Products", items.length, C.blue], ["Low stock", items.filter(p=>getStatus(p)==="Low").length, C.orange],
+        ["Near expiry", items.filter(p=>getStatus(p)==="Near Expiry").length, C.orange], ["Expired", items.filter(p=>getStatus(p)==="Expired").length, C.red],
+      ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
+      <Card className="records-card p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+        <EnhancedTable rowHeight={56} fillHeight scrollBody disableScroll columns={columns} data={filteredItems} rowKey={p=>p.id} pageCapacity={pageCapacity} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
+          extraControls={<><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className={filterSelectClass}>{categories.map(cat=><option key={cat} value={cat}>{cat === "All" ? "All categories" : cat}</option>)}</select><select aria-label="Status" value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}>{STATUSES.map(s=><option key={s} value={s}>{s === "All" ? "All statuses" : s}</option>)}</select></>}/>
       </Card>
     </div>
   );

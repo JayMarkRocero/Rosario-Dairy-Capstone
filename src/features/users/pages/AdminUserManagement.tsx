@@ -21,8 +21,8 @@ import type { DeactivationReason } from "@/lib/api";
 import { isValidPhoneNumber, PHONE_FORMAT_HINT } from "@/lib/validators";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
-const inputStyle = { borderColor:C.border, color:C.text, backgroundColor:"#F8FAFC" };
-const readOnlyStyle = { borderColor:C.border, color:C.muted, backgroundColor:"#F1F3F5" };
+const inputStyle = { borderColor:"var(--border)", color:"var(--foreground)", backgroundColor:"var(--input-background)" };
+const readOnlyStyle = { borderColor:"var(--border)", color:"var(--muted-foreground)", backgroundColor:"var(--input-background)" };
 
 const ROLES = ["Administrator", "Staff"];
 
@@ -61,7 +61,7 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
           <p className="text-xs mt-1" style={{color:C.muted}}>Username cannot be changed.</p>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>First Name</label>
           <input className={inputClass} style={inputStyle} placeholder="Juan"
@@ -72,7 +72,7 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
           <input className={inputClass} style={inputStyle} placeholder="dela Cruz"
             value={form.lastName} onChange={e=>onChange({...form,lastName:e.target.value})}/>
         </div>
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Email</label>
           <input className={inputClass} style={inputStyle} placeholder="juan@rosariodairy.com"
             autoComplete="off"
@@ -85,7 +85,7 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
     value={form.phoneNumber}
     onChange={e=>onChange({...form,phoneNumber:e.target.value.replace(/\D/g, "")})}/>
 </div>
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Address</label>
           <input className={inputClass} style={inputStyle} placeholder="Street, Barangay, City"
             value={form.address} onChange={e=>onChange({...form,address:e.target.value})}/>
@@ -97,8 +97,8 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
           {(["Staff","Administrator"] as const).map(r=>(
             <button key={r} onClick={()=>onRoleChange(r)}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
-              style={{backgroundColor:role===r?C.navy:C.bg,color:role===r?"#fff":C.muted,
-                border:`1.5px solid ${role===r?C.navy:C.border}`}}>
+              style={{backgroundColor:role===r?C.action:C.bg,color:role===r?"#fff":C.muted,
+                border:`1.5px solid ${role===r?C.action:C.border}`}}>
               {r}
             </button>
           ))}
@@ -290,7 +290,7 @@ export function AdminUserManagement() {
       render:r=>(
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold"
-            style={{backgroundColor:r.role==="Administrator"?C.navy:C.blue}}>
+            style={{backgroundColor:r.role==="Administrator"?C.sidebar:C.action}}>
             {r.name.split(" ").map(n=>n[0]).join("").slice(0,2)}
           </div>
           <div>
@@ -320,13 +320,13 @@ export function AdminUserManagement() {
           <ActionButton label="Edit" onClick={()=>openEdit(r)}><Edit size={13}/></ActionButton>
           <ActionButton label="Reset password" onClick={()=>{setSelected(r);setResetOpen(true);}}><KeyIcon size={13}/></ActionButton>
           {r.status === "Active" ? <ActionButton label="Deactivate" destructive disabled={loading} onClick={()=>{setSelected(r);setDeactivateReason("suspended");setDeleteOpen(true);}}><Trash2 size={13}/></ActionButton>
-            : <ActionButton label={canReactivateUser(r) ? "Reactivate Account" : "Reactivation unavailable for resigned or terminated accounts"} disabled={loading || !canReactivateUser(r)} onClick={()=>{setSelected(r);setReactivateOpen(true);}}><UserCheck size={13}/></ActionButton>}
+            : <ActionButton label="Reactivate Account" disabled={loading || !canReactivateUser(r)} onClick={()=>{setSelected(r);setReactivateOpen(true);}}><UserCheck size={13}/></ActionButton>}
         </div>
       )},
   ];
 
   return (
-    <div className="flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <h2 className="text-base sm:text-lg font-bold leading-snug" style={{color:C.muted}}>
           Manage administrator and staff accounts
@@ -342,7 +342,7 @@ export function AdminUserManagement() {
   ))}
 </div>
 
-      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+      <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
         <EnhancedTable
           rowHeight={56}
           fillHeight
@@ -357,8 +357,9 @@ export function AdminUserManagement() {
           searchPlaceholder="Search users…"
           onRowClick={openView}
           showExport={false}
-          emptyTitle={usersLoading ? "Loading users…" : "No users found"}
-          emptyDesc={usersLoading ? "Fetching data from the server." : "Add your first user to get started."}
+          loading={usersLoading}
+          emptyTitle="No users found"
+          emptyDesc="Add your first user to get started."
           extraControls={
             <>
             <select
@@ -388,7 +389,7 @@ export function AdminUserManagement() {
           <div className="space-y-5">
             <div className="text-center p-6">
               <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white text-2xl font-bold mx-auto mb-3"
-                style={{backgroundColor:selected.role==="Administrator"?C.navy:C.blue}}>
+                style={{backgroundColor:selected.role==="Administrator"?C.sidebar:C.action}}>
                 {selected.name.split(" ").map(n=>n[0]).join("").slice(0,2)}
               </div>
               <h3 className="font-bold text-lg" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
@@ -396,7 +397,6 @@ export function AdminUserManagement() {
               <div className="mt-2"><StatusBadge status={selected.status}/></div>
               {selected.status === "Inactive" && <p className="mt-2 text-xs" style={{color:C.muted}}>
                 {DEACTIVATION_OPTIONS.find(option => option.value === selected.deactivationReason)?.label ?? "Inactive"}
-                {!canReactivateUser(selected) && " · This account cannot be reactivated directly."}
               </p>}
             </div>
             {[
@@ -406,9 +406,9 @@ export function AdminUserManagement() {
               {l:"Address",v:selected.address},
               {l:"Last Login",v:selected.last},
 ]           .map(r=>(
-              <div key={r.l} className="flex justify-between py-2" style={{borderBottom:`1px solid ${C.border}`}}>
+              <div key={r.l} className="flex flex-col gap-1 py-2 sm:flex-row sm:justify-between sm:gap-3" style={{borderBottom:`1px solid ${C.border}`}}>
                 <span className="text-sm" style={{color:C.muted}}>{r.l}</span>
-                <span className="text-sm font-semibold" style={{color:C.text}}>{r.v}</span>
+                <span className="min-w-0 break-words text-sm font-semibold sm:text-right" style={{color:C.text}}>{r.v}</span>
               </div>
             ))}
             <Btn variant="secondary" size="sm" icon={<Lock size={12}/>} onClick={()=>{setViewOpen(false);setResetOpen(true);}}>

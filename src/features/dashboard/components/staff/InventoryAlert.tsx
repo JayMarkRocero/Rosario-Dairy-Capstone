@@ -2,6 +2,8 @@ import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
 import { toastApiError } from "@/lib/errorHandling";
 import { useState, useEffect } from "react";
 import { Card } from "@/components/data-display/Card";
+import { SectionHeader } from "@/components/data-display/SectionHeader";
+import { AlertTriangle, CalendarClock, PackageCheck } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
@@ -35,7 +37,7 @@ export function InventoryAlert() {
   useEffect(() => {
     let active = true;
 
-    inventoryService.getAll()
+    inventoryService.getAll(true)
       .then((data) => {
         if (active) setItems(data);
       })
@@ -54,31 +56,23 @@ export function InventoryAlert() {
   const availableCount = items.filter(i => i.stock > 0 && !i.low).length;
 
   const ALERTS = [
-    { label: "Low Stock",   value: `${lowStockCount} product${lowStockCount !== 1 ? "s" : ""}`,   color: C.orange },
-    { label: "Available",   value: `${availableCount} product${availableCount !== 1 ? "s" : ""}`, color: C.green  },
-    { label: "Near Expiry", value: `${nearExpiryCount} product${nearExpiryCount !== 1 ? "s" : ""}`, color: "#F59E0B" },
+    { label: "Low stock", value: lowStockCount, color: C.orange, icon: AlertTriangle },
+    { label: "Available", value: availableCount, color: C.green, icon: PackageCheck },
+    { label: "Near expiry", value: nearExpiryCount, color: C.orange, icon: CalendarClock },
   ];
 
   return (
-    <Card className="p-3.5 flex-1 min-h-0 flex flex-col overflow-hidden">
-      <h3 className="font-semibold text-sm mb-3 flex-shrink-0" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
-        Inventory Alert
-      </h3>
-      {loading ? (
-        <p className="text-sm py-2" style={{ color: C.muted }}>Loading…</p>
-      ) : (
-        <div className="flex-1 min-h-0 flex flex-col justify-evenly gap-1">
-          {ALERTS.map(item => (
-            <div key={item.label} className="flex items-center justify-between text-sm">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                <span style={{ color: C.muted }}>{item.label}</span>
-              </div>
-              <span className="font-semibold" style={{ color: item.color }}>{item.value}</span>
-            </div>
-          ))}
-        </div>
-      )}
+    <Card className="p-4 sm:p-5 min-w-0" aria-busy={loading}>
+      <SectionHeader title="Inventory status" subtitle="Products visible to staff" />
+      <div className="space-y-2">
+        {ALERTS.map(item => <div key={item.label} className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ backgroundColor: C.bg }}>
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: item.color + "18", color: item.color }}><item.icon size={16} /></span>
+            <span className="text-sm font-medium" style={{ color: C.text }}>{item.label}</span>
+          </div>
+          <span className="text-base font-bold tabular-nums" style={{ color: item.color }}>{item.value}</span>
+        </div>)}
+      </div>
     </Card>
   );
 }

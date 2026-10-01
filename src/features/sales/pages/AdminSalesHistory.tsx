@@ -8,11 +8,6 @@ import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTa
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
 
-const PAYMENT_STYLE: Record<string, { bg: string; color: string }> = {
-  Cash:   { bg: C.green + "15", color: C.green },
-  Online: { bg: C.blue  + "15", color: C.blue  },
-};
-
 const PAYMENT_METHODS = ["Cash", "Online"];
 
 export function AdminSalesHistory() {
@@ -56,7 +51,9 @@ export function AdminSalesHistory() {
       render: r => <span className="text-xs whitespace-nowrap" style={{ color: C.muted }}>{r.date}</span> },
     { key:"payment", header:"Payment", align:"center", width:"12%",
       render: r => {
-        const pm = PAYMENT_STYLE[r.payment] ?? { bg: "#F5F5F5", color: C.muted };
+        const pm = r.payment === "Cash" ? { bg: "var(--status-green)", color: C.green }
+          : r.payment === "Online" ? { bg: "var(--status-blue)", color: C.blue }
+          : { bg: "var(--surface-inset)", color: C.muted };
         return (
           <div className="flex items-center justify-center gap-1">
             <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ backgroundColor: pm.bg, color: pm.color }}>
@@ -76,7 +73,7 @@ export function AdminSalesHistory() {
   ];
 
   return (
-    <div className="flex flex-1 flex-col h-full min-h-0 gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full overflow-hidden">
+    <div className="records-page flex flex-1 flex-col h-full min-h-0 gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full overflow-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
           <h2 className="text-lg font-bold" style={{ color: C.muted }}>Complete transaction records</h2>
@@ -102,7 +99,7 @@ export function AdminSalesHistory() {
         </Card>
       </div>
 
-      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+      <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           <EnhancedTable
             rowHeight={56}
@@ -116,8 +113,9 @@ export function AdminSalesHistory() {
             searchable
             searchKeys={r => [r.receipt, r.cashier]}
             searchPlaceholder="Search transactions…"
-            emptyTitle={recordsLoading ? "Loading transactions…" : "No transactions found"}
-            emptyDesc={recordsLoading ? "Fetching data from the server." : "Sales records will appear here once transactions are made."}
+            loading={recordsLoading}
+            emptyTitle="No transactions found"
+            emptyDesc="Sales records will appear here once transactions are made."
             showExport={false}
             extraControls={
               <div className="flex flex-wrap gap-2">
@@ -125,7 +123,7 @@ export function AdminSalesHistory() {
                   value={paymentFilter}
                   onChange={e => setPaymentFilter(e.target.value)}
                   className="px-3 py-2 rounded-xl text-sm outline-none border"
-                  style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+                  style={{ borderColor: C.border, color: C.text, backgroundColor: "var(--input-background)" }}
                 >
                   <option value="All">All Payment Methods</option>
                   {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
@@ -135,13 +133,13 @@ export function AdminSalesHistory() {
                   value={dateFilter}
                   onChange={e => setDateFilter(e.target.value)}
                   className="px-3 py-2 rounded-xl text-sm outline-none border"
-                  style={{ borderColor: C.border, color: C.text, backgroundColor: "#F8FAFC" }}
+                  style={{ borderColor: C.border, color: C.text, backgroundColor: "var(--input-background)" }}
                 />
                 {dateFilter && (
                   <button
                     onClick={() => setDateFilter("")}
                     className="px-3 py-2 rounded-xl text-sm border"
-                    style={{ borderColor: C.border, color: C.muted, backgroundColor: "#F8FAFC" }}
+                    style={{ borderColor: C.border, color: C.muted, backgroundColor: "var(--input-background)" }}
                   >
                     Clear date
                   </button>

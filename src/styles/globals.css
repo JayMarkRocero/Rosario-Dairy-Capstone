@@ -1,0 +1,166 @@
+/* Quantity fields use the adjacent minus and plus buttons. */
+.quantity-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.quantity-input::-webkit-inner-spin-button,
+.quantity-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Surface levels keep the workspace distinct from cards and form controls. */
+html.dark .bg-white {
+  background-color: var(--card);
+}
+
+html.dark .bg-gray-50,
+html.dark .bg-slate-50 {
+  background-color: var(--surface-inset);
+}
+
+html.dark [class~="bg-slate-50/50"],
+html.dark [class~="bg-slate-50/80"] {
+  background-color: var(--table-heading);
+}
+
+html.dark .bg-gray-100,
+html.dark .bg-slate-100,
+html.dark .bg-slate-200 {
+  background-color: var(--surface-raised);
+}
+
+html.dark .bg-slate-300 {
+  background-color: #314861;
+}
+
+html.dark .bg-blue-50 { background-color: var(--status-blue); }
+html.dark .bg-green-50 { background-color: var(--status-green); }
+html.dark .bg-red-50 { background-color: var(--status-red); }
+html.dark .bg-emerald-50 { background-color: var(--status-green); }
+html.dark .bg-rose-50 { background-color: var(--status-red); }
+html.dark .bg-orange-50,
+html.dark .bg-amber-50 { background-color: var(--status-amber); }
+
+html.dark .text-blue-700,
+html.dark .text-blue-600 { color: #9BC5FF; }
+html.dark .text-green-700,
+html.dark .text-green-600 { color: #8AE3B9; }
+html.dark .text-red-700,
+html.dark .text-red-600 { color: #F5A0A9; }
+html.dark .text-emerald-700 { color: #8AE3B9; }
+html.dark .text-rose-700 { color: #F5A0A9; }
+html.dark .text-orange-700,
+html.dark .text-amber-700 { color: #F6C78B; }
+
+html.dark .bg-blue-600 { background-color: #3569A9; }
+html.dark .hover\:bg-blue-700:hover { background-color: #427ABF; }
+html.dark .bg-red-600 { background-color: #A84859; }
+html.dark .hover\:bg-red-700:hover { background-color: #BD5366; }
+
+html.dark .dark\:bg-slate-900 { background-color: var(--card); }
+html.dark .dark\:bg-slate-800 { background-color: var(--surface-raised); }
+
+html.dark .text-gray-900,
+html.dark .text-gray-800,
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-slate-700,
+html.dark .text-gray-700 {
+  color: var(--foreground);
+}
+
+html.dark .text-gray-600,
+html.dark .text-gray-500,
+html.dark .text-gray-400,
+html.dark .text-slate-600,
+html.dark .text-slate-500,
+html.dark .text-slate-400 {
+  color: var(--muted-foreground);
+}
+
+html.dark [class*="border-slate-"],
+html.dark [class*="border-gray-"] {
+  border-color: var(--border);
+}
+html.dark [class~="border-emerald-200/60"],
+html.dark [class~="border-rose-200/60"],
+html.dark [class~="border-amber-200/60"],
+html.dark [class~="border-blue-200/60"] {
+  border-color: var(--border);
+}
+
+html.dark .ui-switch-thumb { background-color: #ffffff; }
+
+html.dark input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
+html.dark select,
+html.dark textarea {
+  background-color: var(--input-background);
+  color: var(--foreground);
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: var(--muted-foreground);
+}
+
+html.dark .hover\:bg-gray-50:hover,
+html.dark .hover\:bg-gray-100:hover,
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-blue-50:hover {
+  background-color: var(--surface-raised);
+}
+html.dark [class*="hover:bg-slate-50/"]:hover {
+  background-color: var(--surface-raised);
+}
+
+.skeleton {
+  background: linear-gradient(100deg, var(--skeleton-base) 25%, var(--skeleton-highlight) 50%, var(--skeleton-base) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  to { background-position-x: -200%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; background: var(--skeleton-base); }
+}
+
+.record-card .truncate,
+.record-card .whitespace-nowrap {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+.record-card-value .justify-center {
+  justify-content: flex-end;
+}
+
+@media (min-width: 480px) {
+  .record-card-value .justify-center {
+    justify-content: flex-start;
+  }
+}
+
+.record-list-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+@media (max-width: 1279px) {
+  .records-page {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .records-page > .records-card {
+    flex: 1 0 auto;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+}

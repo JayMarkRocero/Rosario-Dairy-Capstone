@@ -5,11 +5,13 @@ import { useState, useEffect } from "react";
 import { Search, ShoppingCart, AlertTriangle, Banknote, Smartphone, Printer, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { Modal } from "@/components/overlays/Modal";
+import { EmptyState, Skeleton } from "@/components/EmptyState";
 import { CategoryIcon } from "@/components/data-display/CategoryIcon";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { checkoutService } from "@/features/pos/api/checkout.service";
 import { customersService } from "@/features/customers/api/customers.service";
+import { CustomerPicker } from "@/features/customers/components/CustomerPicker";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 import type { Customer } from "@/features/customers/types/customer";
 
@@ -35,7 +37,7 @@ function ReceiptModal({ cart, total, subtotal, payment, change, onClose, onConfi
         <button onClick={onClose} disabled={loading} className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
           style={{border:`1px solid ${C.border}`,color:C.muted}}>Cancel</button>
         <button onClick={onConfirm} disabled={loading} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 flex items-center justify-center gap-2 disabled:opacity-60"
-          style={{backgroundColor:C.green}}>
+          style={{backgroundColor:C.successAction}}>
           <Check size={14}/> {loading ? "Processing…" : "Complete Transaction"}
         </button>
       </>}>
@@ -105,7 +107,7 @@ function ProductCard({ prod, qtyInCart, onAdd }:{
         <div className="absolute top-2.5 right-2.5 sm:top-3 sm:right-3">
           <span
             className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center font-bold shadow-sm"
-            style={{ backgroundColor: C.blue }}
+            style={{ backgroundColor: C.action }}
           >
             {qtyInCart}
           </span>
@@ -183,12 +185,12 @@ function CartContents({
           )}
         </div>
         {cart.length===0?(
-          <p className="text-xs text-slate-400 py-8 text-center">Cart is empty</p>
+          <EmptyState compact title="Your cart is empty" description="Choose a product to start an order." />
         ):(
           <div className="space-y-3">
             {cart.map(item=>(
-              <div key={item.id} className="flex items-center gap-3 pb-3" style={{borderBottom:`1px solid ${C.border}`}}>
-                <div className="flex-1 min-w-0">
+              <div key={item.id} className="flex flex-wrap xl:flex-nowrap items-center gap-2 xl:gap-3 pb-3" style={{borderBottom:`1px solid ${C.border}`}}>
+                <div className="basis-full xl:basis-auto flex-1 min-w-0">
                   <div className="text-xs font-semibold truncate" style={{color:C.text}}>{item.name}</div>
                   <div className="text-xs mt-0.5" style={{color:C.muted}}>₱{money(item.price)} × {item.qty}</div>
                 </div>
@@ -198,13 +200,13 @@ function CartContents({
                     style={{border:`1px solid ${C.border}`,color:C.muted}}>−</button>
                   <input type="number" min="1" max={item.stock} value={item.qty}
                     onChange={event=>setItemQuantity(item.id, Number(event.target.value))}
-                    className="w-12 h-7 sm:h-6 rounded-lg border text-center text-xs font-bold outline-none"
+                    className="quantity-input w-12 h-7 sm:h-6 rounded-lg border text-center text-xs font-bold outline-none"
                     style={{borderColor:C.border,color:C.text}} aria-label={`Quantity for ${item.name}`}/>
                   <button onClick={()=>updateQty(item.id,1)} disabled={item.qty >= item.stock}
                     className="w-7 h-7 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center hover:bg-blue-50 text-sm font-bold disabled:opacity-30"
                     style={{border:`1px solid ${C.border}`,color:C.blue}}>+</button>
                 </div>
-                <div className="text-xs font-bold w-16 text-right" style={{color:C.text}}>
+                <div className="text-xs font-bold ml-auto xl:ml-0 w-20 xl:w-16 text-right" style={{color:C.text}}>
                   ₱{money(item.price*item.qty)}
                 </div>
               </div>
@@ -236,12 +238,8 @@ function CartContents({
         </div>)}
         <div>
           <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{color:C.muted}}>Customer</label>
-          <select value={customerId} onChange={event=>setCustomerId(event.target.value)}
-            aria-label="Customer" className="w-full h-10 px-3 text-xs rounded-lg outline-none border bg-gray-50"
-            style={{borderColor:C.border,color:C.text}}>
-            <option value="">Walk-in Customer</option>
-            {customers.filter(customer=>customer.name.trim().toLowerCase()!=="walk-in customer").map(customer=><option key={customer.id} value={customer.id}>{customer.name}</option>)}
-          </select>
+          <CustomerPicker customers={customers} value={customerId} onChange={setCustomerId}
+            placeholder="Search customers" includeWalkIn openUpward className="h-10 px-3 text-xs rounded-lg"/>
         </div>
         {cart.length > 0 && <>
         <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
@@ -251,7 +249,7 @@ function CartContents({
           {(["Cash","GCash"] as PayMethod[]).map(m=>(
             <button key={m} onClick={()=>setPayMethod(m)}
               className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
-              style={{backgroundColor:payMethod===m?C.navy:"transparent",color:payMethod===m?"#fff":C.muted,
+              style={{backgroundColor:payMethod===m?C.action:"transparent",color:payMethod===m?"#fff":C.muted,
                 border:`1px solid ${payMethod===m?C.navy:C.border}`}}>
               {m==="Cash"?<Banknote size={12}/>:<Smartphone size={12}/>}{m === "GCash" ? "GCash / Online" : m}
             </button>
@@ -276,8 +274,9 @@ function CartContents({
         </>}
 
         <button onClick={onComplete} disabled={cart.length === 0}
-          className="w-full h-10 rounded-lg text-white font-bold text-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          style={{backgroundColor:cart.length>0?C.blue:C.border}}>
+          className="w-full h-10 rounded-lg font-bold text-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          style={{backgroundColor:cart.length>0?C.action:C.bg,color:cart.length>0?"#fff":C.muted,
+            border:`1px solid ${cart.length>0?C.action:C.border}`}}>
           <Printer size={14}/> Review & Complete
         </button>
       </div>
@@ -397,7 +396,7 @@ export function StaffPOS() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full w-full overflow-hidden relative" style={{ backgroundColor: "#F7F8FA" }}>
+    <div className="flex flex-col xl:flex-row h-full w-full overflow-hidden relative" style={{ backgroundColor: C.bg }}>
       {/* ── Products (full width on mobile, flex-1 on desktop) ── */}
       <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-6 gap-3 sm:gap-4 min-w-0">
         <div
@@ -409,7 +408,7 @@ export function StaffPOS() {
         >
           <Search size={16} style={{ color: searchFocused ? C.blue : C.muted }} />
           <input
-            className="bg-transparent outline-none text-sm flex-1"
+            className="bg-transparent outline-none text-sm flex-1 min-w-0"
             placeholder="Search products…"
             value={search}
             onChange={e=>setSearch(e.target.value)}
@@ -419,22 +418,33 @@ export function StaffPOS() {
           />
         </div>
 
-        <div className="flex gap-2 sm:gap-2.5 flex-wrap">
+        <div className="flex shrink-0 gap-2 sm:gap-2.5 overflow-x-auto whitespace-nowrap pb-1 no-scrollbar">
           {categories.map(cat=>(
             <button key={cat} onClick={()=>setCategory(cat)}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs font-medium transition-all duration-150 hover:opacity-80"
-              style={{backgroundColor:category===cat?C.blue:C.white,color:category===cat?"#fff":C.muted,
+              className="shrink-0 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs font-medium transition-all duration-150 hover:opacity-80"
+              style={{backgroundColor:category===cat?C.action:C.white,color:category===cat?"#fff":C.muted,
                 border:`1px solid ${category===cat?C.blue:C.border}`}}>
               {cat}
             </button>
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto -mx-1 px-1 py-1 pb-20 lg:pb-1">
+        <div className="flex-1 overflow-y-auto -mx-1 px-1 py-1 pb-20 xl:pb-1">
           {productsLoading ? (
-            <p className="text-sm text-center py-10" style={{color:C.muted}}>Loading products…</p>
+            <div role="status" aria-label="Loading products" aria-busy="true" className="grid gap-3 sm:gap-5"
+              style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 155px), 1fr))" }}>
+              <span className="sr-only">Loading products</span>
+              {Array.from({ length: 10 }, (_, index) => <div key={index} className="rounded-xl border p-4 space-y-4 min-h-40" style={{ borderColor: C.border, backgroundColor: C.white }}>
+                <Skeleton className="size-9 rounded-xl" />
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>)}
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState title="No products found" description="Try another search or category." />
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-5">
+            <div className="grid gap-3 sm:gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 155px), 1fr))" }}>
               {filtered.map(prod=>{
                 const inCart = cart.find(i=>i.id===prod.id);
                 return (
@@ -452,7 +462,7 @@ export function StaffPOS() {
       </div>
 
       {/* ── Desktop cart panel (hidden on mobile) ── */}
-      <div className="hidden lg:flex h-full min-h-0 flex-col justify-between bg-white rounded-xl border border-slate-200/80 p-4 flex-shrink-0 overflow-hidden"
+      <div className="hidden xl:flex h-full min-h-0 flex-col justify-between bg-white rounded-xl border border-slate-200/80 p-4 flex-shrink-0 overflow-hidden"
         style={{width:360}}>
         <div className="pb-3 flex-shrink-0" style={{borderBottom:`1px solid ${C.border}`}}>
           <h3 className="font-bold text-base" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>Current Order</h3>
@@ -474,8 +484,8 @@ export function StaffPOS() {
       {cart.length > 0 && !mobileCartOpen && (
         <button
           onClick={() => setMobileCartOpen(true)}
-          className="lg:hidden fixed bottom-4 left-4 right-4 z-40 flex items-center justify-between px-5 py-4 rounded-2xl text-white font-bold shadow-2xl"
-          style={{ backgroundColor: C.blue }}
+          className="xl:hidden fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 z-40 flex items-center justify-between px-5 py-4 rounded-2xl text-white font-bold shadow-2xl"
+          style={{ backgroundColor: C.action }}
         >
           <span className="flex items-center gap-2 text-sm">
             <ShoppingCart size={18}/>
@@ -487,7 +497,7 @@ export function StaffPOS() {
 
       {/* ── Mobile cart bottom sheet ── */}
       {mobileCartOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end">
+        <div className="xl:hidden fixed inset-0 z-50 flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/30" onClick={() => setMobileCartOpen(false)} />
           <div className="relative bg-white rounded-t-3xl shadow-2xl flex flex-col h-[85dvh] max-h-[85dvh] overflow-hidden">
             <div className="px-5 py-4 flex items-center justify-between flex-shrink-0" style={{borderBottom:`1px solid ${C.border}`}}>

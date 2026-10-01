@@ -9,16 +9,17 @@ import { C } from "@/styles/tokens/colors";
 
 interface ReportDefinition { id: ReportType; title: string; desc: string; icon: React.ReactNode; color: string }
 
-const REPORTS: ReportDefinition[] = [
+const getReports = (): ReportDefinition[] => [
   { id:"daily_sales", title:"Daily Sales Report", desc:"Revenue and transactions for today", icon:<BarChart2 size={20}/>, color:C.blue },
   { id:"weekly_sales", title:"Weekly Sales Report", desc:"7-day sales summary and comparison", icon:<TrendingUp size={20}/>, color:C.green },
   { id:"monthly_sales", title:"Monthly Sales Report", desc:"Monthly revenue, growth, and analysis", icon:<FileText size={20}/>, color:C.navy },
   { id:"inventory", title:"Inventory Report", desc:"Current stock levels and FEFO status", icon:<Package size={20}/>, color:C.orange },
-  { id:"sarima_forecast", title:"SARIMA Forecast Report", desc:"Sales forecast for the next 30 days", icon:<ArrowUpRight size={20}/>, color:"#9B59B6" },
-  { id:"customer", title:"Customer Report", desc:"Customer activity and lifetime value", icon:<Users size={20}/>, color:"#1ABC9C" },
+  { id:"sarima_forecast", title:"SARIMA Forecast Report", desc:"Sales forecast for the next 30 days", icon:<ArrowUpRight size={20}/>, color:C.purple },
+  { id:"customer", title:"Customer Report", desc:"Customer activity and lifetime value", icon:<Users size={20}/>, color:C.teal },
 ];
 
 export function AdminReports() {
+  const reports = getReports();
   const [exporting,setExporting] = useState<ReportType|null>(null);
   const [refreshing,setRefreshing] = useState(false);
 
@@ -51,9 +52,9 @@ export function AdminReports() {
       <h2 className="text-lg font-bold" style={{color:C.muted}}>Generate and export business intelligence reports</h2>
       <Btn variant="primary" size="sm" icon={refreshing?<LoaderCircle size={13} className="animate-spin"/>:<RefreshCw size={13}/>} onClick={refresh} disabled={refreshing}>{refreshing?"Refreshing…":"Refresh Data"}</Btn>
     </div>
-    <Card className="w-full flex-1 flex flex-col justify-center p-4 sm:p-5">
+    <Card className="w-full flex-1 flex flex-col justify-start p-4 sm:p-5">
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {REPORTS.map(report=>{
+      {reports.map(report=>{
         const downloading=exporting===report.id;
         return <Card key={report.id} className="p-6 min-w-0 flex flex-col gap-4">
           <div className="flex items-start gap-3">

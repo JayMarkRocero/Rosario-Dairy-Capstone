@@ -56,7 +56,7 @@ export const inventoryService = {
 
       return {
         id: p.id,
-        name: p.name,
+        name: [p.name, p.variant].filter(Boolean).join(" "),
         cat: p.category.name,
         price: parseFloat(p.unit_price),
         stock,
@@ -78,7 +78,7 @@ export const inventoryService = {
         const { st, priority } = fefoStatus(days);
         return {
           id: b.id,
-          product: b.product.name,
+          product: [b.product.name, b.product.variant].filter(Boolean).join(" "),
           batch: b.batch_number,
           qty: parseFloat(b.remaining_quantity),
           expiry: b.expiration_date,

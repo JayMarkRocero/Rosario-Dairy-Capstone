@@ -1,10 +1,10 @@
 import { useAutoPageSize, type AutoPageCapacity } from "@/hooks/useAutoPageSize";
 import { searchContainerClass } from "@/styles/controlClasses";
 // components/EnhancedTable.tsx
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
-import { EmptyState } from "@/components/EmptyState";
+import { EmptyState, Skeleton } from "@/components/EmptyState";
 
 export interface Column<T> {
   key:       string;
@@ -55,7 +55,15 @@ export function EnhancedTable<T>({
   const defaultCapacity = useAutoPageSize(rowHeight);
   const capacity = pageCapacity ?? defaultCapacity;
   autoPageSize = autoPageSize || !!pageCapacity;
-  const pageSize = autoPageSize ? capacity.pageSize : requestedPageSize;
+  const [desktopTable, setDesktopTable] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1280px)");
+    const update = () => setDesktopTable(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  const pageSize = autoPageSize && desktopTable ? capacity.pageSize : requestedPageSize;
   fillHeight = fillHeight || autoPageSize;
   scrollBody = scrollBody || autoPageSize;
   disableScroll = disableScroll || autoPageSize;
@@ -65,17 +73,6 @@ export function EnhancedTable<T>({
   const [page,       setPage]      = useState(1);
 
   useEffect(() => { setPage(1); }, [pageSize]);
-
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft]   = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const checkScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 4);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-  };
 
   // ── Search ──────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -105,12 +102,6 @@ export function EnhancedTable<T>({
   const safePage   = Math.min(page, totalPages);
   const pageData   = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  useEffect(() => {
-    checkScroll();
-    window.addEventListener("resize", checkScroll);
-    return () => window.removeEventListener("resize", checkScroll);
-  }, [pageData, columns]);
-
   const handleSort = (col: Column<T>) => {
     if (!col.sortKey) return;
     if (sortCol !== col.key) { setSortCol(col.key); setSortDir("asc"); }
@@ -121,13 +112,27 @@ export function EnhancedTable<T>({
 
   const handleSearch = (v: string) => { setSearch(v); setPage(1); };
 
-  // ── Skeleton ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="space-y-3 p-5">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-10 rounded-xl animate-pulse" style={{ backgroundColor: C.border }}/>
-        ))}
+      <div role="status" aria-label="Loading records" aria-busy="true"
+        className={`min-h-52 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:bg-card ${fillHeight ? "xl:flex-1" : ""}`}
+        style={{ borderColor: C.border }}>
+        <span className="sr-only">Loading records</span>
+        <div className="xl:hidden space-y-3 p-3">
+          {Array.from({ length: 3 }, (_, index) => <div key={index} className="border-b py-4 space-y-4 last:border-b-0" style={{ borderColor: C.border }}>
+            <div className="flex justify-between gap-3"><Skeleton className="h-3 w-20" /><Skeleton className="h-4 w-24" /></div>
+            <div className="grid grid-cols-2 gap-4"><Skeleton className="h-3 w-3/4" /><Skeleton className="h-3 w-2/3" /></div>
+            <Skeleton className="h-3 w-1/2" />
+          </div>)}
+        </div>
+        <div className="hidden xl:block">
+          <div className="grid gap-4 border-b p-4" style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(0, 1fr))`, borderColor: C.border }}>
+            {columns.map(column => <Skeleton key={column.key} className="h-3 w-3/4" />)}
+          </div>
+          {Array.from({ length: 6 }, (_, index) => <div key={index} className="grid gap-4 border-b p-4" style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(0, 1fr))`, borderColor: C.border }}>
+            {columns.map(column => <Skeleton key={column.key} className="h-3 w-4/5" />)}
+          </div>)}
+        </div>
       </div>
     );
   }
@@ -140,7 +145,7 @@ export function EnhancedTable<T>({
   const pageButtons = Array.from({ length: Math.min(maxPageButtons, totalPages) }, (_, i) => Math.max(1, Math.min(safePage - 2, totalPages - maxPageButtons + 1)) + i);
 
   return (
-    <div className={`flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-hidden" : "h-full"}`}>
+    <div className={`enhanced-table flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-visible xl:overflow-hidden" : "h-auto xl:h-full"}`}>
       {/* Controls bar */}
       {showControlsBar && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4 flex-shrink-0">
@@ -185,11 +190,48 @@ export function EnhancedTable<T>({
       )}
 
       {/* Table */}
-      <div ref={autoPageSize ? capacity.containerRef : undefined} className={`relative overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm ${fillHeight ? "flex-1 min-h-0" : ""}`}>
+      <div ref={autoPageSize && desktopTable ? capacity.containerRef : undefined} className={`relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
+        <div className="record-list-scroll xl:hidden overflow-visible">
+          {sorted.length > 0 && columns.some(col => col.sortKey) && <div className="mb-3 flex justify-end">
+            <select aria-label="Sort records" value={sortCol && sortDir ? `${sortCol}:${sortDir}` : ""}
+              onChange={event => {
+                const [key, direction] = event.target.value.split(":");
+                setSortCol(key || null); setSortDir(direction === "asc" || direction === "desc" ? direction : null); setPage(1);
+              }} className="max-w-full rounded-lg border px-3 py-2 text-xs" style={{ borderColor: C.border, color: C.text }}>
+              <option value="">Default order</option>
+              {columns.filter(col => col.sortKey).flatMap(col => ([
+                <option key={`${col.key}:asc`} value={`${col.key}:asc`}>{col.header}: ascending</option>,
+                <option key={`${col.key}:desc`} value={`${col.key}:desc`}>{col.header}: descending</option>,
+              ]))}
+            </select>
+          </div>}
+          {pageData.length === 0 ? <EmptyState title={emptyTitle} description={emptyDesc} /> : <div>
+            {pageData.map((row, ri) => <div key={rowKey(row)} onClick={() => onRowClick?.(row)}
+              className={`record-card border-b py-4 last:border-b-0 ${onRowClick ? "cursor-pointer" : ""}`}
+              style={{ borderColor: C.border }}>
+              <div className="flex items-center justify-between gap-3 pb-2 mb-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.muted }}>{columns[0]?.header}</span>
+                <span className="min-w-0 text-right text-sm font-semibold" style={{ color: C.text }}>
+                  {columns[0]?.render ? columns[0].render(row, ri) : String((row as any)[columns[0]?.key] ?? "")}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 min-[480px]:grid-cols-2 gap-x-5 gap-y-3">
+                {columns.slice(1).filter(col => col.key !== "actions").map(col => <div key={col.key} className="min-w-0 flex items-start justify-between gap-3 min-[480px]:block">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.muted }}>{col.header}</div>
+                  <div className="record-card-value min-w-0 text-right min-[480px]:text-left text-sm" style={{ color: C.text }}>
+                    {col.render ? col.render(row, ri) : String((row as any)[col.key] ?? "")}
+                  </div>
+                </div>)}
+              </div>
+              {columns.filter(col => col.key === "actions").map(col => <div key={col.key} onClick={event => event.stopPropagation()}
+                className="mt-3 flex items-center justify-end border-t pt-2.5" style={{ borderColor: C.border }}>
+                {col.render ? col.render(row, ri) : String((row as any)[col.key] ?? "")}
+              </div>)}
+            </div>)}
+          </div>}
+        </div>
         <div
-          ref={scrollRef}
-          onScroll={checkScroll}
-          className={disableScroll ? "h-full overflow-hidden" : scrollBody ? "h-full overflow-x-auto overflow-y-hidden" : fillHeight ? "h-full overflow-auto" : "overflow-x-auto"}
+          className={`hidden xl:block ${disableScroll ? "h-full overflow-hidden" : scrollBody ? "h-full overflow-x-auto overflow-y-hidden" : fillHeight ? "h-full overflow-auto" : "overflow-x-auto"}`}
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           <table className={`w-full table-fixed text-sm text-slate-700 ${scrollBody ? `h-full flex flex-col ${disableScroll ? "" : "min-w-[720px]"}` : ""}`}>
@@ -201,11 +243,12 @@ export function EnhancedTable<T>({
                     aria-sort={col.sortKey ? sortCol === col.key && sortDir ? sortDir === "asc" ? "ascending" : "descending" : "none" : undefined}
                     className={`py-3 pl-4 ${alignmentClasses(col.align)} font-semibold text-xs text-slate-500 uppercase tracking-wider select-none whitespace-nowrap ${col.sortKey ? "cursor-pointer hover:bg-gray-100" : ""}`}
                     style={{ width: scrollBody ? undefined : col.width }}
+                    onClick={col.sortKey ? () => handleSort(col) : undefined}
                   >
                     <div className={`relative flex items-center ${col.align === "right" ? "justify-end gap-1" : col.align === "center" ? `justify-center ${col.sortKey ? "gap-1" : "gap-2"}` : "justify-start gap-1"}`}>
-                      {col.sortKey ? <button type="button" onClick={() => handleSort(col)} className="uppercase tracking-wider font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded" aria-label={`Sort by ${col.header}`}>{col.header}</button> : col.header}
+                      {col.sortKey ? <button type="button" className="text-xs uppercase tracking-wider font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded" aria-label={`Sort by ${col.header}`}>{col.header}</button> : col.header}
                       {col.sortKey && (
-                        <span className={`flex flex-col ${col.align === "right" ? "absolute -right-3.5" : ""}`} style={{ color: sortCol === col.key ? C.blue : C.border }}>
+                        <span className={`flex flex-col ${col.align === "right" ? "absolute -right-3.5" : ""}`} style={{ color: sortCol === col.key ? C.blue : C.muted, opacity: sortCol === col.key ? 1 : 0.6 }}>
                           <ChevronUp   size={10} style={{ opacity: sortCol === col.key && sortDir === "asc"  ? 1 : 0.4, marginBottom: -2 }} />
                           <ChevronDown size={10} style={{ opacity: sortCol === col.key && sortDir === "desc" ? 1 : 0.4 }} />
                         </span>
@@ -245,29 +288,10 @@ export function EnhancedTable<T>({
           </table>
         </div>
 
-        {/* Scroll shadows — mobile only, shown when there's more content to swipe to */}
-        {!disableScroll && canScrollLeft && (
-          <div
-            className="sm:hidden pointer-events-none absolute top-0 left-0 h-full w-6 rounded-l-xl"
-            style={{ background: "linear-gradient(to right, rgba(0,0,0,0.08), transparent)" }}
-          />
-        )}
-        {!disableScroll && canScrollRight && (
-          <div
-            className="sm:hidden pointer-events-none absolute top-0 right-0 h-full w-6 rounded-r-xl"
-            style={{ background: "linear-gradient(to left, rgba(0,0,0,0.08), transparent)" }}
-          />
-        )}
       </div>
 
-      {!disableScroll && canScrollRight && (
-        <div className="sm:hidden text-[11px] text-center mt-1.5" style={{ color: C.muted }}>
-          ← Swipe to see more →
-        </div>
-      )}
-
       {/* Pagination */}
-      {(fillHeight || totalPages > 1) && (
+      {totalPages > 1 && (
         <div className={`flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
           <span className="text-xs order-2 sm:order-1" style={{ color: C.muted }}>
             <span className="hidden sm:inline">Page {safePage} of {totalPages}</span>
@@ -288,9 +312,9 @@ export function EnhancedTable<T>({
                 onClick={() => setPage(p)}
                 className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-[11px] sm:text-xs font-medium transition-colors flex-shrink-0"
                 style={{
-                  backgroundColor: safePage === p ? C.blue : "transparent",
+                  backgroundColor: safePage === p ? C.action : "transparent",
                   color:           safePage === p ? "#fff"  : C.muted,
-                  border:          `1px solid ${safePage === p ? C.blue : C.border}`,
+                  border:          `1px solid ${safePage === p ? C.action : C.border}`,
                 }}
               >
                 {p}

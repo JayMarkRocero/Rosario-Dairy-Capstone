@@ -11,6 +11,7 @@ import { AdminReports } from "@/features/reports/pages/AdminReports";
 import { AdminUserManagement } from "@/features/users/pages/AdminUserManagement";
 import { AdminSettings } from "@/features/settings/pages/AdminSettings";
 import { C } from "@/styles/tokens/colors";
+import { useTheme } from "@/styles/ThemeProvider";
 import type { AdminPage } from "@/app/navigation/AdminSidebar";
 import { useAuth } from "@/features/auth/context/AuthContext";
 
@@ -32,9 +33,10 @@ export function AdminLayout({ onLogout }: Props) {
   const [page, setPage] = useState<AdminPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuth();
+  const { theme } = useTheme();
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: C.bg }}>
+    <div data-theme={theme} className="flex h-dvh overflow-hidden" style={{ backgroundColor: C.bg }}>
       <AdminSidebar
         active={page}
         onChange={setPage}
@@ -42,7 +44,7 @@ export function AdminLayout({ onLogout }: Props) {
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
-      <div className="h-screen max-h-screen flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="h-dvh flex-1 flex flex-col overflow-hidden min-w-0">
         <div className="flex-shrink-0">
         <TopBar
            title={PAGE_TITLES[page]}
@@ -52,7 +54,7 @@ export function AdminLayout({ onLogout }: Props) {
             onMenuClick={() => setSidebarOpen(true)}
           />
         </div>
-        <main className={`flex-1 min-h-0 ${page === "orders" || page === "sales" || page === "users" || page === "categories" || page === "customers" || page === "inventory" ? "flex overflow-hidden" : "overflow-y-auto"}`}>
+        <main className={`flex-1 min-h-0 ${page === "orders" || page === "sales" || page === "users" || page === "categories" || page === "customers" || page === "inventory" ? "flex overflow-y-auto xl:overflow-hidden" : "overflow-y-auto"}`}>
           {page === "dashboard"  && <AdminDashboard />}
           {page === "inventory"  && <AdminInventory />}
           {page === "categories" && <AdminCategories />}

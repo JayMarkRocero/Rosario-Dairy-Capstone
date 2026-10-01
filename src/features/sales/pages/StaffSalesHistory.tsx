@@ -1,7 +1,9 @@
 import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { useMemo, useState, useEffect } from "react";
-import { Search, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
+import { filterSelectClass } from "@/styles/controlClasses";
+import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { TransactionDetails } from "@/features/sales/components/TransactionDetails";
 import { useAuth } from "@/features/auth/context/AuthContext";
 import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
@@ -9,11 +11,6 @@ import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
-
-const PAYMENT_STYLE: Record<string, { bg: string; color: string }> = {
-  Cash:   { bg: C.green + "15", color: C.green },
-  Online: { bg: C.blue  + "15", color: C.blue  },
-};
 
 function staffSalesDate(timestamp: string): string {
   const date = new Date(timestamp);
@@ -44,7 +41,6 @@ export function StaffSalesHistory() {
     return () => { active = false; };
   }, [user, reportVersion]);
 
-  const [search, setSearch] = useState("");
   const [payment, setPayment] = useState("All");
   const [date, setDate] = useState("");
 
@@ -55,16 +51,11 @@ export function StaffSalesHistory() {
 
   const filteredRecords = useMemo(() => {
     return myRecords.filter(s => {
-      const q = search.toLowerCase();
-      const matchesSearch =
-        !q ||
-        s.receipt.toLowerCase().includes(q) ||
-        s.customer.toLowerCase().includes(q);
       const matchesPayment = payment === "All" || s.payment === payment;
       const matchesDate = !date || s.date === date;
-      return matchesSearch && matchesPayment && matchesDate;
+      return matchesPayment && matchesDate;
     });
-  }, [myRecords, search, payment, date]);
+  }, [myRecords, payment, date]);
 
   const summary = useMemo(() => {
     const todayStr = staffSalesDate(new Date().toISOString());
@@ -84,7 +75,9 @@ export function StaffSalesHistory() {
       render: s => <span className="text-xs whitespace-nowrap" style={{ color: C.muted }}>{s.date}</span> },
     { key:"payment", header:"Payment", align:"center", width:"14%",
       render: s => {
-        const pm = PAYMENT_STYLE[s.payment] ?? { bg: "#F5F5F5", color: C.muted };
+        const pm = s.payment === "Cash" ? { bg: "var(--status-green)", color: C.green }
+          : s.payment === "Online" ? { bg: "var(--status-blue)", color: C.blue }
+          : { bg: "var(--surface-inset)", color: C.muted };
         return (
           <div className="flex items-center justify-center gap-1">
             <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ backgroundColor: pm.bg, color: pm.color }}>
@@ -106,87 +99,15 @@ export function StaffSalesHistory() {
   ];
 
   return (
-    <div className="px-4 sm:px-6 pt-3 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden">
-      {/* Header - fixed */}
-      <div className="flex items-center justify-between flex-shrink-0">
-        <div>
-          <h3 style={{ color: C.muted }}>Your transaction records</h3>
-        </div>
+    <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden max-w-[1400px] mx-auto w-full">
+      <h2 className="text-base sm:text-lg font-bold shrink-0" style={{ color: C.muted }}>Your transaction records</h2>
+      <div className="grid grid-cols-2 gap-2 shrink-0">
+        <SummaryCard compact label="Today's sales" value={`₱${summary.todayTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.blue}/>
+        <SummaryCard compact label="Today's transactions" value={summary.todayCount} color={C.green}/>
       </div>
-
-      {/* Stat cards - fixed */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 flex-shrink-0">
-        {[
-          { label: "Today's Sales", value: `₱${summary.todayTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: "Sales you processed today" },
-          { label: "Today's Transactions", value: String(summary.todayCount), sub: "Transactions you processed today" },
-        ].map(s => (
-          <Card key={s.label} className="p-4 min-w-0">
-            <div className="font-bold text-xl truncate" style={{ color: C.blue, fontFamily: "Poppins, sans-serif" }}>
-              {recordsLoading ? "..." : s.value}
-            </div>
-            <div className="font-medium text-sm mt-1" style={{ color: C.text }}>{s.label}</div>
-            <div className="text-xs mt-0.5" style={{ color: C.muted }}>{s.sub}</div>
-          </Card>
-        ))}
-      </div>
-
-      {/* Table card - no internal scroll, table paginates instead */}
-      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        {/* Filter bar */}
-        <div className="flex flex-wrap items-center gap-3 mb-4 shrink-0">
-          <div
-            className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border w-full sm:w-72"
-            style={{ borderColor: C.border }}
-          >
-            <Search size={14} style={{ color: C.muted }} />
-            <input
-              className="bg-transparent outline-none text-sm flex-1 min-w-0"
-              placeholder="Search receipt or customer..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ color: C.text }}
-            />
-          </div>
-
-          <select
-            value={payment}
-            onChange={(e) => setPayment(e.target.value)}
-            className="text-sm rounded-lg px-3 py-2 border bg-gray-50 outline-none"
-            style={{ borderColor: C.border, color: C.text }}
-          >
-            {paymentOptions.map(p => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="text-sm rounded-lg px-3 py-2 border bg-gray-50 outline-none"
-            style={{ borderColor: C.border, color: C.text }}
-          />
-
-          <span className="text-xs sm:ml-auto" style={{ color: C.muted }}>
-            {recordsLoading ? "Loading…" : `${filteredRecords.length} of ${myRecords.length} transactions`}
-          </span>
-        </div>
-
-        {/* Table with real pagination, no internal scroll */}
-        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-          <EnhancedTable
-            rowHeight={56}
-            columns={columns}
-            data={filteredRecords}
-            rowKey={s => s.receipt}
-            pageCapacity={pageCapacity}
-            searchable={false}
-            showExport={false}
-            showCount={false}
-            emptyTitle={recordsLoading ? "Loading transactions…" : "No transactions found"}
-            emptyDesc={recordsLoading ? "Fetching data from the server." : "No transactions match your filters."}
-          />
-        </div>
+      <Card className="records-card p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+        <EnhancedTable rowHeight={56} fillHeight scrollBody disableScroll columns={columns} data={filteredRecords} rowKey={s=>s.receipt} pageCapacity={pageCapacity} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search receipt or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
+          extraControls={<><select aria-label="Payment method" value={payment} onChange={e=>setPayment(e.target.value)} className={filterSelectClass}>{paymentOptions.map(p=><option key={p} value={p}>{p === "All" ? "All payments" : p}</option>)}</select><input aria-label="Transaction date" type="date" value={date} onChange={e=>setDate(e.target.value)} className={filterSelectClass}/></>}/>
       </Card>
       <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>
     </div>

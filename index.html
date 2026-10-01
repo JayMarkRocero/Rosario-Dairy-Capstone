@@ -9,14 +9,18 @@
       <meta name="description" content="This web application connects users with expert assistance for various tasks, enhancing productivity and simplifying problem-solving." />
       <meta name="robots" content="noindex, nofollow" />
       <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
-      
+      <script>
+        try {
+          const saved = localStorage.getItem('rosario-dairy-theme');
+          if (saved === 'dark' || (!saved && matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (_) { /* Storage may be unavailable. */ }
+      </script>
     </head>
 
     <body>
-      
       <div id="root"></div>
       <script type="module" src="/src/main.tsx"></script>
-      
     </body>
   </html>
-  

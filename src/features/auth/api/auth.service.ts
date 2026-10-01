@@ -45,6 +45,10 @@ export const authService = {
     await http.post("/accounts/reset-password/", payload);
   },
 
+  changePassword: async (oldPassword: string, newPassword: string): Promise<void> => {
+    await http.post("/accounts/change-password/", { old_password: oldPassword, new_password: newPassword });
+  },
+
   login: async (payload: LoginPayload): Promise<TokenPair> => {
     const response = await http.post<TokenPair>("/accounts/login/", payload);
     return response.data;

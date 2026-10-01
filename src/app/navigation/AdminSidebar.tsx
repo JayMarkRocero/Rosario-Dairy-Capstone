@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 
-const LOGO_SRC = "assets/images/logo.jpg";
+import LOGO_SRC from "../../../assets/images/logo.jpg";
 
 function BrandMark({ size = 36 }: { size?: number }) {
   const [imgFailed, setImgFailed] = useState(false);
@@ -29,7 +29,7 @@ function BrandMark({ size = 36 }: { size?: number }) {
   return (
     <div
       className="flex items-center justify-center rounded-full flex-shrink-0"
-      style={{ width: size, height: size, backgroundColor: C.blue }}
+      style={{ width: size, height: size, backgroundColor: C.action }}
     >
       <Milk size={size * 0.55} className="text-white" aria-hidden="true" />
     </div>
@@ -63,7 +63,7 @@ export function AdminSidebar({ active, onChange, onLogout, isOpen, onClose }: Pr
     <>
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          className="fixed inset-0 bg-black/40 z-40 lg:hidden"
           onClick={onClose}
         />
       )}
@@ -71,11 +71,11 @@ export function AdminSidebar({ active, onChange, onLogout, isOpen, onClose }: Pr
       <aside
         className={`
           flex flex-col h-full flex-shrink-0 z-50
-          fixed md:static inset-y-0 left-0
+          fixed lg:static inset-y-0 left-0
           transition-transform duration-300 ease-in-out
-          ${isOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0
+          ${isOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0
         `}
-        style={{ width: 240, backgroundColor: C.navy }}
+        style={{ width: 240, backgroundColor: C.sidebar }}
       >
         <div
           className="flex items-center gap-3 px-5 py-5"

@@ -19,7 +19,7 @@ import type { Customer } from "@/features/customers/types/customer";
 import { isValidPhoneNumber, PHONE_FORMAT_HINT } from "@/lib/validators";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
-const inputStyle = { borderColor:C.border, color:C.text, backgroundColor:"#F8FAFC" };
+const inputStyle = { borderColor:"var(--border)", color:"var(--foreground)", backgroundColor:"var(--input-background)" };
 interface FormState { name:string; phone:string; email:string }
 const EMPTY:FormState = { name:"", phone:"", email:"" };
 
@@ -29,7 +29,7 @@ function Avatar({ name, size=8 }: { name:string; size?:number }) {
   const initials = name.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase();
   return (
     <div className="rounded-xl flex items-center justify-center text-white font-bold text-xs flex-shrink-0"
-      style={{backgroundColor:C.blue, width:`${size*4}px`, height:`${size*4}px`, fontSize:size<10?"10px":"12px"}}>
+      style={{backgroundColor:C.action, width:`${size*4}px`, height:`${size*4}px`, fontSize:size<10?"10px":"12px"}}>
       {initials}
     </div>
   );
@@ -141,7 +141,7 @@ export function AdminCustomers() {
           </div>
         </div>
       )},
-    { key:"phone", header:"Phone", align:"center", width:"18%",
+    { key:"phone", header:"Phone", align:"center", width:"18%", sortKey:r=>r.phone,
       render:r=><span className="text-sm" style={{color:C.muted}}>{r.phone}</span> },
     { key:"orders", header:"Orders", align:"center", width:"12%", sortKey:r=>r.orders,
       render:r=><span className="font-medium text-sm" style={{color:C.text}}>{r.orders}</span> },
@@ -160,7 +160,7 @@ export function AdminCustomers() {
   ];
 
   return (
-    <div className="flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-3 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <h2 className="text-lg font-bold" style={{color:C.muted}}>
           Manage customer accounts and purchase history
@@ -182,7 +182,7 @@ export function AdminCustomers() {
   ))}
 </div>
 
-      <Card className="p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+      <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
         <EnhancedTable
           rowHeight={56}
           columns={columns}
@@ -193,8 +193,9 @@ export function AdminCustomers() {
           searchKeys={r=>[r.name,r.email,r.phone]}
           searchPlaceholder="Search customers…"
           onRowClick={openView}
-          emptyTitle={listLoading ? "Loading customers…" : "No customers yet"}
-          emptyDesc={listLoading ? "Fetching data from the server." : "Add your first customer to get started."}
+          loading={listLoading}
+          emptyTitle="No customers yet"
+          emptyDesc="Add your first customer to get started."
           showExport={false}
           extraControls={
             <select
@@ -229,26 +230,26 @@ export function AdminCustomers() {
             <div className="flex items-center gap-4 p-4 rounded-2xl" style={{backgroundColor:C.bg}}>
               <Avatar name={selected.name} size={16}/>
               <div className="min-w-0">
-                <h3 className="font-bold text-lg truncate" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
-                <p className="text-sm truncate" style={{color:C.muted}}>{selected.email}</p>
+                <h3 className="break-words text-lg font-bold" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
+                <p className="break-all text-sm" style={{color:C.muted}}>{selected.email}</p>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {[
                 {l:"Total Orders",    v:selected.orders,                          color:C.blue  },
                 {l:"Total Spent",     v:`₱${selected.total.toLocaleString()}`,    color:C.green },
                 {l:"Last Order",      v:selected.last,                            color:C.navy  },
               ].map(s=>(
-                <div key={s.l} className="p-3 rounded-xl text-center" style={{backgroundColor:s.color+"10"}}>
+                <div key={s.l} className={`rounded-xl p-3 text-center ${s.l === "Last Order" ? "col-span-2 sm:col-span-1" : ""}`} style={{backgroundColor:s.color+"10"}}>
                   <div className="font-bold" style={{color:s.color}}>{s.v}</div>
                   <div className="text-xs mt-0.5" style={{color:C.muted}}>{s.l}</div>
                 </div>
               ))}
             </div>
             {[{l:"Phone",v:selected.phone},{l:"Email",v:selected.email}].map(r=>(
-              <div key={r.l} className="flex justify-between py-2 gap-2" style={{borderBottom:`1px solid ${C.border}`}}>
+              <div key={r.l} className="flex flex-col gap-1 py-2 sm:flex-row sm:justify-between sm:gap-2" style={{borderBottom:`1px solid ${C.border}`}}>
                 <span className="text-sm flex-shrink-0" style={{color:C.muted}}>{r.l}</span>
-                <span className="text-sm font-semibold truncate" style={{color:C.text}}>{r.v}</span>
+                <span className="min-w-0 break-all text-sm font-semibold sm:text-right" style={{color:C.text}}>{r.v}</span>
               </div>
             ))}
           </div>
