@@ -197,6 +197,7 @@ export interface DjangoCategory {
   id: number;
   name: string;
   description: string | null;
+  icon?: string | null;
   is_active: boolean;
   is_visible_to_staff: boolean;
   created_at: string;
@@ -318,6 +319,7 @@ export type UpdateIngredientBatchPayload = Partial<
 export interface CreateCategoryPayload {
   name: string;
   description: string;
+  icon: string;
   is_visible_to_staff: boolean;
 }
 

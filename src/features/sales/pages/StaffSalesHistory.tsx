@@ -58,11 +58,9 @@ export function StaffSalesHistory() {
   }, [myRecords, payment, date]);
 
   const summary = useMemo(() => {
-    const todayStr = staffSalesDate(new Date().toISOString());
-    const today = myRecords.filter(r => r.date === todayStr);
     return {
-      todayTotal: today.reduce((s, r) => s + r.total, 0),
-      todayCount: today.length,
+      totalRevenue: myRecords.reduce((sum, sale) => sum + sale.total, 0),
+      totalTransactions: myRecords.length,
     };
   }, [myRecords]);
 
@@ -102,8 +100,8 @@ export function StaffSalesHistory() {
     <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden max-w-[1400px] mx-auto w-full">
       <h2 className="text-base sm:text-lg font-bold shrink-0" style={{ color: C.muted }}>Your transaction records</h2>
       <div className="grid grid-cols-2 gap-2 shrink-0">
-        <SummaryCard compact label="Today's sales" value={`₱${summary.todayTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.blue}/>
-        <SummaryCard compact label="Today's transactions" value={summary.todayCount} color={C.green}/>
+        <SummaryCard compact label="Total Revenue" subtitle="Your lifetime sales processed" value={`₱${summary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.blue}/>
+        <SummaryCard compact label="Total Transactions" subtitle="Your lifetime transactions processed" value={summary.totalTransactions} color={C.green}/>
       </div>
       <Card className="records-card p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
         <EnhancedTable rowHeight={56} fillHeight scrollBody disableScroll columns={columns} data={filteredRecords} rowKey={s=>s.receipt} pageCapacity={pageCapacity} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search receipt or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}

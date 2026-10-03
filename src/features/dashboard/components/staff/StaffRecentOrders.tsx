@@ -10,6 +10,8 @@ import { C } from "@/styles/tokens/colors";
 import { ordersService } from "@/features/orders/api/orders.service";
 import type { OrderListItem } from "@/features/orders/types/order";
 
+const RECENT_ORDER_LIMIT = 5;
+
 export function StaffRecentOrders() {
   const reportVersion = useReportVersion();
   const [orders, setOrders] = useState<OrderListItem[]>([]);
@@ -18,9 +20,9 @@ export function StaffRecentOrders() {
   useEffect(() => {
     let active = true;
 
-    ordersService.getRecent()
+    ordersService.getRecent(RECENT_ORDER_LIMIT)
       .then((data) => {
-        if (active) setOrders(data);
+        if (active) setOrders(data.slice(0, RECENT_ORDER_LIMIT));
       })
       .catch(error => toastApiError(error))
       .finally(() => {

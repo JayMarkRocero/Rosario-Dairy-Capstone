@@ -17,6 +17,7 @@ import { C } from "@/styles/tokens/colors";
 import { userService } from "@/features/users/api/user.service";
 import type { SystemUser } from "@/features/users/types/user";
 import { DEACTIVATION_OPTIONS, canReactivateUser, compareUsersByStatusAndLogin, userLastLoginTimestamp } from "@/features/users/types/user";
+import { useAuth } from "@/features/auth/context/AuthContext";
 import type { DeactivationReason } from "@/lib/api";
 import { isValidPhoneNumber, PHONE_FORMAT_HINT } from "@/lib/validators";
 
@@ -118,6 +119,7 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
 
 export function AdminUserManagement() {
   const pageCapacity = useAdminAutoPageSize(56);
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
 
@@ -162,10 +164,18 @@ export function AdminUserManagement() {
   }, [users]);
 
   const filteredUsers = useMemo(() => {
-    return users.filter(u => (roleFilter === "All" || u.role === roleFilter)
-      && (statusFilter === "All" || u.status === statusFilter))
-      .sort(compareUsersByStatusAndLogin);
-  }, [users, roleFilter, statusFilter]);
+    const currentUsername = currentUser?.username.trim().toLowerCase();
+    const currentEmail = currentUser?.email.trim().toLowerCase();
+
+    return users.filter(u => {
+      const isCurrentUser = (currentUsername && u.username.trim().toLowerCase() === currentUsername)
+        || (currentEmail && u.email.trim().toLowerCase() === currentEmail);
+
+      return !isCurrentUser
+        && (roleFilter === "All" || u.role === roleFilter)
+        && (statusFilter === "All" || u.status === statusFilter);
+    }).sort(compareUsersByStatusAndLogin);
+  }, [users, currentUser, roleFilter, statusFilter]);
 
   const openView = (u:SystemUser) => { setSelected(u); setViewOpen(true); };
 

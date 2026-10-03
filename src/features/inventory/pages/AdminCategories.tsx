@@ -16,13 +16,14 @@ import { CategoryIcon } from "@/components/data-display/CategoryIcon";
 import { C } from "@/styles/tokens/colors";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
+import { CATEGORY_ICON_NAMES, normalizeCategoryIcon, type CategoryIconName } from "@/features/inventory/utils/categoryIcons";
 import type { Category } from "@/features/inventory/types/inventory";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
 const inputStyle = { borderColor: "var(--border)", color: "var(--foreground)", backgroundColor: "var(--input-background)" };
 
-interface FormState { name: string; is_active: boolean; is_visible_to_staff: boolean }
-const EMPTY: FormState = { name:"", is_active:true, is_visible_to_staff:true };
+interface FormState { name: string; icon: CategoryIconName; is_active: boolean; is_visible_to_staff: boolean }
+const EMPTY: FormState = { name:"", icon:"Package", is_active:true, is_visible_to_staff:true };
 type CategoryStatus = "All" | "Active" | "Inactive";
 
 function CategoryForm({ form, setForm, showStatus = false }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>>; showStatus?: boolean }) {
@@ -32,6 +33,22 @@ function CategoryForm({ form, setForm, showStatus = false }: { form: FormState; 
         <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Category Name</label>
         <input className={inputClass} style={inputStyle} value={form.name}
           onChange={e => setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Milk"/>
+      </div>
+      <div role="group" aria-label="Icon Selection">
+        <span className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Icon Selection</span>
+        <div className="grid grid-cols-4 gap-2">
+          {CATEGORY_ICON_NAMES.map(icon => {
+            const active = form.icon === icon;
+            const label = icon.replace(/([a-z])([A-Z])/g, "$1 $2");
+            return <button key={icon} type="button" aria-label={`${label} icon`} aria-pressed={active}
+              onClick={() => setForm(current => ({ ...current, icon }))}
+              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl border-2 px-1 py-2 text-xs transition-colors ${active ? "border-blue-600 bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}
+              style={{ color: active ? C.blue : C.muted }}>
+              <CategoryIcon icon={icon} size={20} color={active ? C.blue : C.muted} />
+              <span className="w-full truncate text-center text-[10px] leading-tight" title={label}>{label}</span>
+            </button>;
+          })}
+        </div>
       </div>
       {showStatus && <div>
         <label htmlFor="edit-category-status" className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Status</label>
@@ -88,7 +105,7 @@ export function AdminCategories() {
   };
 
   const openEdit = (c: Category) => {
-    setSelected(c); setForm({ name:c.name, is_active:c.is_active, is_visible_to_staff:c.is_visible_to_staff }); setEditOpen(true);
+    setSelected(c); setForm({ name:c.name, icon:normalizeCategoryIcon(c.icon), is_active:c.is_active, is_visible_to_staff:c.is_visible_to_staff }); setEditOpen(true);
   };
 
   const save = async (mode:"add"|"edit") => {
@@ -104,6 +121,7 @@ export function AdminCategories() {
         if (!selected) return;
         await inventoryService.updateCategory(selected.id, {
           name: form.name,
+          icon: form.icon,
           is_visible_to_staff: form.is_active && form.is_visible_to_staff,
         });
         if (form.is_active !== selected.is_active) {
@@ -176,7 +194,7 @@ export function AdminCategories() {
     { key: "name", header: "Category", align: "left", width: "32%", sortKey: cat => cat.name,
       render: cat => <div className="flex items-center gap-3 min-w-0">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: C.blue + "12" }}>
-          <CategoryIcon name={cat.name} size={18} color={C.blue} />
+          <CategoryIcon icon={cat.icon} size={18} color={C.blue} />
         </div>
         <span className="truncate font-medium" title={cat.name}>{cat.name}</span>
       </div> },
@@ -264,7 +282,7 @@ export function AdminCategories() {
             <div className="text-center py-6">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
                 style={{backgroundColor:C.blue+"12"}}>
-                <CategoryIcon name={selected.name} size={28} color={C.blue}/>
+                <CategoryIcon icon={selected.icon} size={28} color={C.blue}/>
               </div>
               <h3 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
             </div>

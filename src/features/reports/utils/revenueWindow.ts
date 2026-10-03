@@ -34,6 +34,26 @@ export function revenueWindow(period: RevenuePeriod, offset = 0, today = revenue
   return { start: buckets[0], end, buckets };
 }
 
+/** Build chart buckets for a caller-selected inclusive date range. */
+export function revenueWindowForRange(period: RevenuePeriod, start: string, end: string): RevenueWindow {
+  if (!start || !end || start > end) return { start, end, buckets: [] };
+
+  const firstBucket = asDate(start);
+  const lastDate = asDate(end);
+  if (!Number.isFinite(firstBucket.getTime()) || !Number.isFinite(lastDate.getTime())) {
+    return { start, end, buckets: [] };
+  }
+
+  if (period === 'monthly') firstBucket.setUTCDate(1);
+  if (period === 'weekly') firstBucket.setUTCDate(firstBucket.getUTCDate() - (firstBucket.getUTCDay() + 6) % 7);
+
+  const buckets: string[] = [];
+  for (let current = firstBucket; current <= lastDate; current = shift(current, period, 1)) {
+    buckets.push(iso(current));
+  }
+  return { start, end, buckets };
+}
+
 export function revenueSeries(rows: RevenueBucket[], window: RevenueWindow) {
   const totals = new Map<string, number>();
   for (const row of rows) {
@@ -57,9 +77,10 @@ export function revenueRangeLabel(start: string, end: string): string {
   return `${format(start)} – ${format(end)}`;
 }
 
-export function revenueBucketLabel(start: string, period: RevenuePeriod, end: string): string {
+export function revenueBucketLabel(start: string, period: RevenuePeriod, end: string, rangeStart = start): string {
   if (period === 'monthly') return revenueDateLabel(start, period);
   if (period === 'daily') return revenueRangeLabel(start, start).split(' – ')[0];
+  const first = start < rangeStart ? rangeStart : start;
   const last = shift(asDate(start), 'daily', 6);
-  return revenueRangeLabel(start, iso(last) > end ? end : iso(last));
+  return revenueRangeLabel(first, iso(last) > end ? end : iso(last));
 }

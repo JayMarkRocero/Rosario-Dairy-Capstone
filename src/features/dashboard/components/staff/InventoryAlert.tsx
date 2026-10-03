@@ -62,9 +62,9 @@ export function InventoryAlert() {
   ];
 
   return (
-    <Card className="p-4 sm:p-5 min-w-0" aria-busy={loading}>
+    <Card className="p-4 sm:p-5 h-full min-w-0 flex flex-col" aria-busy={loading}>
       <SectionHeader title="Inventory status" subtitle="Products visible to staff" />
-      <div className="space-y-2">
+      <div className="flex-1 flex flex-col justify-evenly gap-2">
         {ALERTS.map(item => <div key={item.label} className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ backgroundColor: C.bg }}>
           <div className="flex items-center gap-3 min-w-0">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: item.color + "18", color: item.color }}><item.icon size={16} /></span>

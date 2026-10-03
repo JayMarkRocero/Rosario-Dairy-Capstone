@@ -16,6 +16,7 @@ import http, {
   type UpdateProductPayload,
 } from "@/lib/api";
 import type { InventoryItem, FEFOItem, Category } from "@/features/inventory/types/inventory";
+import { normalizeCategoryIcon } from "@/features/inventory/utils/categoryIcons";
 
 function daysUntil(dateStr: string): number {
   const today = new Date();
@@ -106,6 +107,7 @@ export const inventoryService = {
   return categories.map((c: DjangoCategory) => ({
     id: c.id,
     name: c.name,
+    icon: normalizeCategoryIcon(c.icon),
     products: allProducts.filter((p: DjangoProduct) => p.category.id === c.id).length,
     is_active: c.is_active,
     is_visible_to_staff: c.is_active && c.is_visible_to_staff,
@@ -177,10 +179,11 @@ export const inventoryService = {
     await http.post<DjangoProductBatch>("/inventory/product-batches/", batchPayload);
   },
 
-  createCategory: async (input: { name: string; is_visible_to_staff: boolean }): Promise<void> => {
+  createCategory: async (input: { name: string; icon: string; is_visible_to_staff: boolean }): Promise<void> => {
     const payload: CreateCategoryPayload = {
       name: input.name,
       description: "",
+      icon: normalizeCategoryIcon(input.icon),
       is_visible_to_staff: input.is_visible_to_staff,
     };
     await http.post<DjangoCategory>("/inventory/categories/", payload);
@@ -188,10 +191,11 @@ export const inventoryService = {
 
   updateCategory: async (
     categoryId: number,
-    input: { name?: string; is_visible_to_staff?: boolean }
+    input: { name?: string; icon?: string; is_visible_to_staff?: boolean }
   ): Promise<void> => {
     const payload: UpdateCategoryPayload = {};
     if (input.name !== undefined) payload.name = input.name;
+    if (input.icon !== undefined) payload.icon = normalizeCategoryIcon(input.icon);
     if (input.is_visible_to_staff !== undefined) payload.is_visible_to_staff = input.is_visible_to_staff;
     await http.patch<DjangoCategory>(`/inventory/categories/${categoryId}/`, payload);
   },

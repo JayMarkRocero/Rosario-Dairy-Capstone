@@ -11,7 +11,7 @@ export function DataTable({ headers, rows, alignments = [], scrollable = false }
   return (
     <div className={`${scrollable ? "flex-1 min-h-0 overflow-auto" : "overflow-x-auto"} rounded-xl border border-slate-100 bg-white shadow-sm`}>
       <div className="sm:hidden divide-y" style={{ borderColor: "var(--border)" }}>
-        {rows.map((row, ri) => <div key={ri} className="space-y-2.5 p-3">
+        {rows.map((row, ri) => <div key={ri} className="space-y-2 p-2.5">
           {row.map((cell, ci) => <div key={ci} className="flex items-start justify-between gap-3 text-xs">
             <span className="shrink-0 font-medium text-slate-500">{headers[ci]}</span>
             <span className="min-w-0 text-right break-words text-slate-700">{cell}</span>
@@ -35,10 +35,10 @@ export function DataTable({ headers, rows, alignments = [], scrollable = false }
           {rows.map((row, ri) => (
             <tr
               key={ri}
-              className="h-14 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors"
+              className="h-11 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors"
             >
               {row.map((cell, ci) => (
-                <td key={ci} className={`${alignment(ci)} py-3`}>
+                <td key={ci} className={`${alignment(ci)} py-2`}>
                   {cell}
                 </td>
               ))}

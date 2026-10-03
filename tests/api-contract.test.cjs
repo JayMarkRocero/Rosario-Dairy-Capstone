@@ -342,8 +342,30 @@ test('revenue requests use matching aggregation and explicit date boundaries', a
 
 
 test('category patch excludes read-only activation even from untyped callers', async () => {
-  await api.inventoryService.updateCategory(1, { name: 'Dairy', is_active: false });
-  assert.deepEqual(JSON.parse(calls[0].data), { name: 'Dairy' });
+  await api.inventoryService.updateCategory(1, { name: 'Dairy', icon: 'Milk', is_active: false });
+  assert.deepEqual(JSON.parse(calls[0].data), { name: 'Dairy', icon: 'Milk' });
+});
+
+test('category create includes the selected icon', async () => {
+  await api.inventoryService.createCategory({ name: 'Treats', icon: 'Cookie', is_visible_to_staff: true });
+  assert.deepEqual(JSON.parse(calls[0].data), {
+    name: 'Treats', description: '', icon: 'Cookie', is_visible_to_staff: true,
+  });
+});
+
+test('category list falls back to Package for missing or invalid imported icons', async () => {
+  api.http.defaults.adapter = async config => ({
+    status: 200, statusText: '', headers: {}, config,
+    data: config.url === '/inventory/categories/' ? [
+      { id: 1, name: 'No icon', is_active: true, is_visible_to_staff: true },
+      { id: 2, name: 'Bad icon', icon: 'UnknownIcon', is_active: true, is_visible_to_staff: true },
+      { id: 3, name: 'Cheese', icon: 'Cheese', is_active: true, is_visible_to_staff: true },
+    ] : [],
+  });
+  const categories = await api.inventoryService.getCategories();
+  assert.deepEqual(Object.fromEntries(categories.map(category => [category.name, category.icon])), {
+    'Bad icon': 'Package', Cheese: 'Cheese', 'No icon': 'Package',
+  });
 });
 
 test('expired logout refreshes captured credentials and blacklists without restoring storage', async () => {
