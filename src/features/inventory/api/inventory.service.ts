@@ -103,12 +103,10 @@ export const inventoryService = {
   ]);
   const categories = categoriesResponse.data;
   const allProducts = productsResponse.data;
-  const activeProducts = allProducts.filter((p: DjangoProduct) => p.is_active);
   return categories.map((c: DjangoCategory) => ({
     id: c.id,
     name: c.name,
-    products: activeProducts.filter((p: DjangoProduct) => p.category.id === c.id).length,
-    desc: c.description ?? "",
+    products: allProducts.filter((p: DjangoProduct) => p.category.id === c.id).length,
     is_active: c.is_active,
     is_visible_to_staff: c.is_active && c.is_visible_to_staff,
   })).sort((a, b) => a.name.localeCompare(b.name));
@@ -179,10 +177,10 @@ export const inventoryService = {
     await http.post<DjangoProductBatch>("/inventory/product-batches/", batchPayload);
   },
 
-  createCategory: async (input: { name: string; desc: string; is_visible_to_staff: boolean }): Promise<void> => {
+  createCategory: async (input: { name: string; is_visible_to_staff: boolean }): Promise<void> => {
     const payload: CreateCategoryPayload = {
       name: input.name,
-      description: input.desc,
+      description: "",
       is_visible_to_staff: input.is_visible_to_staff,
     };
     await http.post<DjangoCategory>("/inventory/categories/", payload);
@@ -190,24 +188,21 @@ export const inventoryService = {
 
   updateCategory: async (
     categoryId: number,
-    input: { name?: string; desc?: string; is_visible_to_staff?: boolean }
+    input: { name?: string; is_visible_to_staff?: boolean }
   ): Promise<void> => {
     const payload: UpdateCategoryPayload = {};
     if (input.name !== undefined) payload.name = input.name;
-    if (input.desc !== undefined) payload.description = input.desc;
     if (input.is_visible_to_staff !== undefined) payload.is_visible_to_staff = input.is_visible_to_staff;
     await http.patch<DjangoCategory>(`/inventory/categories/${categoryId}/`, payload);
   },
 
-  // Note: this is a soft delete on the backend — the category's is_active
-  // flag is flipped to false rather than the row being removed, so existing
-  // products keep their category reference intact.
-  deleteCategory: async (categoryId: number): Promise<string> => {
-    // Hide first so a deactivated category never remains staff-visible.
-    await http.patch(`/inventory/categories/${categoryId}/`, { is_visible_to_staff: false });
-    const { data } = await http.delete<{ message: string }>(`/inventory/categories/${categoryId}/`);
-    const { message } = data;
-    return message;
+  deleteCategory: async (categoryId: number): Promise<"permanent" | "deactivated"> => {
+    const { data } = await http.delete<{ deletion_type: "permanent" | "deactivated" }>(`/inventory/categories/${categoryId}/`);
+    return data.deletion_type;
+  },
+
+  deactivateCategory: async (categoryId: number): Promise<void> => {
+    await http.post(`/inventory/categories/${categoryId}/deactivate/`, {});
   },
 
   reactivateCategory: async (categoryId: number): Promise<void> => {
@@ -229,8 +224,9 @@ export const inventoryService = {
     await http.patch<DjangoProduct>(`/inventory/products/${productId}/`, productPayload);
   },
 
-  deleteProduct: async (productId: number): Promise<void> => {
-    await http.delete(`/inventory/products/${productId}/`);
+  deleteProduct: async (productId: number): Promise<"permanent" | "deactivated"> => {
+    const { data } = await http.delete<{ deletion_type: "permanent" | "deactivated" }>(`/inventory/products/${productId}/`);
+    return data.deletion_type;
   },
 
   reactivateProduct: async (productId: number): Promise<void> => {
@@ -239,6 +235,15 @@ export const inventoryService = {
 
   updateProductBatch: async (batchId: number, payload: UpdateProductBatchPayload): Promise<DjangoProductBatch> => {
     const { data } = await http.patch<DjangoProductBatch>(`/inventory/product-batches/${batchId}/`, payload);
+    return data;
+  },
+
+  restockProduct: async (productId: number, input: { quantity: number; expirationDate: string }): Promise<DjangoProductBatch> => {
+    const { data } = await http.post<DjangoProductBatch>("/inventory/product-batches/", {
+      product_id: productId,
+      quantity: input.quantity,
+      expiration_date: input.expirationDate,
+    });
     return data;
   },
 
@@ -260,7 +265,7 @@ export const inventoryService = {
   },
 
   deactivateIngredient: async (ingredientId: number): Promise<void> => {
-    await http.delete(`/inventory/ingredients/${ingredientId}/`);
+    await http.post(`/inventory/ingredients/${ingredientId}/deactivate/`, {});
   },
 
   reactivateIngredient: async (ingredientId: number): Promise<void> => {

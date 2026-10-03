@@ -368,12 +368,15 @@ export interface ResetPasswordPayload {
 export interface DjangoCustomer {
   id: number;
   name: string;
+  is_active: boolean;
   contact_number: string | null;
   email: string | null;
   address: string | null;
   created_by: number;
   created_at: string;
   updated_at: string;
+  transaction_count?: number;
+  last_sale?: string | null;
 }
 
 export interface DjangoOrderItem {
@@ -424,6 +427,13 @@ export interface DjangoTransactionItem {
   product_batch: DjangoProductBatch;
   quantity: string | number;
   unit_price: string;
+  product_id_snapshot?: number | null;
+  product_name_snapshot?: string | null;
+  product_variant_snapshot?: string | null;
+  category_id_snapshot?: number | null;
+  category_name_snapshot?: string | null;
+  source_product_label?: string;
+  source_line_total?: string | null;
 }
 
 export interface DjangoTransaction {
@@ -443,6 +453,10 @@ export interface DjangoTransaction {
   is_voided?: boolean;
   items: DjangoTransactionItem[];
   created_at: string;
+  source_reference?: string | null;
+  source_invoice_number?: string;
+  source_customer_label?: string;
+  source_note?: string;
 }
 
 export interface DjangoBestSeller {

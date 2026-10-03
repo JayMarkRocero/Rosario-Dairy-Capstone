@@ -1,5 +1,5 @@
 import { reportsService } from "@/features/reports/api/reports.service";
-import http, { ApiError, getAllPages } from "@/lib/api";
+import http, { ApiError, getAllPages, type PaginatedResponse } from "@/lib/api";
 import type { CreateOrderPayload, Order, OrderItem, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
 
 function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
@@ -12,34 +12,9 @@ function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
 
 export const ordersService = {
   getAll: async (): Promise<OrderListItem[]> => {
-    const orders = await getAllPages<Order>("/sales/orders/");
+    const orders = await getAllPages<Order>("/sales/orders/", { page_size: 500 });
     // Sort the complete list before either Orders view filters or paginates it.
-    return [...orders].sort((a, b) => b.id - a.id).map((o) => {
-      const total = parseFloat(o.transaction.total_amount);
-      return {
-        id: o.id,
-        customer: o.customer.name,
-        customerId: o.customer.id,
-        customerPhone: o.customer.contact_number ?? "",
-        customerEmail: o.customer.email ?? "",
-        status: toDisplayStatus(o.status),
-        staff: o.handled_by.username,
-        date: o.created_at.slice(0, 10),
-        total,
-        subtotal: parseFloat(o.transaction.subtotal),
-        discountAmount: parseFloat(o.transaction.discount_amount),
-        paymentMethod: o.transaction.payment_method,
-        amountTendered: o.transaction.amount_tendered ? parseFloat(o.transaction.amount_tendered) : null,
-        changeDue: o.transaction.change_due ? parseFloat(o.transaction.change_due) : null,
-        warning: o.warning,
-        items: o.items.map((item: OrderItem) => ({
-          product: item.product.name,
-          quantity: parseFloat(item.quantity),
-          unitPrice: parseFloat(item.unit_price),
-          subtotal: parseFloat(item.subtotal),
-        })),
-      };
-    });
+    return [...orders].sort((a, b) => b.id - a.id).map(mapOrder);
   },
 
   getById: async (orderId: number): Promise<Order> => {
@@ -66,10 +41,36 @@ export const ordersService = {
   },
 
   getRecent: async (limit = 5): Promise<OrderListItem[]> => {
-  const all = await ordersService.getAll();
-  return all
-    .slice()
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, limit);
+    const { data } = await http.get<PaginatedResponse<Order>>("/sales/orders/", { params: { page: 1, page_size: limit } });
+    return data.results.map(mapOrder);
   },
 };
+
+function mapOrder(o: Order): OrderListItem {
+  const total = parseFloat(o.transaction.total_amount);
+  return {
+    id: o.id,
+    invoiceNumber: o.transaction.source_invoice_number || "",
+    isHistorical: Boolean(o.transaction.source_reference),
+    customer: o.customer.name,
+    customerId: o.customer.id,
+    customerPhone: o.customer.contact_number ?? "",
+    customerEmail: o.customer.email ?? "",
+    status: toDisplayStatus(o.status),
+    staff: o.transaction.source_reference ? "Not recorded" : o.handled_by.username,
+    date: o.created_at.slice(0, 10),
+    total,
+    subtotal: parseFloat(o.transaction.subtotal),
+    discountAmount: parseFloat(o.transaction.discount_amount),
+    paymentMethod: o.transaction.payment_method,
+    amountTendered: o.transaction.amount_tendered ? parseFloat(o.transaction.amount_tendered) : null,
+    changeDue: o.transaction.change_due ? parseFloat(o.transaction.change_due) : null,
+    warning: o.warning,
+    items: o.items.map((item: OrderItem) => ({
+      product: item.product.name,
+      quantity: parseFloat(item.quantity),
+      unitPrice: parseFloat(item.unit_price),
+      subtotal: parseFloat(item.subtotal),
+    })),
+  };
+}

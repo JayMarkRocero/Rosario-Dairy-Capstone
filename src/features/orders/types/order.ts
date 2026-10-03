@@ -42,6 +42,8 @@ export interface OrderItemDisplay {
 
 export interface OrderListItem {
   id: number;
+  invoiceNumber: string;
+  isHistorical: boolean;
   customer: string;
   customerId: number;
   customerPhone: string;

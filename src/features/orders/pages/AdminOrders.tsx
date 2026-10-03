@@ -50,7 +50,7 @@ export function AdminOrders() {
   };
 
   const columns: Column<OrderListItem>[] = [
-    { key:"id", header:"Order ID", align:"left", width:"12%", render:o=><span className="font-mono text-xs" style={{color:C.muted}}>#{o.id}</span> },
+    { key:"id", header:"Order / Invoice", align:"left", width:"12%", render:o=><span className="font-mono text-xs" style={{color:C.muted}}>{o.invoiceNumber || `#${o.id}`}</span> },
     { key:"customer", header:"Customer", align:"left", width:"22%", sortKey:o=>o.customer, render:o=><span className="font-medium text-sm">{o.customer}</span> },
     { key:"status", header:"Status", align:"center", width:"14%", render:o=><StatusBadge status={o.status}/> },
     { key:"staff", header:"Staff", align:"center", width:"14%", render:o=><span className="text-xs" style={{color:C.muted}}>{o.staff}</span> },
@@ -58,7 +58,7 @@ export function AdminOrders() {
     { key:"total", header:"Total", align:"center", width:"12%", sortKey:o=>o.total, render:o=><span className="flex items-center justify-center gap-1.5 font-medium text-sm">₱{o.total.toLocaleString()}</span> },
     { key:"actions", header:"Actions", align:"center", width:"12%", render:o=><div className="flex items-center justify-center gap-1.5" onClick={e=>e.stopPropagation()}>
       <ActionButton label="View details" onClick={()=>view(o)}><Eye size={13}/></ActionButton>
-      {o.status === "Fulfilled" && <ActionButton label="Cancel order" destructive onClick={()=>openCancel(o)}><XCircle size={13}/></ActionButton>}
+      {o.status === "Fulfilled" && !o.isHistorical && <ActionButton label="Cancel order" destructive onClick={()=>openCancel(o)}><XCircle size={13}/></ActionButton>}
     </div> },
   ];
 
@@ -73,7 +73,7 @@ export function AdminOrders() {
       loading={loadingList} emptyTitle="No orders found" emptyDesc="No orders match your filters."
       extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/></Card>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md"
-      footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn>{selected?.status==="Fulfilled"&&<Btn variant="secondary" onClick={()=>setCancelOpen(true)}>Cancel Order</Btn>}</>}>
+      footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn>{selected?.status==="Fulfilled"&&!selected.isHistorical&&<Btn variant="secondary" onClick={()=>setCancelOpen(true)}>Cancel Order</Btn>}</>}>
       {selected&&<div className="space-y-5">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>
         <StatusBadge status={selected.status}/>

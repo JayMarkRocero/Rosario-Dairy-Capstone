@@ -4,7 +4,7 @@ import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useEffect } from "react";
-import { Plus, Eye, Edit, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, AlertTriangle, PackagePlus } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
@@ -23,6 +23,10 @@ interface FormState {
   name: string; cat: string; price: string; stock: string; expiry: string;
 }
 const EMPTY_FORM: FormState = { name:"", cat:"", price:"", stock:"", expiry:"" };
+const today = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
 const STATUSES = ["Active", "Low Stock", "Near Expiry", "Expired"];
 const NEAR_EXPIRY_DAYS = 7;
 
@@ -96,22 +100,16 @@ function ProductForm({ form, onChange, categories, mode }: {
         <input className={inputClass} style={inputStyle} type="number" value={form.price}
           onChange={set("price")} placeholder="0.00"/>
       </Field>
-      <Field label="Stock Quantity">
-        <input className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
-          style={{...inputStyle, backgroundColor: mode === "edit" ? "var(--surface-inset)" : inputStyle.backgroundColor}}
-          type="number" value={form.stock} onChange={set("stock")} placeholder="0"
-          disabled={mode === "edit"}/>
-      </Field>
-      <Field label="Expiry Date">
-        <input className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
-          style={{...inputStyle, backgroundColor: mode === "edit" ? "var(--surface-inset)" : inputStyle.backgroundColor}}
-          type="date" value={form.expiry} onChange={set("expiry")} disabled={mode === "edit"}/>
-      </Field>
-      {mode === "edit" && (
-        <p className="sm:col-span-2 -mt-1 text-xs" style={{color:C.muted}}>
-          Stock and Expiry Date are managed per batch and cannot be edited directly.
-        </p>
-      )}
+      {mode === "add" && <>
+        <Field label="Stock Quantity">
+          <input className={inputClass} style={inputStyle} type="number" min="0.01" step="0.01"
+            value={form.stock} onChange={set("stock")} placeholder="0"/>
+        </Field>
+        <Field label="Expiry Date">
+          <input className={inputClass} style={inputStyle} type="date" min={today()}
+            value={form.expiry} onChange={set("expiry")}/>
+        </Field>
+      </>}
     </div>
   );
 }
@@ -209,6 +207,9 @@ export function AdminInventory() {
   const [editOpen,    setEditOpen]   = useState(false);
   const [deleteOpen,  setDeleteOpen] = useState(false);
   const [viewOpen,    setViewOpen]   = useState(false);
+  const [restockOpen, setRestockOpen] = useState(false);
+  const [restockQuery, setRestockQuery] = useState("");
+  const [restockForm, setRestockForm] = useState({ quantity:"", expiry:"" });
   const [selected,    setSelected]   = useState<InventoryItem | null>(null);
   const [form,        setForm]       = useState<FormState>(EMPTY_FORM);
   const [loading,     setLoading]    = useState(false);
@@ -253,6 +254,38 @@ export function AdminInventory() {
   };
   const openDelete = (p: InventoryItem) => { setSelected(p); setDeleteOpen(true); };
   const openView   = (p: InventoryItem) => { setSelected(p); setViewOpen(true); };
+  const openRestock = () => {
+    setSelected(null);
+    setRestockQuery("");
+    setRestockForm({ quantity:"", expiry:"" });
+    setRestockOpen(true);
+  };
+
+  const restockMatches = useMemo(() => {
+    const query = restockQuery.trim().toLowerCase();
+    if (!query || (selected && restockQuery === selected.name)) return [];
+    return items.filter(item => `${item.name} ${item.cat}`.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name)).slice(0, 8);
+  }, [items, restockQuery, selected]);
+
+  const handleRestock = async () => {
+    const quantity = Number(restockForm.quantity);
+    if (!selected || !Number.isFinite(quantity) || quantity <= 0 || !restockForm.expiry || restockForm.expiry < today()) {
+      toast.error("Select a product, enter a positive quantity, and choose a valid expiry date.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await inventoryService.restockProduct(selected.id, { quantity, expirationDate: restockForm.expiry });
+      toast.success(`${selected.name} restocked.`);
+      setRestockOpen(false);
+      loadItems();
+    } catch (error) {
+      toastApiError(error, "Failed to restock product.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSave = (mode: "add"|"edit") => {
     if (!form.name || !form.price || !form.cat || (mode === "add" && !form.stock)) {
@@ -298,8 +331,10 @@ export function AdminInventory() {
     if (!selected) return;
     setLoading(true);
     inventoryService.deleteProduct(selected.id)
-      .then(() => {
-        toast.success(`${selected.name} removed from inventory.`);
+      .then(deletionType => {
+        toast.success(deletionType === "permanent"
+          ? `${selected.name} permanently deleted.`
+          : `${selected.name} deactivated; linked records were preserved.`);
         setDeleteOpen(false);
         loadItems();
       })
@@ -309,7 +344,7 @@ export function AdminInventory() {
 
   const columns: Column<InventoryItem>[] = [
     {
-      key:"name", header:"Product", align:"left", width:"24%",
+      key:"name", header:"Product", align:"left", width:"23%",
       sortKey: r => r.name,
       render: r => (
         <div className="flex items-center gap-3">
@@ -335,12 +370,12 @@ export function AdminInventory() {
       ),
     },
     {
-      key:"price", header:"Price", align:"center", width:"12%",
+      key:"price", header:"Price", align:"center", width:"11%",
       sortKey: r => r.price,
       render: r => <span className="font-medium text-sm" style={{color:C.text}}>₱{r.price}</span>,
     },
     {
-      key:"stock", header:"Stock", align:"center", width:"12%",
+      key:"stock", header:"Stock", align:"center", width:"10%",
       sortKey: r => r.stock,
       render: r => {
         const status = getStatus(r);
@@ -353,7 +388,7 @@ export function AdminInventory() {
         );
       },
     },
-    { key:"expiry", header:"Expiry", align:"center", width:"14%", sortKey: r => r.expiry,
+    { key:"expiry", header:"Expiry", align:"center", width:"13%", sortKey: r => r.expiry,
       render: r => {
         const expired = isExpired(r.expiry);
         const near = !expired && isNearExpiry(r.expiry);
@@ -363,10 +398,10 @@ export function AdminInventory() {
           </span>
         );
       } },
-    { key:"status", header:"Status", align:"center", width:"12%",
+    { key:"status", header:"Status", align:"center", width:"13%",
       render: r => <div className="flex justify-center"><StatusBadge status={getStatus(r)}/></div> },
     {
-      key:"actions", header:"Actions", align:"center", width:"12%",
+      key:"actions", header:"Actions", align:"center", width:"16%",
       render: r => (
         <div className="flex items-center justify-center gap-2" onClick={e => e.stopPropagation()}>
           <ActionButton label="View details" onClick={() => openView(r)}>
@@ -375,7 +410,7 @@ export function AdminInventory() {
           <ActionButton label="Edit" onClick={() => openEdit(r)}>
             <Edit size={13}/>
           </ActionButton>
-          <ActionButton label="Deactivate" destructive onClick={() => openDelete(r)}>
+          <ActionButton label="Delete product" destructive onClick={() => openDelete(r)}>
             <Trash2 size={13}/>
           </ActionButton>
         </div>
@@ -398,12 +433,19 @@ export function AdminInventory() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 flex-shrink-0">
         <div>
-          <h2 className="text-lg font-bold" style={{color:C.muted}}>Expiry-Based Inventory</h2>
+          <h2 className="hidden text-lg font-bold sm:block" style={{color:C.muted}}>Expiry-Based Inventory</h2>
         </div>
-        <div className="flex gap-2">
-          <Btn variant="primary" size="sm" icon={<Plus size={13}/>} fullWidth onClick={() => { setForm(EMPTY_FORM); setAddOpen(true); }}>
-            Add Product
-          </Btn>
+        <div className="flex w-full gap-2 sm:w-auto">
+          <div className="min-w-0 flex-1 sm:flex-none">
+            <Btn variant="primary" size="sm" icon={<PackagePlus size={13}/>} fullWidth onClick={openRestock}>
+              Restock
+            </Btn>
+          </div>
+          <div className="min-w-0 flex-1 sm:flex-none">
+            <Btn variant="primary" size="sm" icon={<Plus size={13}/>} fullWidth onClick={() => { setForm(EMPTY_FORM); setAddOpen(true); }}>
+              Add Product
+            </Btn>
+          </div>
         </div>
       </div>
 
@@ -424,6 +466,7 @@ export function AdminInventory() {
       <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
         <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
           <EnhancedTable
+            mobileTable
             rowHeight={56}
             columns={columns}
             data={filteredItems}
@@ -475,6 +518,37 @@ export function AdminInventory() {
         <ProductForm form={form} onChange={setForm} categories={categories} mode="edit"/>
       </Modal>
 
+      <Modal open={restockOpen} onClose={() => setRestockOpen(false)} title="Restock Product" size="sm"
+        footer={<><Btn variant="secondary" onClick={() => setRestockOpen(false)}>Cancel</Btn>
+          <Btn variant="primary" icon={<PackagePlus size={15}/>} onClick={handleRestock} disabled={loading}>{loading ? "Saving…" : "Add Stock"}</Btn></>}>
+        <div className="space-y-4">
+          <Field label="Product">
+            <div className="relative">
+              <input className={inputClass} style={inputStyle} type="search" value={restockQuery}
+                role="combobox" aria-autocomplete="list" aria-expanded={restockMatches.length > 0}
+                aria-controls={restockMatches.length > 0 ? "restock-products" : undefined}
+                placeholder="Search products" onChange={event => { setRestockQuery(event.target.value); setSelected(null); }}/>
+              {restockMatches.length > 0 && <div id="restock-products" role="listbox"
+                className="mt-1 max-h-40 w-full overflow-y-auto rounded-lg border bg-white" style={{borderColor:C.border}}>
+                {restockMatches.map(item => <button key={item.id} type="button" role="option" aria-selected={false}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  onClick={() => { setSelected(item); setRestockQuery(item.name); }}>
+                  <span className="min-w-0 truncate font-medium" style={{color:C.text}}>{item.name}</span>
+                  <span className="shrink-0 text-xs" style={{color:C.muted}}>{item.stock} in stock</span>
+                </button>)}
+              </div>}
+            </div>
+          </Field>
+          {selected && <div className="text-xs" style={{color:C.muted}}>{selected.cat} · {selected.stock} currently in stock</div>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Quantity to add"><input className={inputClass} style={inputStyle} type="number" min="0.01" step="0.01"
+              value={restockForm.quantity} onChange={event => setRestockForm({...restockForm, quantity:event.target.value})}/></Field>
+            <Field label="Expiry date"><input className={inputClass} style={inputStyle} type="date" min={today()}
+              value={restockForm.expiry} onChange={event => setRestockForm({...restockForm, expiry:event.target.value})}/></Field>
+          </div>
+        </div>
+      </Modal>
+
       {/* View Drawer */}
       <Drawer open={viewOpen} onClose={() => setViewOpen(false)}
         title="Product Details" subtitle="View full product information"
@@ -496,7 +570,7 @@ export function AdminInventory() {
         onClose={() => setDeleteOpen(false)}
         onConfirm={handleDelete}
         title="Delete Product"
-        description={`Are you sure you want to remove "${selected?.name}" from inventory? This action cannot be undone.`}
+        description={`Delete "${selected?.name}"? An unused product is removed permanently; one with stock or sales history is deactivated.`}
         confirmLabel="Delete Product"
         variant="danger"
         loading={loading}

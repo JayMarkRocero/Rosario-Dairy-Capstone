@@ -6,13 +6,13 @@ export interface Sale {
   customer: string;
   cashier: string;
   date: string;
-  payment: "Cash" | "Online";
+  payment: "Cash" | "Online" | "Not recorded";
   total: number;
   transaction: DjangoTransaction;
 }
 
-function toDisplayPayment(method: string): "Cash" | "Online" {
-  return method === "cash" ? "Cash" : "Online";
+function toDisplayPayment(method: string): Sale["payment"] {
+  return method === "cash" ? "Cash" : method === "online" ? "Online" : "Not recorded";
 }
 
 function transactionCustomerName(transaction: DjangoTransaction): string {
@@ -35,9 +35,9 @@ export const salesService = {
     });
 
     return transactions.map((t: DjangoTransaction) => ({
-      receipt: `TXN-${String(t.id).padStart(6, "0")}`,
+      receipt: t.source_invoice_number || `TXN-${String(t.id).padStart(6, "0")}`,
       customer: transactionCustomerName(t),
-      cashier: t.handled_by.username,
+      cashier: t.source_reference ? "Not recorded" : t.handled_by.username,
       date: t.created_at.slice(0, 10),
       payment: toDisplayPayment(t.payment_method),
       total: parseFloat(t.total_amount),

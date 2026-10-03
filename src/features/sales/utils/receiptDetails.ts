@@ -21,17 +21,23 @@ export function receiptDetails(sale: Sale) {
   if (transaction.delivery_status) fields.push(["Delivery Status", transaction.delivery_status]);
   if (transaction.is_voided) fields.push(["Transaction Status", "Voided"]);
   return {
-    title: voucher ? "Sales Invoice & Fulfillment Voucher" : "Official Sales Receipt",
+    title: transaction.source_reference ? "Historical Sales Record" : voucher ? "Sales Invoice & Fulfillment Voucher" : "Official Sales Receipt",
     note: voucher ? "Online payment recorded. Order source and fulfillment details are not provided in this transaction response." : "",
     fields,
-    items: (transaction.items ?? []).map(item => ({
-      id: item.id,
-      name: [item.product_batch.product.name, item.product_batch.product.variant].filter(Boolean).join(" "),
-      batch: item.product_batch.batch_number,
-      quantity: String(item.quantity),
-      price: receiptMoney(item.unit_price),
-      subtotal: receiptMoney(Number(item.quantity) * Number(item.unit_price)),
-    })),
+    items: (transaction.items ?? []).map(item => {
+      const name = item.product_name_snapshot || item.product_batch.product.name;
+      const variant = item.product_name_snapshot != null
+        ? item.product_variant_snapshot
+        : item.product_batch.product.variant;
+      return {
+        id: item.id,
+        name: [name, variant].filter(Boolean).join(" "),
+        batch: transaction.source_reference ? "Not recorded" : item.product_batch.batch_number,
+        quantity: String(item.quantity),
+        price: receiptMoney(transaction.source_reference && item.source_line_total == null ? null : item.unit_price),
+        subtotal: receiptMoney(transaction.source_reference ? item.source_line_total : Number(item.quantity) * Number(item.unit_price)),
+      };
+    }),
     totals: [
       ["Subtotal", receiptMoney(transaction.subtotal)],
       ["Discount", receiptMoney(transaction.discount_amount)],
