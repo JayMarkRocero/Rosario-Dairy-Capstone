@@ -353,6 +353,7 @@ export interface RegisterUserPayload {
 }
 
 export interface UpdateUserPayload {
+  username?: string;
   role?: "admin" | "staff";
   is_active?: boolean;
   email?: string;

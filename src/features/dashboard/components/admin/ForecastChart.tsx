@@ -3,6 +3,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { Card } from "@/components/data-display/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { useReportPreview } from "@/features/reports/hooks/useReportPreview";
+import type { PlanningProjection } from "@/features/reports/api/reports.service";
 import { C } from "@/styles/tokens/colors";
 
 type Period = "weekly" | "monthly" | "yearly";
@@ -12,6 +13,11 @@ function amount(value: unknown): string {
   if (value == null) return "—";
   const number = Number(value);
   return Number.isFinite(number) ? `₱${number.toLocaleString("en-PH", { maximumFractionDigits: 0 })}` : "—";
+}
+
+function dateLabel(value: string): string {
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function forecastExplanation(data: Record<string, unknown> | null): string {
@@ -41,6 +47,8 @@ export function ForecastChart() {
   const { data, loading, error } = useReportPreview("sarima_forecast", period);
   const forecast = Array.isArray(data?.forecast) ? data.forecast[0] as Record<string, unknown> | undefined : undefined;
   const ready = data?.status === "ready" && forecast;
+  const projection = data?.planning_projection && typeof data.planning_projection === "object"
+    ? data.planning_projection as unknown as PlanningProjection : null;
   const fixedOrigin = period === "monthly" && comparisonMode === "fixed";
   const comparisonValue = fixedOrigin ? data?.fixed_origin_comparison : data?.historical_comparison;
   const comparison = Array.isArray(comparisonValue) ? comparisonValue as Array<Record<string, unknown>> : [];
@@ -73,14 +81,22 @@ export function ForecastChart() {
     </div>
     {loading ? <EmptyState compact loading title="Checking forecast quality" /> : error ? <div role="alert"><EmptyState compact title="Forecast unavailable" description={error} /></div> : <div className="min-w-0 rounded-xl p-3 sm:p-4" style={{ background: `color-mix(in srgb, ${ready ? C.green : C.orange} 12%, ${C.white})` }}>
       <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: ready ? C.green : C.orange }}>
-        {ready ? "Planning estimate available" : "Forecast not published"}
+        {ready ? "Published SARIMA forecast" : "Forecast not published"}
       </p>
       {ready && <div className="mt-3">
         <p className="break-words text-xl font-semibold sm:text-2xl" style={{ color: C.text }}>{amount(forecast.predicted_revenue)}</p>
-        <p className="mt-1 text-xs leading-relaxed" style={{ color: C.muted }}>{String(forecast.date)} to {String(forecast.end_date ?? forecast.date)}<span className="block sm:inline"> · Planning range {amount(forecast.lower_bound)}–{amount(forecast.upper_bound)}</span></p>
+        <p className="mt-1 text-xs leading-relaxed" style={{ color: C.muted }}>{String(forecast.date)} to {String(forecast.end_date ?? forecast.date)}<span className="block sm:inline"> · Forecast range {amount(forecast.lower_bound)}–{amount(forecast.upper_bound)}</span></p>
       </div>}
       <p className="mt-2 text-sm leading-relaxed" style={{ color: C.text }}>{forecastExplanation(data as Record<string, unknown> | null)}</p>
     </div>}
+    {!loading && !error && projection && <section className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-3 sm:p-4" aria-label="Unvalidated Historical Estimate">
+      <h3 className="text-sm font-semibold text-blue-900">Unvalidated Historical Estimate</h3>
+      <p className="mt-1 text-xs leading-relaxed text-blue-800">Historical median for the current {period} period. This is a planning aid, not a published SARIMA forecast.</p>
+      <p className="mt-3 text-xl font-semibold text-slate-900 sm:text-2xl">{amount(projection.predicted_revenue)}</p>
+      <p className="mt-1 text-sm text-slate-700">{dateLabel(projection.date)} – {dateLabel(projection.end_date)}</p>
+      <p className="mt-2 text-xs text-slate-600">Observed historical range: {amount(projection.lower_bound)} – {amount(projection.upper_bound)}</p>
+      <p className="mt-1 text-xs text-slate-600">Based on {projection.sample_count} matching historical periods · Sales data through {dateLabel(projection.trained_through)}</p>
+    </section>}
     {!loading && !error && chartData.length > 0 && <div className="mt-5 min-w-0">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold" style={{ color: C.text }}>2025 actual vs predicted</h3>

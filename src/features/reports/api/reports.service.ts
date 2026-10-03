@@ -17,6 +17,19 @@ export interface ReportPreviewBase {
 export interface SarimaForecastPreview extends ReportPreviewBase {
   is_placeholder: boolean;
   forecast?: Array<Record<string, unknown>>;
+  planning_projection?: PlanningProjection | null;
+}
+
+export interface PlanningProjection {
+  date: string;
+  end_date: string;
+  trained_through: string;
+  predicted_revenue: string;
+  lower_bound: string;
+  upper_bound: string;
+  point_kind: string;
+  range_kind: string;
+  sample_count: number;
 }
 
 export interface DailySalesReport extends ReportPreviewBase {

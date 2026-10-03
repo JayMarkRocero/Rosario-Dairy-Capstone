@@ -59,8 +59,4 @@ export const authService = {
     return response.data;
   },
 
-  updateCurrentUser: async (payload: Partial<Pick<CurrentUser, "email">>): Promise<CurrentUser> => {
-    const response = await http.patch<CurrentUser>("/accounts/user/", payload);
-    return response.data;
-  },
 };

@@ -1,4 +1,4 @@
-import http, { ApiError, type DeactivationReason, type RegisterUserPayload, type ResetPasswordPayload, type UpdateUserPayload, type DjangoUserListItem } from "@/lib/api";
+import http, { ApiError, type CurrentUser, type DeactivationReason, type RegisterUserPayload, type ResetPasswordPayload, type UpdateUserPayload, type DjangoUserListItem } from "@/lib/api";
 import { DEACTIVATION_OPTIONS } from "@/features/users/types/user";
 import type { SystemUser } from "@/features/users/types/user";
 
@@ -19,6 +19,10 @@ function formatLastLogin(lastLogin: string | null): string {
 }
 
 export const userService = {
+  updateCurrentUser: async (input: Partial<Pick<CurrentUser, "username" | "email" | "first_name" | "last_name">>): Promise<CurrentUser> => {
+    const { data } = await http.patch<CurrentUser>("/accounts/user/", input);
+    return data;
+  },
   getAll: async (): Promise<SystemUser[]> => {
     const { data: users } = await http.get<DjangoUserListItem[]>("/accounts/users/");
     return users.map((u: DjangoUserListItem) => ({
@@ -58,6 +62,7 @@ export const userService = {
   updateUser: async (
     userId: number,
     input: {
+      username: string;
       email: string;
       role: "Administrator" | "Staff";
       firstName?: string;
@@ -67,6 +72,7 @@ export const userService = {
     }
   ): Promise<void> => {
     const payload: UpdateUserPayload = {
+      username: input.username.trim(),
       email: input.email,
       role: toBackendRole(input.role),
       first_name: input.firstName,

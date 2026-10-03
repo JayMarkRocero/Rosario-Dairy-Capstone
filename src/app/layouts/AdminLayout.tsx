@@ -48,7 +48,7 @@ export function AdminLayout({ onLogout }: Props) {
         <div className="flex-shrink-0">
         <TopBar
            title={PAGE_TITLES[page]}
-           userName={user?.username ?? "Admin"}
+           userName={[user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.username || "Admin"}
            role="Administrator"
            onLogout={onLogout}
             onMenuClick={() => setSidebarOpen(true)}

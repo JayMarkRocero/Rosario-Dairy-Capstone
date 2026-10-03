@@ -16,7 +16,9 @@ import http, {
   type UpdateProductPayload,
 } from "@/lib/api";
 import type { InventoryItem, FEFOItem, Category } from "@/features/inventory/types/inventory";
-import { normalizeCategoryIcon } from "@/features/inventory/utils/categoryIcons";
+import { normalizeCategoryIcon, type CategoryIconKey } from "@/features/inventory/utils/categoryIcons";
+
+export interface CategoryIconOption { value: CategoryIconKey; label: string }
 
 function daysUntil(dateStr: string): number {
   const today = new Date();
@@ -114,6 +116,11 @@ export const inventoryService = {
   })).sort((a, b) => a.name.localeCompare(b.name));
 },
 
+  getCategoryIconOptions: async (): Promise<CategoryIconOption[]> => {
+    const { data } = await http.get<CategoryIconOption[]>("/inventory/categories/icon-options/");
+    return data;
+  },
+
   getLowStockProducts: async (): Promise<DjangoProduct[]> => {
     const { data } = await http.get<Array<{ product: DjangoProduct; remaining_quantity: string }>>("/inventory/low-stock/products/");
     return data.map(({ product, remaining_quantity }) => ({ ...product, total_stock: remaining_quantity }));
@@ -179,11 +186,11 @@ export const inventoryService = {
     await http.post<DjangoProductBatch>("/inventory/product-batches/", batchPayload);
   },
 
-  createCategory: async (input: { name: string; icon: string; is_visible_to_staff: boolean }): Promise<void> => {
+  createCategory: async (input: { name: string; icon: CategoryIconKey; is_visible_to_staff: boolean }): Promise<void> => {
     const payload: CreateCategoryPayload = {
       name: input.name,
       description: "",
-      icon: normalizeCategoryIcon(input.icon),
+      icon: input.icon,
       is_visible_to_staff: input.is_visible_to_staff,
     };
     await http.post<DjangoCategory>("/inventory/categories/", payload);
@@ -191,11 +198,11 @@ export const inventoryService = {
 
   updateCategory: async (
     categoryId: number,
-    input: { name?: string; icon?: string; is_visible_to_staff?: boolean }
+    input: { name?: string; icon?: CategoryIconKey; is_visible_to_staff?: boolean }
   ): Promise<void> => {
     const payload: UpdateCategoryPayload = {};
     if (input.name !== undefined) payload.name = input.name;
-    if (input.icon !== undefined) payload.icon = normalizeCategoryIcon(input.icon);
+    if (input.icon !== undefined) payload.icon = input.icon;
     if (input.is_visible_to_staff !== undefined) payload.is_visible_to_staff = input.is_visible_to_staff;
     await http.patch<DjangoCategory>(`/inventory/categories/${categoryId}/`, payload);
   },

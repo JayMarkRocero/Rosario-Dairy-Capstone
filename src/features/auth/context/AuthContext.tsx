@@ -9,6 +9,7 @@ interface AuthState {
   loading: boolean;          // true only during initial session check
   sessionExpired: boolean;   // true right after a 401-triggered logout
   login: (username: string, password: string) => Promise<CurrentUser>;
+  setCurrentUser: (user: CurrentUser) => void;
   logout: () => void;
   clearSessionExpiredFlag: () => void;
 }
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     sessionExpired,
     login,
+    setCurrentUser: setUser,
     logout: () => {
       const refresh = getRefreshToken();
       // Capture authorization before clearing storage; logout still clears locally on failure.

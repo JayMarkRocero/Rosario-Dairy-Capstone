@@ -42,7 +42,7 @@ export function StaffLayout({ onLogout }: Props) {
         <div className="flex-shrink-0">
         <TopBar
           title={PAGE_TITLES[page]}
-          userName={user?.username ?? "Staff"}
+          userName={[user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.username || "Staff"}
           role="Staff"
           onLogout={onLogout}
           onMenuClick={() => setSidebarOpen(true)}

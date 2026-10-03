@@ -15,18 +15,18 @@ import { Drawer } from "@/components/overlays/Drawer";
 import { CategoryIcon } from "@/components/data-display/CategoryIcon";
 import { C } from "@/styles/tokens/colors";
 import { filterSelectClass } from "@/styles/controlClasses";
-import { inventoryService } from "@/features/inventory/api/inventory.service";
-import { CATEGORY_ICON_NAMES, normalizeCategoryIcon, type CategoryIconName } from "@/features/inventory/utils/categoryIcons";
+import { inventoryService, type CategoryIconOption } from "@/features/inventory/api/inventory.service";
+import { normalizeCategoryIcon, type CategoryIconKey } from "@/features/inventory/utils/categoryIcons";
 import type { Category } from "@/features/inventory/types/inventory";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
 const inputStyle = { borderColor: "var(--border)", color: "var(--foreground)", backgroundColor: "var(--input-background)" };
 
-interface FormState { name: string; icon: CategoryIconName; is_active: boolean; is_visible_to_staff: boolean }
-const EMPTY: FormState = { name:"", icon:"Package", is_active:true, is_visible_to_staff:true };
+interface FormState { name: string; icon: CategoryIconKey; is_active: boolean; is_visible_to_staff: boolean }
+const EMPTY: FormState = { name:"", icon:"", is_active:true, is_visible_to_staff:true };
 type CategoryStatus = "All" | "Active" | "Inactive";
 
-function CategoryForm({ form, setForm, showStatus = false }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>>; showStatus?: boolean }) {
+function CategoryForm({ form, setForm, iconOptions, showStatus = false }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>>; iconOptions: CategoryIconOption[]; showStatus?: boolean }) {
   return (
     <div className="space-y-4">
       <div>
@@ -37,14 +37,13 @@ function CategoryForm({ form, setForm, showStatus = false }: { form: FormState; 
       <div role="group" aria-label="Icon Selection">
         <span className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Icon Selection</span>
         <div className="grid grid-cols-4 gap-2">
-          {CATEGORY_ICON_NAMES.map(icon => {
-            const active = form.icon === icon;
-            const label = icon.replace(/([a-z])([A-Z])/g, "$1 $2");
-            return <button key={icon} type="button" aria-label={`${label} icon`} aria-pressed={active}
-              onClick={() => setForm(current => ({ ...current, icon }))}
+          {iconOptions.map(({ value, label }) => {
+            const active = form.icon === value;
+            return <button key={value} type="button" aria-label={`${label} icon`} aria-pressed={active}
+              onClick={() => setForm(current => ({ ...current, icon: value }))}
               className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl border-2 px-1 py-2 text-xs transition-colors ${active ? "border-blue-600 bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}
               style={{ color: active ? C.blue : C.muted }}>
-              <CategoryIcon icon={icon} size={20} color={active ? C.blue : C.muted} />
+              <CategoryIcon name={form.name} icon={value} size={20} color={active ? C.blue : C.muted} />
               <span className="w-full truncate text-center text-[10px] leading-tight" title={label}>{label}</span>
             </button>;
           })}
@@ -66,6 +65,7 @@ function CategoryForm({ form, setForm, showStatus = false }: { form: FormState; 
 export function AdminCategories() {
   const [cats, setCats] = useState<Category[]>([]);
   const [catsLoading, setCatsLoading] = useState(true);
+  const [iconOptions, setIconOptions] = useState<CategoryIconOption[]>([{ value: "", label: "Automatic Selection" }]);
 
   const loadCategories = async () => {
     setCatsLoading(true);
@@ -80,6 +80,9 @@ export function AdminCategories() {
 
   useEffect(() => {
     void loadCategories();
+    inventoryService.getCategoryIconOptions()
+      .then(setIconOptions)
+      .catch(error => toastApiError(error, "Icon options could not be loaded; automatic selection is available."));
   }, []);
 
   const [addOpen,    setAddOpen]    = useState(false);
@@ -194,7 +197,7 @@ export function AdminCategories() {
     { key: "name", header: "Category", align: "left", width: "32%", sortKey: cat => cat.name,
       render: cat => <div className="flex items-center gap-3 min-w-0">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: C.blue + "12" }}>
-          <CategoryIcon icon={cat.icon} size={18} color={C.blue} />
+          <CategoryIcon name={cat.name} icon={cat.icon} size={18} color={C.blue} />
         </div>
         <span className="truncate font-medium" title={cat.name}>{cat.name}</span>
       </div> },
@@ -263,14 +266,14 @@ export function AdminCategories() {
       <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="Add Category" subtitle="Create a new product category"
         footer={<><Btn variant="secondary" onClick={()=>setAddOpen(false)}>Cancel</Btn>
           <Btn variant="primary" onClick={()=>save("add")} disabled={loading}>{loading?"Saving…":"Add Category"}</Btn></>}>
-        <CategoryForm form={form} setForm={setForm}/>
+        <CategoryForm form={form} setForm={setForm} iconOptions={iconOptions}/>
       </Modal>
 
       {/* Edit Modal */}
       <Modal open={editOpen} onClose={()=>setEditOpen(false)} title="Edit Category" subtitle={selected?.name}
         footer={<><Btn variant="secondary" onClick={()=>setEditOpen(false)}>Cancel</Btn>
           <Btn variant="primary" onClick={()=>save("edit")} disabled={loading}>{loading?"Saving…":"Save Changes"}</Btn></>}>
-        <CategoryForm form={form} setForm={setForm} showStatus />
+        <CategoryForm form={form} setForm={setForm} iconOptions={iconOptions} showStatus />
       </Modal>
 
       {/* View Drawer */}
@@ -282,7 +285,7 @@ export function AdminCategories() {
             <div className="text-center py-6">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3"
                 style={{backgroundColor:C.blue+"12"}}>
-                <CategoryIcon icon={selected.icon} size={28} color={C.blue}/>
+                <CategoryIcon name={selected.name} icon={selected.icon} size={28} color={C.blue}/>
               </div>
               <h3 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
             </div>

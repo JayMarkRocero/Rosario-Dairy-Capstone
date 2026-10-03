@@ -7,6 +7,7 @@ import { Card } from "@/components/data-display/Card";
 import { settingsService, type AppSettings, type NotificationSettings, type SystemSettings } from "@/features/settings/api/settings.service";
 import { AppearanceSettings } from "@/features/settings/components/AppearanceSettings";
 import { AccountSecuritySettings } from "@/features/settings/components/AccountSecuritySettings";
+import { PersonalProfileSettings } from "@/features/settings/components/PersonalProfileSettings";
 
 const liveAlerts: { key: keyof NotificationSettings; label: string; description: string; icon: typeof AlertTriangle }[] = [
   { key: "low_stock_alerts", label: "Low stock", description: "Show an alert when product or ingredient stock falls below its threshold.", icon: AlertTriangle },
@@ -48,9 +49,11 @@ export function AdminSettings() {
   }, [reload]);
 
   if (loading) return <EmptyState loading title="Opening settings" />;
-  if (!draft || !saved) return <div className="p-4 sm:p-6">
+  if (!draft || !saved) return <div className="space-y-4 p-4 sm:p-6">
     <p role="alert" className="text-sm text-red-600">{loadError}</p>
     <button type="button" onClick={() => setReload(value => value + 1)} className="mt-3 text-sm font-semibold text-blue-600 underline">Retry</button>
+    <PersonalProfileSettings />
+    <AccountSecuritySettings />
   </div>;
 
   const canManage = saved.permissions.can_manage_settings;
@@ -171,6 +174,7 @@ export function AdminSettings() {
     </Card>
 
     <AppearanceSettings />
+    <PersonalProfileSettings />
     <AccountSecuritySettings />
   </div>;
 }

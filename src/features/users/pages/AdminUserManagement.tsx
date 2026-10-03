@@ -23,7 +23,6 @@ import { isValidPhoneNumber, PHONE_FORMAT_HINT } from "@/lib/validators";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
 const inputStyle = { borderColor:"var(--border)", color:"var(--foreground)", backgroundColor:"var(--input-background)" };
-const readOnlyStyle = { borderColor:"var(--border)", color:"var(--muted-foreground)", backgroundColor:"var(--input-background)" };
 
 const ROLES = ["Administrator", "Staff"];
 
@@ -48,20 +47,12 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
 }) {
   return (
     <div className="space-y-4">
-      {title==="Add User" ? (
-        <div>
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Username</label>
-          <input className={inputClass} style={inputStyle} placeholder="jdelacruz"
-            autoComplete="off"
-            value={form.username} onChange={e=>onChange({...form,username:e.target.value})}/>
-        </div>
-      ) : (
-        <div>
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Username</label>
-          <input className={inputClass} style={readOnlyStyle} value={form.username} readOnly disabled/>
-          <p className="text-xs mt-1" style={{color:C.muted}}>Username cannot be changed.</p>
-        </div>
-      )}
+      <div>
+        <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Username</label>
+        <input className={inputClass} style={inputStyle} placeholder="jdelacruz"
+          autoComplete="off" maxLength={150}
+          value={form.username} onChange={e=>onChange({...form,username:e.target.value})}/>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>First Name</label>
@@ -226,8 +217,8 @@ export function AdminUserManagement() {
 
   const handleEditSave = () => {
     if (!selected) return;
-    if (!form.email) {
-      toast.error("Email is required."); return;
+    if (!form.username.trim() || !form.email.trim()) {
+      toast.error("Username and email are required."); return;
     }
     if (!isValidPhoneNumber(form.phoneNumber)) {
       toast.error(PHONE_FORMAT_HINT); return;
@@ -235,6 +226,7 @@ export function AdminUserManagement() {
 
     setLoading(true);
     userService.updateUser(selected.id, {
+      username: form.username,
       email: form.email,
       role,
       firstName: form.firstName,

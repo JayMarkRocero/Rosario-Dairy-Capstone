@@ -1,7 +1,7 @@
 import { Milk, IceCreamCone, CupSoda, Droplet, Package } from "lucide-react";
+import { normalizeCategoryIcon } from "@/features/inventory/utils/categoryIcons";
 
-// Lucide has no exact icon for every dairy category (e.g. Cheese, Butter) —
-// those fall back to a neutral package icon rather than forcing a bad match.
+// Keep the existing SVGs for Cheese and Butter, which have no exact Lucide icons.
 
 function CheeseIcon({ size = 18, style }: { size?: string | number; style?: React.CSSProperties }) {
   return (
@@ -40,7 +40,13 @@ const CATEGORY_ICON: Record<string, React.ComponentType<{ size?: string | number
  * Yogurt, Ice Cream, Cream). Unrecognized categories fall back to a plain
  * package icon so new categories never render blank.
  */
-export function CategoryIcon({ name, size = 18, color }: { name: string; size?: number; color: string }) {
-  const Icon = CATEGORY_ICON[name] ?? Package;
+const STORED_ICON: Record<string, React.ComponentType<{ size?: string | number; style?: React.CSSProperties }>> = {
+  milk: Milk, cheese: CheeseIcon, butter: ButterIcon, yogurt: CupSoda,
+  ice_cream: IceCreamCone, cream: Droplet, package: Package,
+};
+
+export function CategoryIcon({ name, icon, size = 18, color }: { name?: string; icon?: string | null; size?: number; color: string }) {
+  const selected = normalizeCategoryIcon(icon);
+  const Icon = selected ? STORED_ICON[selected] ?? Package : CATEGORY_ICON[name ?? ""] ?? Package;
   return <Icon size={size} style={{ color }} />;
 }
