@@ -8,7 +8,9 @@ import { useTheme } from "@/styles/ThemeProvider";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
 import { ordersService } from "@/features/orders/api/orders.service";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
-import { authService } from "@/features/auth/api/auth.service";
+import { useAuth } from "@/features/auth/context/AuthContext";
+import { getSessionUserId } from "@/features/auth/api/auth.service";
+import { ApiError } from "@/lib/api";
 import type { OrderListItem } from "@/features/orders/types/order";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 
@@ -22,41 +24,62 @@ function todayStr(): string {
 
 export function StaffKPICards() {
   const { theme } = useTheme();
+  const { user, loading: authLoading } = useAuth();
   const reportVersion = useReportVersion();
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [products, setProducts] = useState<InventoryItem[]>([]);
-  const [username, setUsername] = useState<string | null>(null);
+  const username = user?.username ?? null;
+  const userId = user ? getSessionUserId(user) : null;
+  const identityUnavailable = !authLoading && userId === null;
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setFailed(false);
+    if (authLoading) return;
+    if (userId === null) {
+      setLoading(false);
+      return;
+    }
 
-    Promise.all([
-      salesService.getAll(),
-      ordersService.getAll(),
-      inventoryService.getAll(),
-      authService.getCurrentUser(),
-    ])
-      .then(([s, o, p, user]) => {
+    const today = todayStr();
+    let deadline: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      deadline = setTimeout(() => reject(new Error("Dashboard metrics took too long to load. Please refresh and try again.")), 30000);
+    });
+    const request = Promise.resolve().then(() => {
+      return Promise.all([
+        salesService.getAll({ startDate: today, endDate: today, handledBy: userId }),
+        ordersService.getAll(),
+        inventoryService.getAll(true),
+      ]);
+    });
+
+    Promise.race([request, timeout])
+      .then(([s, o, p]) => {
         if (!active) return;
         setSales(s);
         setOrders(o);
         setProducts(p);
-        setUsername(user.username);
       })
-      .catch(error => { if (active) { setFailed(true); toastApiError(error); } })
+      .catch(error => {
+        if (!active) return;
+        setFailed(true);
+        if (!(error instanceof ApiError && (error.status === 401 || error.status === 403))) toastApiError(error);
+      })
       .finally(() => {
+        clearTimeout(deadline);
         if (active) setLoading(false);
       });
 
     return () => {
       active = false;
+      clearTimeout(deadline);
     };
-  }, [reportVersion]);
+  }, [reportVersion, userId, authLoading]);
 
   const kpis = useMemo(() => {
     const today = todayStr();
@@ -93,10 +116,10 @@ export function StaffKPICards() {
   }, [sales, orders, products, username, theme]);
 
   return (
-    <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={loading}>
-      {kpis.map(k => <KPICard key={k.title} {...k} value={failed ? "—" : k.value}
-        trendLabel={failed ? "Unavailable" : loading ? "Updating" : k.trendLabel}
-        detail={failed ? "Unable to load current metrics." : k.detail} compact />)}
+    <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={authLoading || loading}>
+      {kpis.map(k => <KPICard key={k.title} {...k} value={authLoading || identityUnavailable || failed ? "—" : k.value}
+        trendLabel={authLoading ? "Loading account" : identityUnavailable || failed ? "Unavailable" : loading ? "Updating" : k.trendLabel}
+        detail={identityUnavailable ? "Account information unavailable. Please sign in again." : failed ? "Unable to load current metrics." : k.detail} compact />)}
     </div>
   );
 }

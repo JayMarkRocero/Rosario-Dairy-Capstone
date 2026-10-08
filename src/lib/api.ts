@@ -175,6 +175,7 @@ export interface TokenPair {
 }
 
 export interface CurrentUser {
+  id?: number;
   username: string;
   email: string;
   role: "admin" | "staff";

@@ -3,22 +3,29 @@ import http, { ApiError, refreshAccessToken, getAccessToken, type CurrentUser, t
 export interface RecoveryIdentity { username: string; email: string }
 export interface RecoveryResetPayload extends RecoveryIdentity { otp: string; new_password: string }
 
+// Used only to scope frontend requests; the backend validates the access token.
+export function getSessionUserId(user?: Pick<CurrentUser, "id"> | null): number | null {
+  if (typeof user?.id === "number" && Number.isSafeInteger(user.id) && user.id > 0) return user.id;
+  try {
+    const encoded = getAccessToken()?.split(".")[1];
+    if (!encoded) return null;
+    const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
+    const rawId = claims.user_id;
+    if (typeof rawId !== "number" && !(typeof rawId === "string" && /^\d+$/.test(rawId))) return null;
+    const id = Number(rawId);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  } catch { return null; }
+}
+
 export const authService = {
   refresh: refreshAccessToken,
   getCurrentUserId: async (): Promise<number> => {
     // Validate/refresh the session before reading the identity claim for query scoping.
-    await authService.getCurrentUser();
-    try {
-      const encoded = getAccessToken()?.split(".")[1];
-      if (!encoded) throw new Error("Missing token");
-      const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
-      const claims = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
-      const id = Number(claims.user_id);
-      if (!Number.isSafeInteger(id) || id <= 0) throw new Error("Missing identity");
-      return id;
-    } catch {
-      throw new ApiError(401, "Unable to identify your account. Please log in again.");
-    }
+    const user = await authService.getCurrentUser();
+    const id = getSessionUserId(user);
+    if (id === null) throw new ApiError(401, "Unable to identify your account. Please log in again.");
+    return id;
   },
   logout: async (refreshToken: string): Promise<void> => {
     const blacklist = (access: string, refresh: string) => http.post("/accounts/logout/", { refresh_token: refresh }, {
@@ -56,7 +63,8 @@ export const authService = {
 
   getCurrentUser: async (): Promise<CurrentUser> => {
     const response = await http.get<CurrentUser>("/accounts/user/");
-    return response.data;
+    const id = getSessionUserId(response.data);
+    return id === null ? response.data : { ...response.data, id };
   },
 
 };

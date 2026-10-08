@@ -347,6 +347,25 @@ test('category patch excludes read-only activation even from untyped callers', a
   assert.deepEqual(JSON.parse(calls[0].data), { name: 'Dairy', icon: 'Milk' });
 });
 
+test('current user maps the JWT identity when the profile endpoint omits id', async () => {
+  api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id: 7 })).toString('base64url')}.signature`);
+  responseData = { username: 'staff', role: 'staff' };
+  assert.deepEqual(await api.authService.getCurrentUser(), { ...responseData, id: 7 });
+  assert.equal(await api.authService.getCurrentUserId(), 7);
+});
+
+test('session identity uses valid profile ids and rejects invalid token claims safely', () => {
+  assert.equal(api.getSessionUserId({ id: 12 }), 12);
+  for (const user_id of [null, true, {}, '', -1, 0, 1.5, 'garbage', Number.MAX_SAFE_INTEGER + 1]) {
+    api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id })).toString('base64url')}.signature`);
+    assert.equal(api.getSessionUserId(), null);
+  }
+  api.setAccessToken('invalid-token');
+  assert.equal(api.getSessionUserId(), null);
+  api.setAccessToken(null);
+  assert.equal(api.getSessionUserId(), null);
+});
+
 test('category create includes the selected icon', async () => {
   await api.inventoryService.createCategory({ name: 'Treats', icon: 'Cookie', is_visible_to_staff: true });
   assert.deepEqual(JSON.parse(calls[0].data), {
