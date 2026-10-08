@@ -69,9 +69,9 @@ export function AdminReports() {
     }
   };
 
-  return <div className="w-full h-full min-h-0 flex flex-col gap-3 px-4 pt-4 pb-8 sm:px-6">
-    <div className="flex shrink-0 flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <h2 className="text-lg font-bold" style={{color:C.muted}}>Generate and export business intelligence reports</h2>
+  return <div className="w-full h-full min-h-0 flex flex-col gap-4 px-4 pt-3 pb-8 sm:px-6">
+    <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
+      <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Generate and export business intelligence reports</h2>
       <Btn variant="primary" size="sm" icon={refreshing?<LoaderCircle size={13} className="animate-spin"/>:<RefreshCw size={13}/>} onClick={refresh} disabled={refreshing || exporting !== null}>{refreshing?"Refreshing…":"Refresh Data"}</Btn>
     </div>
     <div className="w-full flex-1 min-h-0 flex flex-col justify-center">

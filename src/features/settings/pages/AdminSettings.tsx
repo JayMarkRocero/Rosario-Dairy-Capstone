@@ -8,6 +8,7 @@ import { settingsService, type AppSettings, type NotificationSettings, type Syst
 import { AppearanceSettings } from "@/features/settings/components/AppearanceSettings";
 import { AccountSecuritySettings } from "@/features/settings/components/AccountSecuritySettings";
 import { PersonalProfileSettings } from "@/features/settings/components/PersonalProfileSettings";
+import { C } from "@/styles/tokens/colors";
 
 const liveAlerts: { key: keyof NotificationSettings; label: string; description: string; icon: typeof AlertTriangle }[] = [
   { key: "low_stock_alerts", label: "Low stock", description: "Show an alert when product or ingredient stock falls below its threshold.", icon: AlertTriangle },
@@ -109,11 +110,13 @@ export function AdminSettings() {
     } finally { setSaving(null); }
   };
 
-  return <div className="w-full p-4 sm:p-6 space-y-4 text-slate-900 dark:text-slate-100">
-    <div>
-      <h2 className="text-lg font-semibold">System settings</h2>
+  return <div className="w-full flex flex-col gap-4 px-4 pt-3 pb-4 sm:px-6 text-slate-900 dark:text-slate-100">
+    <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
+      <div className="min-w-0 flex-1">
+      <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>System settings</h2>
       <p className="mt-1 text-sm text-slate-500">Manage report details, live alerts, appearance, and your account security.</p>
       {!canManage && <p className="mt-2 text-sm text-slate-500">Business profile and shared alerts are read-only for your account.</p>}
+      </div>
     </div>
 
     <Card className="overflow-hidden">
