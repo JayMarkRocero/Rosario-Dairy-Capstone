@@ -1,13 +1,15 @@
 import { toastApiError } from "@/lib/errorHandling";
 import { isExpiredProduct } from "@/features/inventory/utils/expiry";
 import { getApiErrorMessage } from "@/lib/api";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, ShoppingCart, AlertTriangle, Banknote, Smartphone, Printer, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { Modal } from "@/components/overlays/Modal";
 import { EmptyState, Skeleton } from "@/components/EmptyState";
 import { CategoryIcon } from "@/components/data-display/CategoryIcon";
 import { C } from "@/styles/tokens/colors";
+import { toSale, type Sale } from "@/features/sales/api/sales.service";
+import { TransactionDetails } from "@/features/sales/components/TransactionDetails";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { checkoutService } from "@/features/pos/api/checkout.service";
 import { customersService } from "@/features/customers/api/customers.service";
@@ -18,8 +20,6 @@ import type { Customer } from "@/features/customers/types/customer";
 type PayMethod  = "Cash" | "GCash";
 type DiscountType = "none" | "percent" | "fixed";
 interface CartItem { id:number; name:string; price:number; qty:number; stock:number }
-
-const LOW_STOCK_THRESHOLD = 20;
 
 const money = (n: number) =>
   n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -32,7 +32,7 @@ function ReceiptModal({ cart, total, subtotal, payment, change, onClose, onConfi
 }) {
   const now = new Date();
   return (
-    <Modal open onClose={onClose} title="Receipt Preview" subtitle="Review before completing transaction" size="sm"
+    <Modal open busy={loading} onClose={onClose} title="Checkout Preview" subtitle="Estimated from catalog prices; the saved receipt shows the final charged prices" size="sm"
       footer={<>
         <button onClick={onClose} disabled={loading} className="flex-1 py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
           style={{border:`1px solid ${C.border}`,color:C.muted}}>Cancel</button>
@@ -91,7 +91,7 @@ function ProductCard({ prod, qtyInCart, onAdd }:{
   prod: InventoryItem; qtyInCart: number; onAdd: () => void;
 }) {
   const isExpired = isExpiredProduct(prod);
-  const isLow = prod.stock > 0 && prod.stock <= LOW_STOCK_THRESHOLD;
+  const isLow = prod.stock > 0 && prod.low;
   const isOut = prod.stock === 0;
   const isMaxed = qtyInCart >= prod.stock;
 
@@ -198,7 +198,7 @@ function CartContents({
                   <button onClick={()=>updateQty(item.id,-1)}
                     className="w-7 h-7 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center hover:bg-gray-100 text-sm font-bold"
                     style={{border:`1px solid ${C.border}`,color:C.muted}}>−</button>
-                  <input type="number" min="1" max={item.stock} value={item.qty}
+                  <input type="number" min="0.01" step="0.01" max={item.stock} value={item.qty}
                     onChange={event=>setItemQuantity(item.id, Number(event.target.value))}
                     className="quantity-input w-12 h-7 sm:h-6 rounded-lg border text-center text-xs font-bold outline-none"
                     style={{borderColor:C.border,color:C.text}} aria-label={`Quantity for ${item.name}`}/>
@@ -313,6 +313,8 @@ export function StaffPOS() {
   const [receiptOpen,  setReceiptOpen]= useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submissionLock = useRef(false);
+  const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
   const categories = ["All",...Array.from(new Set(products.map(p=>p.cat))).sort((a,b)=>a.localeCompare(b))];
@@ -322,14 +324,15 @@ export function StaffPOS() {
   );
 
   const addToCart = (prod:InventoryItem) => {
+    if (prod.stock <= 0 || submissionLock.current) return;
     if (isExpiredProduct(prod)) { toast.error("Expired products cannot be added to the cart."); return; }
     setCart(prev=>{
       const ex = prev.find(i=>i.id===prod.id);
       if (ex) {
         if (ex.qty >= prod.stock) return prev;
-        return prev.map(i=>i.id===prod.id?{...i,qty:i.qty+1}:i);
+        return prev.map(i=>i.id===prod.id?{...i,qty:Math.min(i.qty+1,prod.stock)}:i);
       }
-      return [...prev,{id:prod.id,name:prod.name,price:prod.price,qty:1,stock:prod.stock}];
+      return [...prev,{id:prod.id,name:prod.name,price:prod.price,qty:Math.min(1, prod.stock),stock:prod.stock}];
     });
   };
   const updateQty = (id:number,delta:number) =>
@@ -339,7 +342,7 @@ export function StaffPOS() {
       return { ...i, qty: Math.min(nextQty, i.stock) };
     }).filter(i=>i.qty>0));
   const setItemQuantity = (id: number, quantity: number) => setCart(current => current.map(item =>
-    item.id === id ? { ...item, qty: Math.max(1, Math.min(Number.isFinite(quantity) ? Math.floor(quantity) : 1, item.stock)) } : item
+    item.id === id ? { ...item, qty: Math.max(0.01, Math.min(Number.isFinite(quantity) ? Math.round(quantity * 100) / 100 : 1, item.stock)) } : item
   ));
 
   const subtotal = cart.reduce((s,i)=>s + i.price * i.qty, 0);
@@ -355,11 +358,12 @@ export function StaffPOS() {
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
 
   const handleComplete = () => {
+    if (submissionLock.current) return;
     if (cart.length===0) { toast.error("Cart is empty."); return; }
-    if (parsedDiscount < 0 || (discountType === "percent" && parsedDiscount > 100)) {
+    if (!Number.isFinite(Number(discountValue)) || parsedDiscount < 0 || (discountType === "percent" && parsedDiscount > 100) || (discountType === "fixed" && parsedDiscount > subtotal)) {
       toast.error("Enter a valid discount value."); return;
     }
-    if (payMethod === "Cash" && (!cashReceived || isNaN(cashValue) || cashValue < total)) {
+    if (payMethod === "Cash" && (!cashReceived || !Number.isFinite(cashValue) || cashValue < total)) {
       toast.error("Cash received must be at least the total amount.");
       return;
     }
@@ -368,9 +372,14 @@ export function StaffPOS() {
   };
 
   const handleConfirmTransaction = () => {
+    if (submissionLock.current) return;
+    if (cart.some(item => !Number.isFinite(item.qty) || item.qty <= 0 || item.qty > item.stock)) {
+      toast.error("Enter a positive quantity within the available stock."); return;
+    }
     if (cart.some(item => { const product = products.find(p => p.id === item.id); return !product || isExpiredProduct(product); })) {
       toast.error("Remove expired or unavailable products before checking out."); return;
     }
+    submissionLock.current = true;
     setSubmitting(true);
     checkoutService.submit({
       customerId: customerId ? Number(customerId) : null,
@@ -381,6 +390,7 @@ export function StaffPOS() {
       amountTendered: payMethod === "Cash" ? cashValue : undefined,
     })
       .then((result) => {
+        setCompletedSale(toSale(result.transaction));
         setReceiptOpen(false);
         setCart([]);
         setCash("");
@@ -388,11 +398,11 @@ export function StaffPOS() {
         setDiscountType("none");
         setDiscountValue("0");
         setShowDiscount(false);
-        toast.success(`Transaction complete! ₱${money(result.totalAmount)} received.`);
+        toast.success(`Transaction complete! Total ₱${money(result.totalAmount)}.`);
         inventoryService.getAll(true).then(setProducts).catch(error => toastApiError(error));
       })
       .catch((err: unknown) => toast.error(getApiErrorMessage(err, "Failed to complete transaction.")))
-      .finally(() => setSubmitting(false));
+      .finally(() => { submissionLock.current = false; setSubmitting(false); });
   };
 
   return (
@@ -523,6 +533,7 @@ export function StaffPOS() {
         </div>
       )}
 
+      <TransactionDetails sale={completedSale} onClose={() => setCompletedSale(null)} />
       {receiptOpen&&(
         <ReceiptModal cart={cart} total={total} subtotal={subtotal}
           payment={payMethod} change={change} loading={submitting}

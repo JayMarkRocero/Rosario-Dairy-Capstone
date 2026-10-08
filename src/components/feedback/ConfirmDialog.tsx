@@ -29,7 +29,8 @@ export function ConfirmDialog({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      busy={loading}
+      onClose={() => { if (!loading) onClose(); }}
       title=""
       size="sm"
       hideClose
@@ -39,7 +40,7 @@ export function ConfirmDialog({
           className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5"
           style={{ backgroundColor: current.bg, color: current.color }}
         >
-          {cfg.icon}
+          {current.icon}
         </div>
         <h3
           className="text-xl font-bold mb-2"
@@ -52,6 +53,7 @@ export function ConfirmDialog({
         <div className="flex gap-3 w-full">
           <button
             onClick={onClose}
+            disabled={loading}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors hover:bg-gray-100"
             style={{ border: `1px solid ${C.border}`, color: C.muted }}
           >

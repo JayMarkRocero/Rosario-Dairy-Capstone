@@ -7,26 +7,13 @@ import { AlertTriangle, CalendarClock, PackageCheck } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
+import { daysUntilExpiry } from "@/features/inventory/utils/expiry";
 
 const NEAR_EXPIRY_DAYS = 7;
 
-function isExpired(expiry: string): boolean {
-  if (!expiry) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiryDate = new Date(expiry);
-  expiryDate.setHours(0, 0, 0, 0);
-  return expiryDate < today;
-}
-
 function isNearExpiry(expiry: string): boolean {
-  if (!expiry || isExpired(expiry)) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiryDate = new Date(expiry);
-  expiryDate.setHours(0, 0, 0, 0);
-  const days = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  return days >= 0 && days <= NEAR_EXPIRY_DAYS;
+  const days = daysUntilExpiry(expiry);
+  return days !== null && days >= 0 && days <= NEAR_EXPIRY_DAYS;
 }
 
 export function InventoryAlert() {

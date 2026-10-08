@@ -59,6 +59,6 @@ export function StaffOrders() {
         <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>{selected.items.map((item,i)=><div key={i} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:justify-between sm:gap-3"><div className="min-w-0"><div className="break-words font-medium">{item.product}</div><div className="text-xs" style={{color:C.muted}}>Qty: {item.quantity}</div></div><b className="shrink-0">₱{item.subtotal.toLocaleString()}</b></div>)}<div className="space-y-1 px-4 py-3" style={{backgroundColor:C.navy+"08"}}><div className="flex justify-between text-sm"><span>Subtotal</span><span>₱{selected.subtotal.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Discount</span><span>−₱{selected.discountAmount.toLocaleString()}</span></div><div className="flex justify-between font-bold"><span>Total</span><span style={{color:C.blue}}>₱{selected.total.toLocaleString()}</span></div></div></div>
       </div>}
     </Drawer>
-    <CreateOrderModal open={createOpen} onClose={()=>setCreateOpen(false)} onCreated={()=>ordersService.getAll().then(setOrders)}/>
+    <CreateOrderModal open={createOpen} onClose={()=>setCreateOpen(false)} onCreated={()=>{ ordersService.getAll().then(setOrders).catch(error=>toastApiError(error, "Order saved, but the list could not refresh.")); }}/>
   </div>;
 }

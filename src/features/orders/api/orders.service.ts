@@ -46,7 +46,7 @@ export const ordersService = {
   },
 };
 
-function mapOrder(o: Order): OrderListItem {
+export function mapOrder(o: Order): OrderListItem {
   const total = parseFloat(o.transaction.total_amount);
   return {
     id: o.id,
@@ -67,7 +67,7 @@ function mapOrder(o: Order): OrderListItem {
     changeDue: o.transaction.change_due ? parseFloat(o.transaction.change_due) : null,
     warning: o.warning,
     items: o.items.map((item: OrderItem) => ({
-      product: item.product.name,
+      product: [item.product.name, item.product.variant].filter(Boolean).join(" "),
       quantity: parseFloat(item.quantity),
       unitPrice: parseFloat(item.unit_price),
       subtotal: parseFloat(item.subtotal),

@@ -16,6 +16,7 @@ const compiled = buildSync({
     export * from './src/features/orders/api/orders.service';
     export * from './src/features/sales/api/sales.service';
     export * from './src/features/inventory/utils/expiry';
+    export * from './src/features/inventory/utils/stock';
     export * from './src/features/auth/api/auth.service';
     export * from './src/features/settings/api/settings.service';
     export * from './src/features/inventory/api/inventory.service';
@@ -353,18 +354,18 @@ test('category create includes the selected icon', async () => {
   });
 });
 
-test('category list falls back to Package for missing or invalid imported icons', async () => {
+test('category list preserves current lowercase presets and uses automatic fallback for invalid icons', async () => {
   api.http.defaults.adapter = async config => ({
     status: 200, statusText: '', headers: {}, config,
     data: config.url === '/inventory/categories/' ? [
       { id: 1, name: 'No icon', is_active: true, is_visible_to_staff: true },
       { id: 2, name: 'Bad icon', icon: 'UnknownIcon', is_active: true, is_visible_to_staff: true },
-      { id: 3, name: 'Cheese', icon: 'Cheese', is_active: true, is_visible_to_staff: true },
+      { id: 3, name: 'Cheese', icon: 'cheese', is_active: true, is_visible_to_staff: true },
     ] : [],
   });
   const categories = await api.inventoryService.getCategories();
   assert.deepEqual(Object.fromEntries(categories.map(category => [category.name, category.icon])), {
-    'Bad icon': 'Package', Cheese: 'Cheese', 'No icon': 'Package',
+    'Bad icon': '', Cheese: 'cheese', 'No icon': '',
   });
 });
 
@@ -494,4 +495,57 @@ test('POS catalog retains variants so different package sizes can be distinguish
   const products = await api.inventoryService.getAll();
   assert.deepEqual(products.map(p => p.name), ['Fresh Milk 1000ml', 'Fresh Milk 300ml']);
   assert.deepEqual(products.map(p => p.price), [138, 45]);
+});
+
+
+test('configured stock thresholds include equality without a UI default', () => {
+  assert.equal(api.isLowStock(11, 10), false);
+  assert.equal(api.isLowStock(10, 10), true);
+  assert.equal(api.isLowStock(9, 10), true);
+  assert.equal(api.isLowStock(19, 0), false);
+  assert.equal(api.isLowStock(0, 0), true);
+});
+
+test('calendar expiry days do not gain a day from timezone offsets and reject impossible dates', () => {
+  const today = new Date(2026, 9, 8, 12);
+  assert.equal(api.daysUntilExpiry('2026-10-08', today), 0);
+  assert.equal(api.daysUntilExpiry('2026-10-15', today), 7);
+  assert.equal(api.daysUntilExpiry('2026-10-07', today), -1);
+  assert.equal(api.daysUntilExpiry('2026-02-30', today), null);
+});
+
+test('catalog expiry prefers a valid positive-stock batch over expired and empty batches', async () => {
+  const iso = offset => { const d = new Date(); d.setDate(d.getDate() + offset); return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-'); };
+  const product = { id: 385, name: 'Milk', variant: '200ml', is_active: true, category: { name: 'Dairy', is_active: true, is_visible_to_staff: true }, unit_price: '50.00', total_stock: '19.00', low_stock_threshold: 0 };
+  api.http.defaults.adapter = async config => ({ status: 200, statusText: '', headers: {}, config, data: config.url === '/inventory/products/' ? [product] : [
+    { product, status: 'available', remaining_quantity: '5', expiration_date: iso(-1) },
+    { product, status: 'available', remaining_quantity: '0', expiration_date: iso(1) },
+    { product, status: 'available', remaining_quantity: '19', expiration_date: iso(9) },
+  ] });
+  const rows = await api.inventoryService.getAll(true);
+  assert.equal(rows[0].expiry, iso(9));
+  assert.equal(rows[0].price, 50);
+  assert.equal(rows[0].stock, 19);
+  assert.equal(rows[0].low, false);
+  assert.equal(api.isExpiredProduct(rows[0]), false);
+});
+
+test('published forecast requires ready status and finite nonplaceholder values', () => {
+  const point = { date:'2026-11-01', predicted_revenue:'120.00' };
+  assert.equal(api.publishedForecast({status:'stale_data',forecast:[point]}), null);
+  assert.equal(api.publishedForecast({status:'ready',forecast:[]}), null);
+  assert.equal(api.publishedForecast({status:'ready',is_placeholder:true,forecast:[point]}), null);
+  assert.equal(api.publishedForecast({status:'ready',forecast:[{...point,predicted_revenue:'NaN'}]}), null);
+  assert.equal(api.publishedForecast({status:'ready',forecast:[{...point,predicted_revenue:null}]}), null);
+  assert.deepEqual(api.publishedForecast({status:'ready',forecast:[point]}), point);
+  assert.match(api.forecastExplanation({status:'ready',forecast:[]}), /unavailable/);
+});
+
+test('checkout retains authoritative returned prices for the saved receipt', async () => {
+  responseData = { id: 42, handled_by:{id:2,username:'Cashier'}, created_at:'2026-10-08T03:00:00Z', payment_method:'cash', subtotal:'60.00', discount_amount:'0.00', total_amount:'60.00', amount_tendered:'100.00', change_due:'40.00', items:[{ id:1, quantity:'1', unit_price:'60.00', product_name_snapshot:'Milk', product_batch:{batch_number:'B1',product:{name:'Milk'}} }] };
+  const result = await api.checkoutService.submit({ items:[{productId:385,quantity:1}],paymentMethod:'Cash',discountType:'none',discountValue:0,amountTendered:100 });
+  const receipt = api.receiptDetails(api.toSale(result.transaction));
+  assert.equal(receipt.items[0].price, 'PHP 60.00');
+  assert.equal(receipt.items[0].subtotal, 'PHP 60.00');
+  assert.equal(result.totalAmount, 60);
 });

@@ -1,9 +1,10 @@
+import { daysUntilExpiry as calendarDaysUntilExpiry } from "@/features/inventory/utils/expiry";
 import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, Eye, Edit, Trash2, AlertTriangle, PackagePlus } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
@@ -44,21 +45,12 @@ const inputStyle = { borderColor: "var(--border)", color: "var(--foreground)", b
 // Compares expiry date against today. A product expiring "today" is not yet
 // expired — it becomes expired starting the day after.
 function isExpired(expiry: string): boolean {
-  if (!expiry) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiryDate = new Date(expiry);
-  expiryDate.setHours(0, 0, 0, 0);
-  return expiryDate < today;
+  const days = calendarDaysUntilExpiry(expiry);
+  return days !== null && days < 0;
 }
 
 function daysUntilExpiry(expiry: string): number | null {
-  if (!expiry) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiryDate = new Date(expiry);
-  expiryDate.setHours(0, 0, 0, 0);
-  return Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return calendarDaysUntilExpiry(expiry);
 }
 
 function isNearExpiry(expiry: string): boolean {
@@ -213,6 +205,7 @@ export function AdminInventory() {
   const [selected,    setSelected]   = useState<InventoryItem | null>(null);
   const [form,        setForm]       = useState<FormState>(EMPTY_FORM);
   const [loading,     setLoading]    = useState(false);
+  const submissionLock = useRef(false);
 
   const filteredItems = useMemo(() => {
   return items
@@ -270,10 +263,12 @@ export function AdminInventory() {
 
   const handleRestock = async () => {
     const quantity = Number(restockForm.quantity);
-    if (!selected || !Number.isFinite(quantity) || quantity <= 0 || !restockForm.expiry || restockForm.expiry < today()) {
+    if (!selected || !Number.isFinite(quantity) || quantity <= 0 || calendarDaysUntilExpiry(restockForm.expiry) == null || restockForm.expiry < today()) {
       toast.error("Select a product, enter a positive quantity, and choose a valid expiry date.");
       return;
     }
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     try {
       await inventoryService.restockProduct(selected.id, { quantity, expirationDate: restockForm.expiry });
@@ -283,14 +278,22 @@ export function AdminInventory() {
     } catch (error) {
       toastApiError(error, "Failed to restock product.");
     } finally {
-      setLoading(false);
+      submissionLock.current = false; setLoading(false);
     }
   };
 
   const handleSave = (mode: "add"|"edit") => {
-    if (!form.name || !form.price || !form.cat || (mode === "add" && !form.stock)) {
+    if (!form.name.trim() || !form.price || !form.cat || (mode === "add" && !form.stock)) {
       toast.error("Please fill in all required fields."); return;
     }
+    if (!Number.isFinite(Number(form.price)) || Number(form.price) < 0 || !Number.isInteger(Number(form.cat)) || Number(form.cat) <= 0) {
+      toast.error("Enter a valid price and category."); return;
+    }
+    if (mode === "add" && (!Number.isFinite(Number(form.stock)) || Number(form.stock) <= 0 || calendarDaysUntilExpiry(form.expiry) == null || form.expiry < today())) {
+      toast.error("Enter positive stock and a valid expiry date."); return;
+    }
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
 
     if (mode === "add") {
@@ -308,9 +311,9 @@ export function AdminInventory() {
           loadItems();
         })
         .catch(error => toastApiError(error, "Failed to add product."))
-        .finally(() => setLoading(false));
+        .finally(() => { submissionLock.current = false; setLoading(false); });
     } else {
-      if (!selected) { setLoading(false); return; }
+      if (!selected) { submissionLock.current = false; setLoading(false); return; }
       inventoryService.updateProduct(selected.id, {
         name: form.name,
         categoryId: Number(form.cat),
@@ -323,12 +326,14 @@ export function AdminInventory() {
           loadItems();
         })
         .catch(error => toastApiError(error, "Failed to update product."))
-        .finally(() => setLoading(false));
+        .finally(() => { submissionLock.current = false; setLoading(false); });
     }
   };
 
   const handleDelete = () => {
     if (!selected) return;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     inventoryService.deleteProduct(selected.id)
       .then(deletionType => {
@@ -339,7 +344,7 @@ export function AdminInventory() {
         loadItems();
       })
       .catch(error => toastApiError(error, "Failed to delete product."))
-      .finally(() => setLoading(false));
+      .finally(() => { submissionLock.current = false; setLoading(false); });
   };
 
   const columns: Column<InventoryItem>[] = [
@@ -419,7 +424,7 @@ export function AdminInventory() {
   ];
   const formFooter = (mode: "add"|"edit") => (
     <>
-      <Btn variant="secondary" onClick={() => mode==="add"?setAddOpen(false):setEditOpen(false)}>
+      <Btn variant="secondary" disabled={loading} onClick={() => mode==="add"?setAddOpen(false):setEditOpen(false)}>
         Cancel
       </Btn>
       <Btn variant="primary" onClick={() => handleSave(mode)} disabled={loading}>
@@ -505,21 +510,21 @@ export function AdminInventory() {
       </Card>
 
       {/* Add Modal */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)}
+      <Modal busy={loading} open={addOpen} onClose={() => setAddOpen(false)}
         title="Add New Product" subtitle="Fill in the product details below"
         footer={formFooter("add")}>
         <ProductForm form={form} onChange={setForm} categories={categories} mode="add"/>
       </Modal>
 
       {/* Edit Modal */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)}
+      <Modal busy={loading} open={editOpen} onClose={() => setEditOpen(false)}
         title="Edit Product" subtitle={selected?.name}
         footer={formFooter("edit")}>
         <ProductForm form={form} onChange={setForm} categories={categories} mode="edit"/>
       </Modal>
 
-      <Modal open={restockOpen} onClose={() => setRestockOpen(false)} title="Restock Product" size="sm"
-        footer={<><Btn variant="secondary" onClick={() => setRestockOpen(false)}>Cancel</Btn>
+      <Modal busy={loading} open={restockOpen} onClose={() => setRestockOpen(false)} title="Restock Product" size="sm"
+        footer={<><Btn variant="secondary" disabled={loading} onClick={() => setRestockOpen(false)}>Cancel</Btn>
           <Btn variant="primary" icon={<PackagePlus size={15}/>} onClick={handleRestock} disabled={loading}>{loading ? "Saving…" : "Add Stock"}</Btn></>}>
         <div className="space-y-4">
           <Field label="Product">

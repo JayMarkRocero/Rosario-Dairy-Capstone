@@ -3,7 +3,7 @@ import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, Eye, Edit, Trash2, Lock, PenBox, KeyIcon, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
@@ -136,6 +136,7 @@ export function AdminUserManagement() {
   const [resetOpen,   setResetOpen]   = useState(false);
   const [selected,    setSelected]    = useState<SystemUser | null>(null);
   const [loading,     setLoading]     = useState(false);
+  const submissionLock = useRef(false);
   const [role,        setRole]        = useState<"Administrator"|"Staff">("Staff");
   const [form,        setForm]        = useState<FormState>(EMPTY_FORM);
   const [deactivateReason, setDeactivateReason] = useState<DeactivationReason>("suspended");
@@ -196,6 +197,8 @@ export function AdminUserManagement() {
     if (!form.username || !form.email || !form.password) {
       toast.error("Please fill in username, email, and temporary password."); return;
     }
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     userService.createUser({
       username: form.username,
@@ -212,7 +215,7 @@ export function AdminUserManagement() {
         loadUsers();
       })
       .catch((err: Error) => toastApiError(err))
-      .finally(() => setLoading(false));
+      .finally(() => { submissionLock.current = false; setLoading(false); });
   };
 
   const handleEditSave = () => {
@@ -224,6 +227,8 @@ export function AdminUserManagement() {
       toast.error(PHONE_FORMAT_HINT); return;
     }
 
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     userService.updateUser(selected.id, {
       username: form.username,
@@ -241,11 +246,13 @@ export function AdminUserManagement() {
         loadUsers();
       })
       .catch((err: Error) => toastApiError(err))
-      .finally(() => setLoading(false));
+      .finally(() => { submissionLock.current = false; setLoading(false); });
   };
 
   const handleDeactivate = () => {
     if (!selected || selected.status !== "Active" || loading) return;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     userService.deactivateUser(selected.id, deactivateReason)
       .then(() => {
@@ -254,7 +261,7 @@ export function AdminUserManagement() {
         loadUsers();
       })
       .catch((err: Error) => toastApiError(err))
-      .finally(() => setLoading(false));
+      .finally(() => { submissionLock.current = false; setLoading(false); });
   };
 
   const handleResetPassword = () => {
@@ -262,6 +269,8 @@ export function AdminUserManagement() {
     if (!newPassword || newPassword.length < 8) {
       toast.error("New password must be at least 8 characters."); return;
     }
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     userService.resetPassword(selected.username ?? "", newPassword)
       .then(() => {
@@ -270,11 +279,13 @@ export function AdminUserManagement() {
         setNewPassword("");
       })
       .catch((err: Error) => toastApiError(err))
-      .finally(() => setLoading(false));
+      .finally(() => { submissionLock.current = false; setLoading(false); });
   };
 
   const handleReactivate = async () => {
     if (!selected || !canReactivateUser(selected) || loading) return;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     try {
       await userService.reactivateUser(selected.id);
@@ -284,7 +295,7 @@ export function AdminUserManagement() {
       loadUsers();
     } catch (error) {
       toastApiError(error, "Unable to reactivate account.");
-    } finally { setLoading(false); }
+    } finally { submissionLock.current = false; setLoading(false); }
   };
 
   const columns: Column<SystemUser>[] = [
@@ -420,20 +431,20 @@ export function AdminUserManagement() {
         )}
       </Drawer>
 
-      <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="Add User" size="sm"
+      <Modal busy={loading} open={addOpen} onClose={()=>setAddOpen(false)} title="Add User" size="sm"
         footer={<><Btn variant="secondary" onClick={()=>setAddOpen(false)}>Cancel</Btn>
           <Btn variant="primary" onClick={handleAddSave} disabled={loading}>{loading?"Saving…":"Add User"}</Btn></>}>
         <UserForm title="Add User" form={form} onChange={setForm} role={role} onRoleChange={setRole}/>
       </Modal>
 
-      <Modal open={editOpen} onClose={()=>setEditOpen(false)} title="Edit User" subtitle={selected?.name} size="sm"
+      <Modal busy={loading} open={editOpen} onClose={()=>setEditOpen(false)} title="Edit User" subtitle={selected?.name} size="sm"
         footer={<><Btn variant="secondary" onClick={()=>setEditOpen(false)}>Cancel</Btn>
           <Btn variant="primary" onClick={handleEditSave} disabled={loading}>{loading?"Saving…":"Save Changes"}</Btn></>}>
         <UserForm title="Edit User" form={form} onChange={setForm} role={role} onRoleChange={setRole}/>
       </Modal>
 
       {/* Reset Password */}
-      <Modal open={resetOpen} onClose={()=>{setResetOpen(false); setNewPassword("");}} title="Reset Password" subtitle={selected?.name} size="sm"
+      <Modal busy={loading} open={resetOpen} onClose={()=>{setResetOpen(false); setNewPassword("");}} title="Reset Password" subtitle={selected?.name} size="sm"
         footer={<><Btn variant="secondary" onClick={()=>{setResetOpen(false); setNewPassword("");}}>Cancel</Btn>
           <Btn variant="primary" onClick={handleResetPassword} disabled={loading}>{loading?"Resetting…":"Reset Password"}</Btn></>}>
         <div className="space-y-4">
@@ -450,13 +461,13 @@ export function AdminUserManagement() {
       </Modal>
 
       {/* Deactivate Confirm */}
-      <Modal open={reactivateOpen} onClose={()=>{if (!loading) setReactivateOpen(false);}} title="Reactivate Account" subtitle={selected?.name} size="sm"
+      <Modal busy={loading} open={reactivateOpen} onClose={()=>{if (!loading) setReactivateOpen(false);}} title="Reactivate Account" subtitle={selected?.name} size="sm"
         footer={<><Btn variant="secondary" disabled={loading} onClick={()=>setReactivateOpen(false)}>Cancel</Btn>
           <Btn variant="primary" disabled={loading || !selected || !canReactivateUser(selected)} onClick={handleReactivate}>{loading ? "Reactivating..." : "Reactivate Account"}</Btn></>}>
         <p className="text-sm" style={{color:C.muted}}>Reactivate {selected?.name}? This restores the account's active status so they can sign in with their existing credentials.</p>
       </Modal>
 
-      <Modal open={deleteOpen} onClose={()=>{if (!loading) setDeleteOpen(false);}} title="Deactivate User" subtitle={selected?.name} size="sm"
+      <Modal busy={loading} open={deleteOpen} onClose={()=>{if (!loading) setDeleteOpen(false);}} title="Deactivate User" subtitle={selected?.name} size="sm"
         footer={<><Btn variant="secondary" disabled={loading} onClick={()=>setDeleteOpen(false)}>Cancel</Btn>
           <Btn variant="danger" onClick={handleDeactivate} disabled={loading}>{loading?"Deactivating…":"Deactivate User"}</Btn></>}>
         <div className="space-y-4">

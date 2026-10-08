@@ -21,6 +21,18 @@ function transactionCustomerName(transaction: DjangoTransaction): string {
     || "Walk-in";
 }
 
+export function toSale(t: DjangoTransaction): Sale {
+  return {
+    receipt: t.source_invoice_number || `TXN-${String(t.id).padStart(6, "0")}`,
+    customer: transactionCustomerName(t),
+    cashier: t.source_reference ? "Not recorded" : t.handled_by.username,
+    date: t.created_at.slice(0, 10),
+    payment: toDisplayPayment(t.payment_method),
+    total: parseFloat(t.total_amount),
+    transaction: t,
+  };
+}
+
 export const salesService = {
   getMine: async (): Promise<Sale[]> => {
     const userId = await authService.getCurrentUserId();
@@ -34,14 +46,6 @@ export const salesService = {
       page_size: 200,
     });
 
-    return transactions.map((t: DjangoTransaction) => ({
-      receipt: t.source_invoice_number || `TXN-${String(t.id).padStart(6, "0")}`,
-      customer: transactionCustomerName(t),
-      cashier: t.source_reference ? "Not recorded" : t.handled_by.username,
-      date: t.created_at.slice(0, 10),
-      payment: toDisplayPayment(t.payment_method),
-      total: parseFloat(t.total_amount),
-      transaction: t,
-    }));
+    return transactions.map(toSale);
   },
 };

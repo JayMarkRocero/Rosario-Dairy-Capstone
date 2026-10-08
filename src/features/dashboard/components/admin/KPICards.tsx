@@ -4,6 +4,7 @@ import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
 import { toastApiError } from "@/lib/errorHandling";
 import { getAllPages, type DjangoProduct, type DjangoProductBatch, type DjangoTransaction } from "@/lib/api";
 import { C } from "@/styles/tokens/colors";
+import { isLowStock } from "@/features/inventory/utils/stock";
 
 interface Props {
   /** Override when pending orders are managed outside the current sales API. */
@@ -50,7 +51,7 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
       const total = (rows: DjangoTransaction[]) => rows.reduce((sum, row) => sum + Number(row.total_amount), 0);
       setMetrics({
         todaySales: total(todayTransactions), yesterdaySales: total(yesterdayTransactions),
-        lowStock: products.filter(product => product.is_active && Number(product.total_stock) < product.low_stock_threshold).length,
+        lowStock: products.filter(product => product.is_active && isLowStock(product.total_stock, product.low_stock_threshold)).length,
         expiringSoon: batches.filter(batch => batch.product.is_active && batch.status === "available"
           && Number(batch.remaining_quantity) > 0 && batch.expiration_date >= today && batch.expiration_date <= expiryLimit).length,
         pendingOrders: orders.filter(order => ["pending", "unfulfilled", "processing"].includes(order.status.toLowerCase())).length,

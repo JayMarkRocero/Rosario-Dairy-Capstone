@@ -1,7 +1,7 @@
 import { toastApiError } from "@/lib/errorHandling";
 import { isExpiredProduct } from "@/features/inventory/utils/expiry";
 import { getApiErrorMessage } from "@/lib/api";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Minus, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Btn } from "@/components/buttons/Btn";
@@ -28,6 +28,7 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "" });
   const [loading, setLoading] = useState(false);
+  const submissionLock = useRef(false);
   const [productSearch, setProductSearch] = useState("");
   const [showDiscount, setShowDiscount] = useState(false);
   const [discountType, setDiscountType] = useState<DiscountType>("none");
@@ -51,7 +52,7 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
     : discountType === "fixed" ? parsedDiscount : 0;
   const discountAmount = Math.min(subtotal, calculatedDiscount);
   const total = subtotal - discountAmount;
-  const setQuantity = (product: InventoryItem, quantity: number) => setQuantities(current => ({ ...current, [product.id]: Math.max(1, Math.min(quantity || 1, product.stock)) }));
+  const setQuantity = (product: InventoryItem, quantity: number) => setQuantities(current => ({ ...current, [product.id]: Math.max(0.01, Math.min(Number.isFinite(quantity) ? Math.round(quantity * 100) / 100 || 0.01 : 1, product.stock)) }));
   const selectProduct = (product: InventoryItem) => { setQuantity(product, 1); setProductSearch(""); };
   const removeProduct = (productId: number) => setQuantities(current => {
     const next = { ...current };
@@ -61,7 +62,9 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
   const hasValidCustomer = customers.some(customer => customer.id === Number(customerId));
 
   const registerCustomer = async () => {
+    if (submissionLock.current) return;
     if (!newCustomer.name.trim()) { toast.error("Customer name is required."); return; }
+    submissionLock.current = true;
     setLoading(true);
     try {
       const created = await customersService.createCustomer(newCustomer);
@@ -71,16 +74,19 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
       setNewCustomer({ name: "", phone: "", email: "" });
       toast.success("Customer registered.");
     } catch (error) { toastApiError(error, "Failed to register customer."); }
-    finally { setLoading(false); }
+    finally { submissionLock.current = false; setLoading(false); }
   };
 
   const submit = async () => {
+    if (submissionLock.current) return;
     if (!hasValidCustomer) { toast.error("Select a customer."); return; }
     if (selectedItems.some(product => isExpiredProduct(product))) { toast.error("Remove expired products before placing the order."); return; }
     if (!selectedItems.length) { toast.error("Add at least one product."); return; }
-    if (parsedDiscount < 0 || (discountType === "percent" && parsedDiscount > 100)) { toast.error("Enter a valid discount value."); return; }
+    if (!Number.isFinite(Number(discountValue)) || parsedDiscount < 0 || (discountType === "percent" && parsedDiscount > 100) || (discountType === "fixed" && parsedDiscount > subtotal)) { toast.error("Enter a valid discount value."); return; }
+    if (selectedItems.some(product => !Number.isFinite(quantities[product.id]) || quantities[product.id] <= 0 || quantities[product.id] > product.stock)) { toast.error("Enter quantities within the available stock."); return; }
     const tendered = Number(amountTendered);
-    if (paymentMethod === "cash" && (!amountTendered || tendered < total)) { toast.error("Amount tendered must cover the total."); return; }
+    if (paymentMethod === "cash" && (!amountTendered || !Number.isFinite(tendered) || tendered < total)) { toast.error("Amount tendered must cover the total."); return; }
+    submissionLock.current = true;
     setLoading(true);
     try {
       const order = await ordersService.createOrder({
@@ -92,16 +98,16 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
         amount_tendered: paymentMethod === "cash" ? tendered : null,
       });
       if (order.warning) toast.warning(order.warning);
-      else toast.success("Order placed successfully.");
+      else toast.success("Order fulfilled successfully.");
       setQuantities({}); setProductSearch(""); setCustomerId(""); setAmountTendered("");
       setShowDiscount(false); setDiscountType("none"); setDiscountValue(""); onCreated(); onClose();
     } catch (error) { toast.error(getApiErrorMessage(error, "Failed to place order.")); }
-    finally { setLoading(false); }
+    finally { submissionLock.current = false; setLoading(false); }
   };
 
-  return <Modal open={open} onClose={onClose} title="Create Call-In Order" subtitle="Register the customer and select ordered products" size="lg"
-    footer={<><Btn variant="secondary" onClick={onClose}>Close</Btn><Btn variant="primary" onClick={submit} disabled={loading || !selectedItems.length || !hasValidCustomer}>{loading ? "Placing…" : "Place Order"}</Btn></>}>
-    <div className="space-y-5">
+  return <Modal busy={loading} open={open} onClose={() => { if (!submissionLock.current) onClose(); }} title="Create Customer Order" subtitle="Payment and stock deduction occur immediately; successful orders are fulfilled" size="lg"
+    footer={<><Btn variant="secondary" disabled={loading} onClick={onClose}>Close</Btn><Btn variant="primary" onClick={submit} disabled={loading || !selectedItems.length || !hasValidCustomer}>{loading ? "Submitting…" : "Submit & Fulfill"}</Btn></>}>
+    <fieldset disabled={loading} className="space-y-5 min-w-0">
       <div><div className="flex justify-between items-center mb-1.5"><label className="text-xs font-semibold" style={{color:C.muted}}>Customer</label><button type="button" onClick={()=>setShowNewCustomer(value=>!value)} className="text-xs font-semibold" style={{color:C.blue}}>+ New Customer</button></div>
         <CustomerPicker customers={customers} value={customerId} onChange={setCustomerId}
           placeholder="Search customers" className="px-3 py-2.5 rounded-xl text-sm"/></div>
@@ -127,7 +133,7 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
         <label className="text-xs font-semibold block mb-2" style={{color:C.muted}}>Selected Products</label>
         {!selectedItems.length?<div className="py-6 px-3 rounded-xl border border-dashed text-sm text-center" style={{borderColor:C.border,color:C.muted}}>Search and select products above to add to this order</div>:<div className="max-h-56 overflow-y-auto rounded-xl border" style={{borderColor:C.border}}>{selectedItems.map(product=>{
           const quantity=quantities[product.id];
-          return <div key={product.id} className="flex flex-wrap sm:flex-nowrap items-center gap-3 px-3 py-3 border-b last:border-0"><div className="basis-full sm:basis-auto flex-1 min-w-0"><div className="text-sm font-medium truncate">{product.name}</div><div className="text-xs" style={{color:C.muted}}>₱{product.price.toFixed(2)} each</div></div><div className="flex items-center gap-1"><button type="button" onClick={()=>setQuantity(product,quantity-1)} disabled={quantity<=1} className="p-1.5 rounded-lg border disabled:opacity-40"><Minus size={12}/></button><input type="number" min="1" max={product.stock} value={quantity} onChange={event=>setQuantity(product,Number(event.target.value))} aria-label={`Quantity for ${product.name}`} className="quantity-input w-12 py-1 text-center text-sm rounded-lg border"/><button type="button" onClick={()=>setQuantity(product,quantity+1)} disabled={quantity>=product.stock} className="p-1.5 rounded-lg border disabled:opacity-40"><Plus size={12}/></button></div><span className="w-20 text-right text-sm font-semibold">₱{(product.price*quantity).toFixed(2)}</span><button type="button" onClick={()=>removeProduct(product.id)} className="p-1.5 rounded-lg hover:bg-red-50" style={{color:C.red}} aria-label={`Remove ${product.name}`}><Trash2 size={14}/></button></div>;
+          return <div key={product.id} className="flex flex-wrap sm:flex-nowrap items-center gap-3 px-3 py-3 border-b last:border-0"><div className="basis-full sm:basis-auto flex-1 min-w-0"><div className="text-sm font-medium truncate">{product.name}</div><div className="text-xs" style={{color:C.muted}}>₱{product.price.toFixed(2)} each</div></div><div className="flex items-center gap-1"><button type="button" onClick={()=>setQuantity(product,quantity-1)} disabled={quantity<=0.01} className="p-1.5 rounded-lg border disabled:opacity-40"><Minus size={12}/></button><input type="number" min="0.01" step="0.01" max={product.stock} value={quantity} onChange={event=>setQuantity(product,Number(event.target.value))} aria-label={`Quantity for ${product.name}`} className="quantity-input w-12 py-1 text-center text-sm rounded-lg border"/><button type="button" onClick={()=>setQuantity(product,quantity+1)} disabled={quantity>=product.stock} className="p-1.5 rounded-lg border disabled:opacity-40"><Plus size={12}/></button></div><span className="w-20 text-right text-sm font-semibold">₱{(product.price*quantity).toFixed(2)}</span><button type="button" onClick={()=>removeProduct(product.id)} className="p-1.5 rounded-lg hover:bg-red-50" style={{color:C.red}} aria-label={`Remove ${product.name}`}><Trash2 size={14}/></button></div>;
         })}</div>}
       </div>
       <div className="space-y-2 p-3 rounded-xl" style={{backgroundColor:C.bg}}>
@@ -142,6 +148,6 @@ export function CreateOrderModal({ open, onClose, onCreated }: Props) {
       </div>}
       <div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>setPaymentMethod("cash")} className="py-2.5 rounded-xl text-sm font-semibold border" style={{backgroundColor:paymentMethod==="cash"?C.action:C.white,color:paymentMethod==="cash"?"white":C.muted}}>Cash</button><button type="button" onClick={()=>setPaymentMethod("online")} className="py-2.5 rounded-xl text-sm font-semibold border" style={{backgroundColor:paymentMethod==="online"?C.action:C.white,color:paymentMethod==="online"?"white":C.muted}}>GCash / Online</button></div>
       {paymentMethod==="cash"&&<input type="number" min="0" step="0.01" value={amountTendered} onChange={e=>setAmountTendered(e.target.value)} placeholder="Amount tendered" className="w-full px-3 py-2.5 rounded-xl border text-sm"/>}
-    </div>
+    </fieldset>
   </Modal>;
 }

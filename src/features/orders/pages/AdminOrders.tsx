@@ -3,7 +3,7 @@ import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Plus, Eye, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Btn } from "@/components/buttons/Btn";
@@ -12,7 +12,7 @@ import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTa
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { Drawer } from "@/components/overlays/Drawer";
-import { ordersService } from "@/features/orders/api/orders.service";
+import { ordersService, mapOrder } from "@/features/orders/api/orders.service";
 import { CreateOrderModal } from "@/features/orders/components/CreateOrderModal";
 import type { OrderListItem } from "@/features/orders/types/order";
 import { C } from "@/styles/tokens/colors";
@@ -28,6 +28,7 @@ export function AdminOrders() {
   const [viewOpen, setViewOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const cancellationLock = useRef(false);
   const [createOpen, setCreateOpen] = useState(false);
 
   const load = () => {
@@ -41,12 +42,16 @@ export function AdminOrders() {
   const view = (order: OrderListItem) => { setSelected(order); setViewOpen(true); };
   const openCancel = (order: OrderListItem) => { setSelected(order); setCancelOpen(true); };
   const cancel = () => {
-    if (!selected || selected.status !== "Fulfilled") return;
+    if (!selected || selected.status !== "Fulfilled" || selected.isHistorical || cancellationLock.current) return;
+    cancellationLock.current = true;
     setLoading(true);
     ordersService.cancelOrder(selected.id).then(order => {
+      const updated = mapOrder(order);
+      setOrders(current => current.map(row => row.id === order.id ? updated : row));
+      setSelected(current => current?.id === order.id ? updated : current);
       if (order.warning) toast.warning(order.warning); else toast.success("Order cancelled.");
       setCancelOpen(false); setViewOpen(false); load();
-    }).catch((error: Error) => toastApiError(error)).finally(() => setLoading(false));
+    }).catch((error: Error) => toastApiError(error)).finally(() => { cancellationLock.current = false; setLoading(false); });
   };
 
   const columns: Column<OrderListItem>[] = [
@@ -58,7 +63,7 @@ export function AdminOrders() {
     { key:"total", header:"Total", align:"center", width:"12%", sortKey:o=>o.total, render:o=><span className="flex items-center justify-center gap-1.5 font-medium text-sm">₱{o.total.toLocaleString()}</span> },
     { key:"actions", header:"Actions", align:"center", width:"12%", render:o=><div className="flex items-center justify-center gap-1.5" onClick={e=>e.stopPropagation()}>
       <ActionButton label="View details" onClick={()=>view(o)}><Eye size={13}/></ActionButton>
-      {o.status === "Fulfilled" && !o.isHistorical && <ActionButton label="Cancel order" destructive onClick={()=>openCancel(o)}><XCircle size={13}/></ActionButton>}
+      {o.status === "Fulfilled" && !o.isHistorical && <ActionButton label="Cancel order" destructive disabled={loading} onClick={()=>openCancel(o)}><XCircle size={13}/></ActionButton>}
     </div> },
   ];
 

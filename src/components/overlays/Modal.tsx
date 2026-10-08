@@ -21,9 +21,10 @@ interface Props {
   children: React.ReactNode;
   footer?: React.ReactNode;
   hideClose?: boolean;
+  busy?: boolean;
 }
 
-export function Modal({ open, onClose, title, subtitle, size = "md", children, footer, hideClose }: Props) {
+export function Modal({ open, onClose, title, subtitle, size = "md", children, footer, hideClose, busy = false }: Props) {
   const [rendered, setRendered] = useState(false);
   const [visible,  setVisible]  = useState(false);
 
@@ -41,10 +42,10 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
 
   // Close on ESC
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && open) onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && open && !busy) onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [open, onClose, busy]);
 
   if (!rendered) return null;
 
@@ -61,12 +62,16 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
           backdropFilter: "blur(4px)",
           opacity: visible ? 1 : 0,
         }}
-        onClick={onClose}
+        onClick={() => { if (!busy) onClose(); }}
       />
 
       {/* Panel */}
       <div
-        className={`relative w-full ${SIZE_CLASS[size]} flex flex-col max-h-[90vh] bg-white rounded-3xl shadow-2xl transition-all duration-200`}
+        role="dialog"
+        aria-modal="true"
+        aria-busy={busy}
+        aria-label={title || "Confirmation"}
+        className={`relative min-w-0 w-full ${SIZE_CLASS[size]} flex flex-col max-h-[90dvh] bg-white rounded-3xl shadow-2xl transition-all duration-200`}
         style={{
           opacity:   visible ? 1 : 0,
           transform: visible ? "scale(1) translateY(0)" : "scale(0.96) translateY(12px)",
@@ -91,6 +96,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
           {!hideClose && (
             <button
               onClick={onClose}
+              disabled={busy}
               className="ml-4 w-8 h-8 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors flex-shrink-0"
               style={{ color: C.muted }}
             >
@@ -100,7 +106,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-7 py-4 sm:py-5">{children}</div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-7 py-4 sm:py-5">{children}</div>
 
         {/* Footer */}
         {footer && (

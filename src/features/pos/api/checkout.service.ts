@@ -7,6 +7,7 @@ export interface CheckoutCartItem {
 }
 
 export interface CheckoutResult {
+  transaction: DjangoTransaction;
   id: number;
   subtotal: number;
   totalAmount: number;
@@ -33,6 +34,7 @@ export const checkoutService = {
     const { data: txn } = await http.post<DjangoTransaction>("/sales/checkout/", payload);
     await reportsService.refreshAfterMutation();
     return {
+      transaction: txn,
       id: txn.id,
       subtotal: parseFloat(txn.subtotal),
       totalAmount: parseFloat(txn.total_amount),

@@ -1,7 +1,7 @@
 import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { ActionButton } from "@/components/buttons/ActionButton";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, Edit, Trash2, Eye, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
@@ -92,6 +92,7 @@ export function AdminCategories() {
   const [selected,   setSelected]   = useState<Category | null>(null);
   const [form,       setForm]       = useState<FormState>(EMPTY);
   const [loading,    setLoading]    = useState(false);
+  const submissionLock = useRef(false);
   const [statusFilter, setStatusFilter] = useState<CategoryStatus>("Active");
   const pageCapacity = useAdminAutoPageSize(56);
 
@@ -113,6 +114,8 @@ export function AdminCategories() {
 
   const save = async (mode:"add"|"edit") => {
     if (!form.name) { toast.error("Category name is required."); return; }
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
 
     try {
@@ -140,12 +143,14 @@ export function AdminCategories() {
       if (mode === "edit") await loadCategories();
       toastApiError(err, `Failed to ${mode === "add" ? "add" : "update"} category.`);
     } finally {
-      setLoading(false);
+      submissionLock.current = false; setLoading(false);
     }
   };
 
   const handleDelete = () => {
     if (!selected?.is_active || loading) return;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     inventoryService.deleteCategory(selected.id)
       .then(deletionType => {
@@ -157,11 +162,13 @@ export function AdminCategories() {
         loadCategories();
       })
       .catch((err) => toastApiError(err, "Failed to delete category."))
-      .finally(() => setLoading(false));
+      .finally(() => { submissionLock.current = false; setLoading(false); });
   };
 
   const handleReactivate = (category: Category) => {
     if (category.is_active || loading) return;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     inventoryService.reactivateCategory(category.id)
       .then(() => {
@@ -170,12 +177,14 @@ export function AdminCategories() {
         loadCategories();
       })
       .catch((err) => toastApiError(err, "Failed to reactivate category."))
-      .finally(() => setLoading(false));
+      .finally(() => { submissionLock.current = false; setLoading(false); });
   };
 
   const handleStaffVisibility = async (category: Category) => {
     if (!category.is_active || loading) return;
     const isVisible = !category.is_visible_to_staff;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setLoading(true);
     try {
       await inventoryService.updateCategory(category.id, { is_visible_to_staff: isVisible });
@@ -189,7 +198,7 @@ export function AdminCategories() {
     } catch (err) {
       toastApiError(err, "Failed to update staff visibility.");
     } finally {
-      setLoading(false);
+      submissionLock.current = false; setLoading(false);
     }
   };
 
@@ -263,15 +272,15 @@ export function AdminCategories() {
       </Card>
 
       {/* Add Modal */}
-      <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="Add Category" subtitle="Create a new product category"
-        footer={<><Btn variant="secondary" onClick={()=>setAddOpen(false)}>Cancel</Btn>
+      <Modal busy={loading} open={addOpen} onClose={()=>setAddOpen(false)} title="Add Category" subtitle="Create a new product category"
+        footer={<><Btn variant="secondary" disabled={loading} onClick={()=>setAddOpen(false)}>Cancel</Btn>
           <Btn variant="primary" onClick={()=>save("add")} disabled={loading}>{loading?"Saving…":"Add Category"}</Btn></>}>
         <CategoryForm form={form} setForm={setForm} iconOptions={iconOptions}/>
       </Modal>
 
       {/* Edit Modal */}
-      <Modal open={editOpen} onClose={()=>setEditOpen(false)} title="Edit Category" subtitle={selected?.name}
-        footer={<><Btn variant="secondary" onClick={()=>setEditOpen(false)}>Cancel</Btn>
+      <Modal busy={loading} open={editOpen} onClose={()=>setEditOpen(false)} title="Edit Category" subtitle={selected?.name}
+        footer={<><Btn variant="secondary" disabled={loading} onClick={()=>setEditOpen(false)}>Cancel</Btn>
           <Btn variant="primary" onClick={()=>save("edit")} disabled={loading}>{loading?"Saving…":"Save Changes"}</Btn></>}>
         <CategoryForm form={form} setForm={setForm} iconOptions={iconOptions} showStatus />
       </Modal>

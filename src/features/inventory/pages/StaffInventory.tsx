@@ -1,3 +1,4 @@
+import { daysUntilExpiry as calendarDaysUntilExpiry } from "@/features/inventory/utils/expiry";
 import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
@@ -15,21 +16,12 @@ const STATUSES = ["All", "Active", "Low Stock", "Near Expiry", "Expired"];
 const NEAR_EXPIRY_DAYS = 7;
 
 function isExpired(expiry: string): boolean {
-  if (!expiry) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiryDate = new Date(expiry);
-  expiryDate.setHours(0, 0, 0, 0);
-  return expiryDate < today;
+  const days = calendarDaysUntilExpiry(expiry);
+  return days !== null && days < 0;
 }
 
 function daysUntilExpiry(expiry: string): number | null {
-  if (!expiry) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiryDate = new Date(expiry);
-  expiryDate.setHours(0, 0, 0, 0);
-  return Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return calendarDaysUntilExpiry(expiry);
 }
 
 function isNearExpiry(expiry: string): boolean {

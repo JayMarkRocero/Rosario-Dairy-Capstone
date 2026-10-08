@@ -9,15 +9,6 @@ import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { FEFOItem, InventoryItem } from "@/features/inventory/types/inventory";
 
-function isExpired(expiry: string): boolean {
-  if (!expiry) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiryDate = new Date(expiry);
-  expiryDate.setHours(0, 0, 0, 0);
-  return expiryDate < today;
-}
-
 export function FEFOMonitor() {
   const reportVersion = useReportVersion();
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -43,8 +34,8 @@ export function FEFOMonitor() {
     };
   }, [reportVersion]);
 
-  const expiredCount = items.filter(i => isExpired(i.expiry)).length;
-  const nearExpiryCount = fefoItems.filter(i => i.days >= 0 && i.days <= 7 && !isExpired(i.expiry)).length;
+  const expiredCount = fefoItems.filter(i => i.days < 0).length;
+  const nearExpiryCount = fefoItems.filter(i => i.days >= 0 && i.days <= 7).length;
   const lowStockCount = items.filter(i => i.low).length;
   const invValue = items.reduce((sum, i) => sum + i.price * i.stock, 0);
 
@@ -53,7 +44,7 @@ export function FEFOMonitor() {
   // doesn't depend on color alone.
   const SUMMARY_STATS = [
     {
-      label: "Expired", value: String(expiredCount),
+      label: "Expired Batches", value: String(expiredCount),
       color: C.red, bg: "var(--status-red)", icon: AlertOctagon,
       emphasis: expiredCount > 0,
     },
@@ -83,7 +74,7 @@ export function FEFOMonitor() {
             Inventory Monitor
           </h2>
           <p className="text-xs mt-0.5" style={{ color: C.muted }}>
-            First Expired, First Out — Priority Queue
+            First Expiry, First Out — Batch expiry overview
           </p>
         </div>
       </div>

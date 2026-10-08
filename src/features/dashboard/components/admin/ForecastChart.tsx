@@ -28,7 +28,9 @@ export function forecastExplanation(data: Record<string, unknown> | null): strin
   const rows = Number(combined?.rows ?? 0);
   const wape = Number(combined?.wape_percent);
   const target = Number(data.accuracy_target_percent ?? 30);
-  if (status === "ready") return "The model passed the 2025 backtest target. Actual future sales can still differ.";
+  if (status === "ready") return publishedForecast(data)
+    ? "The model passed the 2025 backtest target. Actual future sales can still differ."
+    : "Forecast currently unavailable: the response contains no valid published forecast.";
   if (status === "pending_update") return "The model has not been evaluated against the latest completed sales. A new offline evaluation is needed.";
   if (status === "stale_data") return "Completed sales are missing for the latest day, so the model will not publish a forecast.";
   if (status === "rejected" && combined?.wape_percent != null && Number.isFinite(wape))
@@ -41,17 +43,26 @@ export function forecastExplanation(data: Record<string, unknown> | null): strin
   return `Forecast withheld: ${status.replaceAll("_", " ")}.`;
 }
 
+export function publishedForecast(data: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (data?.status !== "ready" || data.is_placeholder === true || !Array.isArray(data.forecast)) return null;
+  const point = data.forecast[0];
+  if (!point || typeof point !== "object" || point.predicted_revenue == null
+    || !Number.isFinite(Number(point.predicted_revenue)) || Number(point.predicted_revenue) < 0
+    || typeof point.date !== "string" || !point.date) return null;
+  return point;
+}
+
 export function ForecastChart() {
   const [period, setPeriod] = useState<Period>("monthly");
   const [comparisonMode, setComparisonMode] = useState<"rolling" | "fixed">("rolling");
   const { data, loading, error } = useReportPreview("sarima_forecast", period);
-  const forecast = Array.isArray(data?.forecast) ? data.forecast[0] as Record<string, unknown> | undefined : undefined;
-  const ready = data?.status === "ready" && forecast;
+  const forecast = publishedForecast(data as Record<string, unknown> | null);
+  const ready = forecast !== null;
   const projection = data?.planning_projection && typeof data.planning_projection === "object"
     ? data.planning_projection as unknown as PlanningProjection : null;
   const fixedOrigin = period === "monthly" && comparisonMode === "fixed";
   const comparisonValue = fixedOrigin ? data?.fixed_origin_comparison : data?.historical_comparison;
-  const comparison = Array.isArray(comparisonValue) ? comparisonValue as Array<Record<string, unknown>> : [];
+  const comparison = data?.status !== "stale_data" && Array.isArray(comparisonValue) ? comparisonValue as Array<Record<string, unknown>> : [];
   const chartData = comparison.map(row => ({
     date: String(row.date ?? ""),
     actual: row.actual == null ? NaN : Number(row.actual),
@@ -81,9 +92,9 @@ export function ForecastChart() {
     </div>
     {loading ? <EmptyState compact loading title="Checking forecast quality" /> : error ? <div role="alert"><EmptyState compact title="Forecast unavailable" description={error} /></div> : <div className="min-w-0 rounded-xl p-3 sm:p-4" style={{ background: `color-mix(in srgb, ${ready ? C.green : C.orange} 12%, ${C.white})` }}>
       <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: ready ? C.green : C.orange }}>
-        {ready ? "Published SARIMA forecast" : "Forecast not published"}
+        {ready ? "Published sales forecast" : "Forecast currently unavailable"}
       </p>
-      {ready && <div className="mt-3">
+      {forecast && <div className="mt-3">
         <p className="break-words text-xl font-semibold sm:text-2xl" style={{ color: C.text }}>{amount(forecast.predicted_revenue)}</p>
         <p className="mt-1 text-xs leading-relaxed" style={{ color: C.muted }}>{String(forecast.date)} to {String(forecast.end_date ?? forecast.date)}<span className="block sm:inline"> · Forecast range {amount(forecast.lower_bound)}–{amount(forecast.upper_bound)}</span></p>
       </div>}
@@ -100,7 +111,7 @@ export function ForecastChart() {
     {!loading && !error && chartData.length > 0 && <div className="mt-5 min-w-0">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold" style={{ color: C.text }}>2025 actual vs predicted</h3>
-        {Number.isFinite(wape) && <p className="text-xs" style={{ color: C.muted }}>WAPE {wape.toFixed(1)}% · target ≤30%</p>}
+        {Number.isFinite(wape) && <p className="text-xs" style={{ color: C.muted }}>WAPE {wape.toFixed(1)}%{data?.accuracy_target_percent != null ? ` · target ≤${Number(data.accuracy_target_percent)}%` : ""}</p>}
       </div>
       {period === "monthly" && <div className="mb-3 flex flex-wrap gap-1" aria-label="2025 prediction method">
         {([['rolling', 'One month ahead'], ['fixed', 'From Dec 2024']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setComparisonMode(value)}

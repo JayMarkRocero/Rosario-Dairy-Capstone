@@ -17,16 +17,13 @@ import http, {
 } from "@/lib/api";
 import type { InventoryItem, FEFOItem, Category } from "@/features/inventory/types/inventory";
 import { normalizeCategoryIcon, type CategoryIconKey } from "@/features/inventory/utils/categoryIcons";
+import { daysUntilExpiry, isExpiredProduct } from "@/features/inventory/utils/expiry";
+import { isLowStock } from "@/features/inventory/utils/stock";
 
 export interface CategoryIconOption { value: CategoryIconKey; label: string }
 
 function daysUntil(dateStr: string): number {
-  const today = new Date();
-  const target = new Date(dateStr);
-  const targetTimestamp = target.getTime();
-  if (Number.isNaN(targetTimestamp)) return 0;
-  const diffMs = target.getTime() - today.setHours(0, 0, 0, 0);
-  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  return daysUntilExpiry(dateStr) ?? -1;
 }
 
 function fefoStatus(days: number): { st: FEFOItem["st"]; priority: string } {
@@ -49,9 +46,12 @@ export const inventoryService = {
 
     return products.map((p: DjangoProduct) => {
       const productBatches = batches.filter(
-        (b: DjangoProductBatch) => b.product.id === p.id && b.status === "available"
+        (b: DjangoProductBatch) => b.product.id === p.id && b.status === "available" && Number(b.remaining_quantity) > 0
       );
-      const nearestExpiry = productBatches
+      // Display the nearest sellable expiry without letting an old batch hide valid stock.
+      // The backend remains responsible for stock totals and batch consumption.
+      const eligibleBatches = productBatches.filter(b => !isExpiredProduct({ expiry: b.expiration_date }));
+      const nearestExpiry = (eligibleBatches.length ? eligibleBatches : productBatches)
         .map((b: DjangoProductBatch) => b.expiration_date)
         .sort()[0] ?? "";
 
@@ -64,7 +64,7 @@ export const inventoryService = {
         price: parseFloat(p.unit_price),
         stock,
         expiry: nearestExpiry,
-        low: stock <= p.low_stock_threshold,
+        low: isLowStock(stock, p.low_stock_threshold),
       };
     });
   },
@@ -73,7 +73,7 @@ export const inventoryService = {
   const { data: batches } = await http.get<DjangoProductBatch[]>("/inventory/product-batches/");
 
   return batches
-    .filter((b: DjangoProductBatch) => b.status === "available" && b.product.is_active)
+    .filter((b: DjangoProductBatch) => b.status === "available" && b.product.is_active && Number(b.remaining_quantity) > 0)
     .map((b: DjangoProductBatch) => {
 
 
