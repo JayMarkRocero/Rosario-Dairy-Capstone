@@ -8,7 +8,6 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, Eye, Edit, Trash2, AlertTriangle, PackagePlus } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
-import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { Btn } from "@/components/buttons/Btn";
 import { Modal } from "@/components/overlays/Modal";
 import { Drawer } from "@/components/overlays/Drawer";
@@ -18,6 +17,9 @@ import { CategoryIcon } from "@/components/data-display/CategoryIcon";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
+import { MobileInventoryCard } from "@/features/inventory/components/MobileInventoryCard";
+import { InventoryStatusBadge, InventoryStockValue, InventoryExpiryValue } from "@/features/inventory/components/InventoryWarnings";
+import { getInventoryWarnings, NEAR_EXPIRY_DAYS } from "@/features/inventory/utils/warnings";
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 interface FormState {
@@ -29,7 +31,6 @@ const today = () => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 const STATUSES = ["Active", "Low Stock", "Near Expiry", "Expired"];
-const NEAR_EXPIRY_DAYS = 7;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -42,28 +43,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputClass = `w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100`;
 const inputStyle = { borderColor: "var(--border)", color: "var(--foreground)", backgroundColor: "var(--input-background)" };
 
-// Compares expiry date against today. A product expiring "today" is not yet
-// expired — it becomes expired starting the day after.
-function isExpired(expiry: string): boolean {
-  const days = calendarDaysUntilExpiry(expiry);
-  return days !== null && days < 0;
-}
-
-function daysUntilExpiry(expiry: string): number | null {
-  return calendarDaysUntilExpiry(expiry);
-}
-
-function isNearExpiry(expiry: string): boolean {
-  const days = daysUntilExpiry(expiry);
-  return days !== null && days >= 0 && days <= NEAR_EXPIRY_DAYS;
-}
-
-// Priority: Expired > Low Stock > Near Expiry > Active
-function getStatus(item: InventoryItem): "Expired" | "Low" | "Near Expiry" | "Active" {
-  if (isExpired(item.expiry)) return "Expired";
-  if (item.low) return "Low";
-  if (isNearExpiry(item.expiry)) return "Near Expiry";
-  return "Active";
+function getStatus(item: InventoryItem) {
+  return getInventoryWarnings(item).status;
 }
 
 function ProductForm({ form, onChange, categories, mode }: {
@@ -112,8 +93,9 @@ function ProductDetail({ p }: { p: InventoryItem }) {
   const statusLabel =
     status === "Expired" ? "Expired" :
     status === "Low" ? "Low Stock" :
+    status === "Low Stock & Near Expiry" ? status :
     status === "Near Expiry" ? "Near Expiry" : "Adequate";
-  const accentColor = status === "Expired" ? C.red : status === "Near Expiry" ? "#f0c06f" : C.blue;
+  const accentColor = status === "Expired" ? C.red : status !== "Active" ? C.orange : C.blue;
   const rows = [
     { label:"Product ID",    value:`PRD-${String(p.id).padStart(3,"0")}` },
     { label:"Name",          value: p.name     },
@@ -136,7 +118,7 @@ function ProductDetail({ p }: { p: InventoryItem }) {
           <CategoryIcon name={p.cat} size={30} color={accentColor} />
         </div>
         <div className="font-bold text-base" style={{ color:C.text,fontFamily:"Poppins,sans-serif" }}>{p.name}</div>
-        <div className="mt-1"><StatusBadge status={status}/></div>
+        <div className="mt-1"><InventoryStatusBadge product={p}/></div>
       </div>
       <div className="space-y-2 sm:space-y-5 sm:p-6">
         {rows.map(r => (
@@ -153,14 +135,14 @@ function ProductDetail({ p }: { p: InventoryItem }) {
           <span>This product has expired and should be removed from active stock.</span>
         </div>
       )}
-      {status === "Low" && (
+      {getInventoryWarnings(p).lowStock && (
         <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
           style={{backgroundColor:C.orange+"15",color:C.orange,border:`1px solid ${C.orange}30`}}>
           <AlertTriangle size={14}/>
           <span>This product is below the minimum stock threshold.</span>
         </div>
       )}
-      {status === "Near Expiry" && (
+      {getInventoryWarnings(p).nearExpiry && (
         <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
           style={{backgroundColor:"#F59E0B"+"15",color:"#F59E0B",border:`1px solid #F59E0B30`}}>
           <AlertTriangle size={14}/>
@@ -173,7 +155,7 @@ function ProductDetail({ p }: { p: InventoryItem }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function AdminInventory() {
-  const pageCapacity = useAdminAutoPageSize(56);
+  const pageCapacity = useAdminAutoPageSize(56, { minPageSize: 1, maxPageSize: 5 });
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
@@ -211,13 +193,13 @@ export function AdminInventory() {
   return items
     .filter(i => {
       const matchesCat = catFilter === "All" || i.cat === catFilter;
-      const status = getStatus(i);
+      const warning = getInventoryWarnings(i);
       const matchesStatus =
         statusFilter === "All" ||
-        (statusFilter === "Low Stock" ? status === "Low" :
-         statusFilter === "Near Expiry" ? status === "Near Expiry" :
-         statusFilter === "Expired" ? status === "Expired" :
-         status === "Active");
+        (statusFilter === "Low Stock" ? warning.lowStock :
+         statusFilter === "Near Expiry" ? warning.nearExpiry :
+         statusFilter === "Expired" ? warning.expired :
+         warning.status === "Active");
       return matchesCat && matchesStatus;
     })
     // FEFO ordering: soonest expiry first. Items with no expiry date sort last.
@@ -231,9 +213,9 @@ export function AdminInventory() {
 
   const stats = useMemo(() => {
     const totalProducts = items.length;
-    const lowStock = items.filter(i => getStatus(i) === "Low").length;
+    const lowStock = items.filter(i => getInventoryWarnings(i).lowStock).length;
     const expired = items.filter(i => getStatus(i) === "Expired").length;
-    const nearExpiry = items.filter(i => getStatus(i) === "Near Expiry").length;
+    const nearExpiry = items.filter(i => getInventoryWarnings(i).nearExpiry).length;
     const totalValue = items.reduce((sum, i) => sum + (i.price * i.stock), 0);
 
     return { totalProducts, lowStock, expired, nearExpiry, totalValue };
@@ -382,29 +364,12 @@ export function AdminInventory() {
     {
       key:"stock", header:"Stock", align:"center", width:"10%",
       sortKey: r => r.stock,
-      render: r => {
-        const status = getStatus(r);
-        const iconColor = status === "Expired" ? C.red : status === "Low" ? C.orange : status === "Near Expiry" ? "#F59E0B" : undefined;
-        return (
-          <div className="flex items-center justify-center gap-1">
-            <span className="font-medium text-sm" style={{color:status==="Expired"||status==="Low"?C.red:C.text}}>{r.stock}</span>
-            {status !== "Active" && <AlertTriangle size={12} style={{color:iconColor}}/>}
-          </div>
-        );
-      },
+      render: r => <InventoryStockValue product={r} />,
     },
     { key:"expiry", header:"Expiry", align:"center", width:"13%", sortKey: r => r.expiry,
-      render: r => {
-        const expired = isExpired(r.expiry);
-        const near = !expired && isNearExpiry(r.expiry);
-        return (
-          <span className="text-xs" style={{color:expired?C.red:near?"#F59E0B":C.muted, fontWeight:(expired||near)?600:400}}>
-            {r.expiry}
-          </span>
-        );
-      } },
+      render: r => <span className="text-xs"><InventoryExpiryValue product={r} /></span> },
     { key:"status", header:"Status", align:"center", width:"13%",
-      render: r => <div className="flex justify-center"><StatusBadge status={getStatus(r)}/></div> },
+      render: r => <InventoryStatusBadge product={r} /> },
     {
       key:"actions", header:"Actions", align:"center", width:"16%",
       render: r => (
@@ -436,11 +401,11 @@ export function AdminInventory() {
   return (
     <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       {/* Header */}
-      <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
+      <div className="block shrink-0 min-h-10 md:flex md:items-center md:justify-between md:gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Expiry-Based Inventory</h2>
         </div>
-        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+        <div className="mt-3 grid grid-cols-2 gap-2 [&_button]:w-full md:mt-0 md:flex md:shrink-0 md:[&_button]:w-auto">
           <div>
             <Btn variant="primary" size="sm" icon={<PackagePlus size={13}/>} fullWidth onClick={openRestock}>
               Restock
@@ -455,7 +420,7 @@ export function AdminInventory() {
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 flex-shrink-0">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5 flex-shrink-0">
         {[
           { label:"Total Products",  value:String(stats.totalProducts), color:C.blue   },
           { label:"Low Stock",       value:String(stats.lowStock),      color:C.orange },
@@ -463,16 +428,19 @@ export function AdminInventory() {
           { label:"Expired",         value:String(stats.expired),       color:C.red    },
           { label:"Total Value",     value:`₱${stats.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, color:C.green  },
         ].map(s => (
-          <SummaryCard compact key={s.label} label={s.label} value={s.value} color={s.color} />
+          <div key={s.label} className={s.label === "Total Value" ? "min-w-0 col-span-2 sm:col-span-1" : "min-w-0"}>
+            <SummaryCard compact mobileCompact label={s.label} value={s.value} color={s.color} />
+          </div>
         ))}
       </div>
 
       {/* Table */}
-      <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+      <Card className="records-card p-3 md:p-4 min-w-0 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+        <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-visible xl:overflow-hidden">
           <EnhancedTable
-            mobileTable
+            renderMobileRow={product => <MobileInventoryCard product={product} status={getStatus(product)} busy={loading} onEdit={openEdit} onDelete={openDelete} />}
             rowHeight={56}
+            stretchRows
             columns={columns}
             data={filteredItems}
             rowKey={r => r.id}
@@ -486,11 +454,12 @@ export function AdminInventory() {
             emptyDesc="Add your first product to get started."
             showExport={false}
             extraControls={
-              <div className="flex flex-wrap gap-2">
+              <div className="grid w-full min-w-0 grid-cols-2 gap-2 md:flex md:w-auto">
                 <select
                   value={catFilter}
                   onChange={e => setCatFilter(e.target.value)}
-                  className={filterSelectClass}
+                  aria-label="Filter by category"
+                  className={`${filterSelectClass} w-full min-w-0 md:w-auto`}
                 >
                   <option value="All">All Categories</option>
                   {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -498,7 +467,8 @@ export function AdminInventory() {
                 <select
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value)}
-                  className={filterSelectClass}
+                  aria-label="Filter by status"
+                  className={`${filterSelectClass} w-full min-w-0 md:w-auto`}
                 >
                   <option value="All">All Statuses</option>
                   {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}

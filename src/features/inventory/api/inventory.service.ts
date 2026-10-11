@@ -51,9 +51,10 @@ export const inventoryService = {
       // Display the nearest sellable expiry without letting an old batch hide valid stock.
       // The backend remains responsible for stock totals and batch consumption.
       const eligibleBatches = productBatches.filter(b => !isExpiredProduct({ expiry: b.expiration_date }));
-      const nearestExpiry = (eligibleBatches.length ? eligibleBatches : productBatches)
-        .map((b: DjangoProductBatch) => b.expiration_date)
-        .sort()[0] ?? "";
+      const orderedBatches = [...(eligibleBatches.length ? eligibleBatches : productBatches)]
+        .sort((a, b) => a.expiration_date.localeCompare(b.expiration_date));
+      const nearestExpiry = orderedBatches[0]?.expiration_date ?? "";
+      const nearestBatch = eligibleBatches.length ? orderedBatches[0] : undefined;
 
       const stock = Number(p.total_stock);
 
@@ -65,6 +66,8 @@ export const inventoryService = {
         stock,
         expiry: nearestExpiry,
         low: isLowStock(stock, p.low_stock_threshold),
+        reorderThreshold: Number.isFinite(Number(p.low_stock_threshold)) ? Number(p.low_stock_threshold) : undefined,
+        nearestBatch: nearestBatch ? { number: nearestBatch.batch_number, quantity: Number(nearestBatch.remaining_quantity) } : undefined,
       };
     });
   },

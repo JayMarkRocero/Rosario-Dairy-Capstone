@@ -15,6 +15,7 @@ const hooks = {
     return [states[index], value => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
   },
   useRef(initial) { return refs[refIndex++] ?? (refs[refIndex - 1] = { current: initial }); },
+  useId() { return `test-tooltip-${refIndex++}`; },
   useEffect(effect) { effects.push(effect); }, useLayoutEffect() {},
   useContext() { return { theme: 'light', ...authState }; },
   useMemo: fn => fn(), useCallback: fn => fn,
@@ -28,6 +29,9 @@ const compiled = buildSync({
     export { CreateOrderModal } from './src/features/orders/components/CreateOrderModal';
     export { StaffPOS } from './src/features/pos/pages/StaffPOS';
     export { StaffKPICards } from './src/features/dashboard/components/staff/StaffKPICards';
+    export { MobileInventoryCard } from './src/features/inventory/components/MobileInventoryCard';
+    export { EnhancedTable } from './src/components/data-display/EnhancedTable';
+    export * from './src/features/inventory/components/InventoryWarnings';
   `, resolveDir: root },
   define: { 'import.meta.env': '{}' }, bundle: true, platform: 'node', format: 'cjs',
   packages: 'external', write: false, alias: { '@': path.join(root, 'src') },
@@ -35,7 +39,7 @@ const compiled = buildSync({
 const loaded = new Module(path.join(root, 'tests', 'ui-in-memory.cjs'), module);
 loaded.filename = path.join(root, 'tests', 'ui-in-memory.cjs');
 loaded.paths = module.paths;
-loaded.require = id => id === 'react' ? hooks : id === 'sonner' ? {
+loaded.require = id => id === 'react' ? hooks : id === 'react-dom' ? { ...require(id), createPortal: children => children } : id === 'sonner' ? {
   ...require(id), toast: Object.assign(() => {}, { error: (...args) => toastErrors.push(args), success() {}, warning() {} }),
 } : require(id);
 loaded._compile(compiled, loaded.filename);
@@ -53,6 +57,121 @@ beforeEach(() => {
   const token = `header.${Buffer.from(JSON.stringify({ user_id: 7 })).toString('base64url')}.signature`;
   global.localStorage = { getItem: key => key === 'rosario_access_token' ? token : null, setItem() {}, removeItem() {} };
   global.window = new EventTarget();
+  global.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+});
+
+test('mobile inventory cards toggle metadata and preserve edit and delete actions', () => {
+  const product = { id: 385, name: 'Milk with a long product name', cat: 'Milk and dairy drinks', price: 120, stock: 19, expiry: '2099-10-17', low: false, reorderThreshold: 5, nearestBatch: { number: 'BATCH-01', quantity: 19 } };
+  let edited, deleted;
+  const props = { product, status: 'Active', onEdit: value => edited = value, onDelete: value => deleted = value };
+  let tree = render(ui.MobileInventoryCard, props);
+  let buttons = elements(tree, node => node.type === 'button');
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].props['aria-expanded'], false);
+  assert.equal(elements(tree, node => node.type === 'dl').length, 0);
+  buttons[0].props.onClick();
+  tree = render(ui.MobileInventoryCard, props);
+  buttons = elements(tree, node => node.type === 'button');
+  assert.equal(buttons[0].props['aria-expanded'], true);
+  assert.equal(elements(tree, node => node.type === 'dd').length, 5);
+  assert.ok(elements(tree, node => node.type === 'dd').some(node => node.props.children === 'PRD-385'));
+  assert.ok(elements(tree, node => node.type === 'dd').some(node => String(node.props.children).includes('BATCH-01')));
+  buttons[1].props.onClick(); buttons[2].props.onClick();
+  assert.equal(edited, product); assert.equal(deleted, product);
+  tree = render(ui.MobileInventoryCard, { ...props, busy: true });
+  assert.ok(elements(tree, node => node.type === 'button').slice(1).every(node => node.props.disabled));
+  buttons[0].props.onClick();
+  assert.equal(elements(render(ui.MobileInventoryCard, props), node => node.type === 'dl').length, 0);
+});
+
+test('inventory mobile renderer shares search, sorting and pagination with the desktop table', () => {
+  const props = {
+    columns: [{ key: 'name', header: 'Product', sortKey: row => row.name }, { key: 'price', header: 'Price', sortKey: row => row.price }],
+    data: Array.from({ length: 6 }, (_, id) => ({ id, name: id % 2 ? 'Cheese' : 'Milk', price: id })),
+    rowKey: row => row.id, pageSize: 2, searchKeys: row => [row.name], showExport: false,
+    renderMobileRow: row => React.createElement('span', { 'data-mobile-id': row.id }, row.name),
+  };
+  const ids = tree => elements(tree, node => node.props['data-mobile-id'] !== undefined).map(node => node.props['data-mobile-id']);
+  let tree = render(ui.EnhancedTable, props);
+  assert.deepEqual(ids(tree), [0, 1]);
+  assert.ok(elements(tree, node => node.type === 'table')[0].props.className.includes('hidden md:table'));
+  assert.equal(elements(tree, node => node.type === 'select').length, 0);
+  elements(tree, node => node.type === 'input')[0].props.onChange({ target: { value: 'milk' } });
+  tree = render(ui.EnhancedTable, props);
+  assert.deepEqual(ids(tree), [0, 2]);
+  elements(tree, node => node.type === 'th' && node.props['aria-sort'] !== undefined)[1].props.onClick();
+  tree = render(ui.EnhancedTable, props);
+  elements(tree, node => node.type === 'th' && node.props['aria-sort'] !== undefined)[1].props.onClick();
+  tree = render(ui.EnhancedTable, props);
+  assert.deepEqual(ids(tree), [4, 2]);
+  elements(tree, node => node.type === 'button').at(-1).props.onClick();
+  assert.deepEqual(ids(render(ui.EnhancedTable, props)), [0]);
+});
+
+test('inventory tooltip supports tap toggling, dismissal and prevents product row clicks', () => {
+  global.document = { body: {} };
+  window.innerWidth = 375; window.innerHeight = 800;
+  const props = { message: 'Stock level (5) is at or below the reorder threshold (5).' };
+  const event = { stopPropagation() { this.stopped = true; }, currentTarget: { getBoundingClientRect: () => ({ left: 350, top: 300, bottom: 328 }) } };
+  try {
+    let tree = render(ui.InventoryWarningTooltip, props);
+    let button = elements(tree, node => node.type === 'button')[0];
+    assert.equal(button.props.title, props.message);
+    button.props.onClick(event);
+    assert.equal(event.stopped, true);
+    tree = render(ui.InventoryWarningTooltip, props);
+    const tooltip = elements(tree, node => node.props.role === 'tooltip')[0];
+    assert.equal(tooltip.props.children, props.message);
+    assert.equal(tooltip.props.style.left, 127);
+    button = elements(tree, node => node.type === 'button')[0];
+    assert.equal(button.props['aria-expanded'], true);
+    assert.equal(button.props['aria-describedby'], tooltip.props.id);
+    button.props.onClick(event);
+    assert.equal(elements(render(ui.InventoryWarningTooltip, props), node => node.props.role === 'tooltip').length, 0);
+    button = elements(render(ui.InventoryWarningTooltip, props), node => node.type === 'button')[0];
+    button.props.onClick(event);
+    assert.equal(elements(render(ui.InventoryWarningTooltip, props), node => node.props.role === 'tooltip').length, 1);
+    elements(render(ui.InventoryWarningTooltip, props), node => node.type === 'button')[0].props.onKeyDown({ key: 'Escape', stopPropagation() {} });
+    assert.equal(elements(render(ui.InventoryWarningTooltip, props), node => node.props.role === 'tooltip').length, 0);
+    button = elements(render(ui.InventoryWarningTooltip, props), node => node.type === 'button')[0];
+    button.props.onClick(event);
+    assert.equal(elements(render(ui.InventoryWarningTooltip, props), node => node.props.role === 'tooltip').length, 1);
+    elements(render(ui.InventoryWarningTooltip, props), node => node.type === 'button')[0].props.onBlur();
+    assert.equal(elements(render(ui.InventoryWarningTooltip, props), node => node.props.role === 'tooltip').length, 0);
+  } finally { delete global.document; }
+});
+
+test('stock warning icon is independent of expiry and mobile metadata uses shared warning displays', () => {
+  const product = { id: 1, name: 'Milk', stock: 20, reorderThreshold: 5, low: false, expiry: '2000-01-01', cat: 'Dairy', price: 120 };
+  assert.equal(elements(render(ui.InventoryStockValue, { product }), node => node.type === ui.InventoryWarningTooltip).length, 0);
+  assert.equal(elements(render(ui.InventoryExpiryValue, { product }), node => node.type === ui.InventoryWarningTooltip).length, 1);
+  const props = { product, onEdit() {}, onDelete() {} };
+  states = [];
+  let tree = render(ui.MobileInventoryCard, props);
+  assert.equal(elements(tree, node => node.type === ui.InventoryStatusBadge).length, 1);
+  elements(tree, node => node.type === 'button')[0].props.onClick();
+  tree = render(ui.MobileInventoryCard, props);
+  assert.equal(elements(tree, node => node.type === ui.InventoryStockValue).length, 1);
+  assert.equal(elements(tree, node => node.type === ui.InventoryExpiryValue).length, 1);
+});
+
+test('stretched desktop inventory rows fill both full and partial pages', () => {
+  window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+  const props = {
+    columns: [{ key: 'name', header: 'Product' }],
+    data: Array.from({ length: 7 }, (_, id) => ({ id, name: `Product ${id}` })),
+    rowKey: row => row.id, stretchRows: true, rowHeight: 56,
+    pageCapacity: { pageSize: 5, containerRef() {}, headerRef() {} },
+    showExport: false,
+  };
+  let tree = render(ui.EnhancedTable, props);
+  let body = elements(tree, node => node.type === 'tbody')[0];
+  assert.equal(elements(body, node => node.type === 'tr').length, 5);
+  assert.equal(body.props.style.gridTemplateRows, 'repeat(5, minmax(0, 1fr))');
+  elements(tree, node => node.type === 'button').at(-1).props.onClick();
+  body = elements(render(ui.EnhancedTable, props), node => node.type === 'tbody')[0];
+  assert.equal(elements(body, node => node.type === 'tr').length, 2);
+  assert.equal(body.props.style.gridTemplateRows, 'repeat(2, minmax(0, 1fr))');
 });
 
 const staffCards = tree => elements(tree, node => typeof node.props.trendLabel === 'string');

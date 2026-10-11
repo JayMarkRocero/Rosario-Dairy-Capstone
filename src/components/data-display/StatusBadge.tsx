@@ -5,9 +5,9 @@ const info = "bg-blue-50 text-blue-700 border-blue-200/60";
 const neutral = "bg-slate-50 text-slate-600 border-slate-200/60";
 
 const statusMap: Record<string, string> = {
-  Completed: success, Fulfilled: success, Active: success, Visible: success,
+  Completed: success, Fulfilled: success, Active: success, Visible: success, "In Stock": success,
   Cancelled: danger, Expired: danger, Critical: danger,
-  Pending: warning, Low: warning, "Low Stock": warning, "Near Expiry": warning, High: warning, Medium: warning,
+  Pending: warning, Low: warning, "Low Stock": warning, "Near Expiry": warning, "Low Stock & Near Expiry": warning, High: warning, Medium: warning,
   Processing: info, Ready: info,
   Inactive: neutral, Hidden: neutral,
 };

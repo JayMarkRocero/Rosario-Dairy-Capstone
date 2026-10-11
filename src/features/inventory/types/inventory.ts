@@ -21,6 +21,8 @@ export interface InventoryItem {
   stock: number;
   expiry: string;
   low: boolean;
+  reorderThreshold?: number;
+  nearestBatch?: { number: string; quantity: number };
 }
 
 export interface Category {

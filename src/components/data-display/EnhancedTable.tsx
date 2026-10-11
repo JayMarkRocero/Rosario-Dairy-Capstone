@@ -38,6 +38,7 @@ interface Props<T> {
   scrollBody?:      boolean;
   disableScroll?:   boolean;
   mobileTable?:     boolean;
+  renderMobileRow?: (row: T, index: number) => React.ReactNode;
 }
 
 function alignmentClasses(align: Column<unknown>["align"]) {
@@ -52,7 +53,7 @@ export function EnhancedTable<T>({
   onRowClick, extraControls, emptyTitle = "No records found",
   emptyDesc = "Try adjusting your search or add a new record.", loading,
   showExport = true, showCount = true, fillHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
-  mobileTable = false,
+  mobileTable = false, renderMobileRow,
 }: Props<T>) {
   const defaultCapacity = useAutoPageSize(rowHeight);
   const capacity = pageCapacity ?? defaultCapacity;
@@ -120,14 +121,14 @@ export function EnhancedTable<T>({
         className={`min-h-52 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:bg-card ${fillHeight ? "xl:flex-1" : ""}`}
         style={{ borderColor: C.border }}>
         <span className="sr-only">Loading records</span>
-        <div className={`${mobileTable ? "hidden" : "xl:hidden"} space-y-3 p-3`}>
+        <div className={`${renderMobileRow ? "block md:hidden" : mobileTable ? "hidden" : "xl:hidden"} space-y-3 p-3`}>
           {Array.from({ length: 3 }, (_, index) => <div key={index} className="border-b py-4 space-y-4 last:border-b-0" style={{ borderColor: C.border }}>
             <div className="flex justify-between gap-3"><Skeleton className="h-3 w-20" /><Skeleton className="h-4 w-24" /></div>
             <div className="grid grid-cols-2 gap-4"><Skeleton className="h-3 w-3/4" /><Skeleton className="h-3 w-2/3" /></div>
             <Skeleton className="h-3 w-1/2" />
           </div>)}
         </div>
-        <div className={mobileTable ? "block" : "hidden xl:block"}>
+        <div className={renderMobileRow ? "hidden md:block" : mobileTable ? "block" : "hidden xl:block"}>
           <div className="grid gap-4 border-b p-4" style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(0, 1fr))`, borderColor: C.border }}>
             {columns.map(column => <Skeleton key={column.key} className="h-3 w-3/4" />)}
           </div>
@@ -152,10 +153,10 @@ export function EnhancedTable<T>({
     <div className={`enhanced-table flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-visible xl:overflow-hidden" : "h-auto xl:h-full"}`}>
       {/* Controls bar */}
       {showControlsBar && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 flex-shrink-0">
+        <div className={renderMobileRow ? "flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between mb-2 md:mb-4 shrink-0" : "flex flex-wrap items-center justify-between gap-3 mb-4 flex-shrink-0"}>
           {searchable && (
             <div
-              className={`${searchContainerClass} w-full sm:flex-1 sm:max-w-xs order-1`}
+              className={`${searchContainerClass} ${renderMobileRow ? "w-full min-w-0 md:flex-1 md:max-w-xs" : "w-full sm:flex-1 sm:max-w-xs"} order-1`}
             >
               <Search size={14} style={{ color: C.muted }} />
               <input
@@ -169,7 +170,7 @@ export function EnhancedTable<T>({
           )}
 
           {extraControls && (
-            <div className="order-2 flex flex-wrap items-center gap-2">
+            <div className={renderMobileRow ? "order-2 w-full min-w-0 md:w-auto" : "order-2 flex flex-wrap items-center gap-2"}>
               {extraControls}
             </div>
           )}
@@ -195,8 +196,11 @@ export function EnhancedTable<T>({
 
       {/* Table */}
       <div ref={autoPageSize && desktopTable ? capacity.containerRef : undefined} className={`relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
-        <div className={`record-list-scroll ${mobileTable ? "hidden" : "xl:hidden"} overflow-visible ${pageData.length === 0 ? "flex min-h-64 items-center justify-center" : ""}`}>
-          {sorted.length > 0 && columns.some(col => col.sortKey) && <div className="mb-3 flex justify-end">
+        {renderMobileRow && <div className="block md:hidden space-y-3 px-1 py-2">
+          {pageData.length === 0 ? <EmptyState title={emptyTitle} description={emptyDesc} /> : pageData.map((row, index) => <div key={rowKey(row)}>{renderMobileRow(row, index)}</div>)}
+        </div>}
+        <div className={`record-list-scroll ${renderMobileRow || mobileTable ? "hidden" : "xl:hidden"} overflow-visible ${pageData.length === 0 ? "flex min-h-64 items-center justify-center" : ""}`}>
+          {!renderMobileRow && sorted.length > 0 && columns.some(col => col.sortKey) && <div className="mb-3 flex justify-end">
             <select aria-label="Sort records" value={sortCol && sortDir ? `${sortCol}:${sortDir}` : ""}
               onChange={event => {
                 const [key, direction] = event.target.value.split(":");
@@ -238,10 +242,10 @@ export function EnhancedTable<T>({
           <EmptyState title={emptyTitle} description={emptyDesc} />
         </div>}
         <div
-          className={`${mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
+          className={`${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          <table className={`w-full table-fixed text-sm text-slate-700 ${mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
+          <table className={`w-full table-fixed text-sm text-slate-700 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
             <thead ref={autoPageSize ? capacity.headerRef : undefined} className={`bg-slate-50/80 border-b border-slate-100 ${tableScrollBody ? `block shrink-0 overflow-hidden ${tableDisableScroll ? "" : "[scrollbar-gutter:stable]"}` : ""}`}>
               <tr style={rowStyle}>
                 {columns.map(col => (
@@ -265,7 +269,7 @@ export function EnhancedTable<T>({
                 ))}
               </tr>
             </thead>
-            <tbody style={stretchRows && tableScrollBody && pageData.length > 0 ? { display: "grid", gridAutoRows: `calc(100% / ${pageSize})`, alignContent: "start" } : undefined} className={tableScrollBody ? `${pageData.length === 0 ? "flex flex-col" : "block"} flex-1 min-h-0 overflow-hidden` : undefined}>
+            <tbody style={stretchRows && tableScrollBody && pageData.length > 0 ? { display: "grid", gridTemplateRows: `repeat(${pageData.length}, minmax(0, 1fr))` } : undefined} className={tableScrollBody ? `${pageData.length === 0 ? "flex flex-col" : "block"} flex-1 min-h-0 overflow-hidden` : undefined}>
               {pageData.length === 0 ? (
                 <tr className={tableScrollBody ? "flex flex-1 min-h-0" : undefined}>
                   <td colSpan={columns.length} className={tableScrollBody ? "flex flex-1 min-w-0 items-center justify-center" : "text-center"}>
@@ -277,7 +281,7 @@ export function EnhancedTable<T>({
                   <tr
                     key={rowKey(row)}
                     style={rowStyle}
-                    className={`${stretchRows ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                    className={`${stretchRows && tableScrollBody ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
                     onClick={() => onRowClick?.(row)}
                   >
                     {columns.map(col => (

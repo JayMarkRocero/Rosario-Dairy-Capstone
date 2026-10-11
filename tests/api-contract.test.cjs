@@ -17,6 +17,7 @@ const compiled = buildSync({
     export * from './src/features/sales/api/sales.service';
     export * from './src/features/inventory/utils/expiry';
     export * from './src/features/inventory/utils/stock';
+    export * from './src/features/inventory/utils/warnings';
     export * from './src/features/auth/api/auth.service';
     export * from './src/features/settings/api/settings.service';
     export * from './src/features/inventory/api/inventory.service';
@@ -345,6 +346,37 @@ test('revenue requests use matching aggregation and explicit date boundaries', a
 test('category patch excludes read-only activation even from untyped callers', async () => {
   await api.inventoryService.updateCategory(1, { name: 'Dairy', icon: 'Milk', is_active: false });
   assert.deepEqual(JSON.parse(calls[0].data), { name: 'Dairy', icon: 'Milk' });
+});
+
+test('inventory warnings preserve dual status, calendar boundaries and independent stock warnings', () => {
+  const now = new Date(2026, 9, 10, 12);
+  const product = { stock: 5, reorderThreshold: 5, low: false, expiry: '2026-10-17' };
+  let warning = api.getInventoryWarnings(product, now);
+  assert.equal(warning.status, 'Low Stock & Near Expiry');
+  assert.equal(warning.daysLeft, 7);
+  assert.equal(warning.stockMessage, 'Low Stock (5 remaining) & Near Expiry (7 days left).');
+  warning = api.getInventoryWarnings({ ...product, expiry: '2026-10-18' }, now);
+  assert.equal(warning.status, 'Low');
+  assert.equal(warning.stockMessage, 'Stock level (5) is at or below the reorder threshold (5).');
+  warning = api.getInventoryWarnings({ ...product, stock: 6, low: true }, now);
+  assert.equal(warning.lowStock, false);
+  assert.equal(warning.status, 'Near Expiry');
+  assert.equal(warning.expiryMessage, 'Product batch expires on 2026-10-17 (7 days remaining).');
+  warning = api.getInventoryWarnings({ ...product, expiry: '2026-10-09' }, now);
+  assert.equal(warning.status, 'Expired');
+  assert.equal(warning.nearExpiry, false);
+  assert.equal(warning.lowStock, true);
+  assert.equal(warning.expiryMessage, 'Product batch expired on 2026-10-09.');
+  assert.equal(api.getInventoryWarnings({ ...product, stock: 6, expiry: '' }, now).status, 'Active');
+  assert.equal(api.getInventoryWarnings({ ...product, stock: 6, expiry: '2026-10-10' }, now).daysLeft, 0);
+});
+
+test('inventory pagination caps spacious desktop tables at five rows and adapts to shorter bodies', () => {
+  const limits = { minPageSize: 1, maxPageSize: 5 };
+  assert.equal(api.calculatePageSize(800, 40, 0, 56, limits), 5);
+  assert.equal(api.calculatePageSize(320, 40, 0, 56, limits), 5);
+  assert.equal(api.calculatePageSize(319, 40, 0, 56, limits), 4);
+  assert.equal(api.calculatePageSize(152, 40, 0, 56, limits), 2);
 });
 
 test('current user maps the JWT identity when the profile endpoint omits id', async () => {
