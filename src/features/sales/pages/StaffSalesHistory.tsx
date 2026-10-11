@@ -1,16 +1,16 @@
 import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
-import { toastApiError } from "@/lib/errorHandling";
 import { useMemo, useState, useEffect } from "react";
 import { Eye } from "lucide-react";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { TransactionDetails } from "@/features/sales/components/TransactionDetails";
 import { useAuth } from "@/features/auth/context/AuthContext";
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { getSessionUserId } from "@/features/auth/api/auth.service";
 import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 function staffSalesDate(timestamp: string): string {
   const date = new Date(timestamp);
@@ -22,24 +22,14 @@ function staffSalesDate(timestamp: string): string {
 
 export function StaffSalesHistory() {
   const { user } = useAuth();
-  const reportVersion = useReportVersion();
+  const userId = getSessionUserId(user);
   const pageCapacity = useStaffAutoPageSize(56, 200);
-  const [myRecords, setMyRecords] = useState<Sale[]>([]);
-  const [recordsLoading, setRecordsLoading] = useState(true);
   const [selected, setSelected] = useState<Sale | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    setMyRecords([]);
-    setSelected(null);
-    if (!user) { setRecordsLoading(false); return; }
-    setRecordsLoading(true);
-    salesService.getMine()
-      .then(sales => { if (active) setMyRecords(sales.map(sale => ({ ...sale, date: staffSalesDate(sale.transaction.created_at) }))); })
-      .catch(error => { if (active) toastApiError(error); })
-      .finally(() => { if (active) setRecordsLoading(false); });
-    return () => { active = false; };
-  }, [user, reportVersion]);
+  const { data: cachedRecords, loading: recordsLoading } = useCachedQuery(`sales:mine:${userId ?? user?.username ?? "anonymous"}`,
+    async () => (await salesService.getMine(userId ?? undefined)).map(sale => ({ ...sale, date: staffSalesDate(sale.transaction.created_at) })), ["sales"], !!user);
+  const myRecords = cachedRecords ?? [];
+  useEffect(() => setSelected(null), [user]);
 
   const [payment, setPayment] = useState("All");
   const [date, setDate] = useState("");

@@ -1,43 +1,22 @@
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
-import { toastApiError } from "@/lib/errorHandling";
-import { useState, useEffect } from "react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { Card } from "@/components/data-display/Card";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
 import { AlertTriangle, CalendarClock, PackageCheck } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
-import type { InventoryItem } from "@/features/inventory/types/inventory";
 
 export function InventoryAlert() {
-  const reportVersion = useReportVersion();
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [alertCounts, setAlertCounts] = useState({ lowStock: 0, nearExpiry: 0 });
-  const [loading, setLoading] = useState(true);
+  const query = useCachedQuery("dashboard:staff-inventory-alerts", async () => {
+    const [items, lowStock, expiring] = await Promise.all([inventoryService.getAll(true), inventoryService.getLowStockProducts(), inventoryService.getExpiringProducts()]);
+    const visible = new Set(items.map(item => item.id));
+    return { items, lowStock: lowStock.filter(item => visible.has(item.id)).length,
+      nearExpiry: new Set(expiring.filter(batch => visible.has(batch.product.id)).map(batch => batch.product.id)).size };
+  }, ["dashboard", "inventory"]);
+  const items = query.data?.items ?? [];
+  const lowStockCount = query.data?.lowStock ?? 0;
+  const nearExpiryCount = query.data?.nearExpiry ?? 0;
+  const loading = query.loading;
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    Promise.all([inventoryService.getAll(true), inventoryService.getLowStockProducts(), inventoryService.getExpiringProducts()])
-      .then(([data, lowStock, expiring]) => {
-        if (active) {
-          setItems(data);
-          const visible = new Set(data.map(item => item.id));
-          setAlertCounts({ lowStock: lowStock.filter(item => visible.has(item.id)).length,
-            nearExpiry: new Set(expiring.filter(batch => visible.has(batch.product.id)).map(batch => batch.product.id)).size });
-        }
-      })
-      .catch(error => toastApiError(error))
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [reportVersion]);
-
-  const lowStockCount = alertCounts.lowStock;
-  const nearExpiryCount = alertCounts.nearExpiry;
   const availableCount = items.filter(i => i.stock > 0 && !i.low).length;
 
   const ALERTS = [

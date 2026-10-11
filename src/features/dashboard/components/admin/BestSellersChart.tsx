@@ -1,37 +1,18 @@
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
-import { toastApiError } from "@/lib/errorHandling";
-import { useState, useEffect } from "react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card } from "@/components/data-display/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
-import { reportsService, type BestSeller } from "@/features/reports/api/reports.service";
+import { reportsService } from "@/features/reports/api/reports.service";
 
 const formatUnits = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 const axisUnits = (value: number) => value >= 1000 ? `${formatUnits(value / 1000)}k` : formatUnits(value);
 const shortLabel = (value: string) => value.length > 21 ? `${value.slice(0, 20)}…` : value;
 
 export function BestSellersChart() {
-  const reportVersion = useReportVersion();
-  const [bestSellers, setBestSellers] = useState<BestSeller[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    reportsService.getBestSellers(6)
-      .then((data) => {
-        if (active) setBestSellers(data);
-      })
-      .catch(error => toastApiError(error))
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [reportVersion]);
+  const query = useCachedQuery("dashboard:best-sellers:6", () => reportsService.getBestSellers(6), ["dashboard"]);
+  const bestSellers = query.data ?? [];
+  const loading = query.loading;
 
   const chartData = bestSellers.map((item, index) => ({ ...item, label: `${index + 1}. ${item.product}` }));
   const maxSales = Math.max(1, ...bestSellers.map(item => item.sales));

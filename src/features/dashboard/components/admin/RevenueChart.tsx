@@ -4,10 +4,10 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Card } from "@/components/data-display/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { C } from "@/styles/tokens/colors";
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
 import { reportsService } from "@/features/reports/api/reports.service";
 import { getApiErrorMessage } from "@/lib/api";
-import { revenueWindow, revenueWindowForRange, revenueBusinessDate, revenueSeries, revenueDateLabel, revenueRangeLabel, revenueBucketLabel, type RevenuePeriod, type RevenueBucket } from "@/features/reports/utils/revenueWindow";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
+import { revenueWindow, revenueWindowForRange, revenueBusinessDate, revenueSeries, revenueDateLabel, revenueRangeLabel, revenueBucketLabel, type RevenuePeriod } from "@/features/reports/utils/revenueWindow";
 
 function shiftDateByDays(date: string, days: number): string {
   const shifted = new Date(`${date}T00:00:00Z`);
@@ -29,7 +29,6 @@ export function RevenueChart() {
   const [startSelected, setStartSelected] = useState(false);
   const [endSelected, setEndSelected] = useState(false);
   const customRef = useRef<HTMLDivElement>(null);
-  const version = useReportVersion();
   const window = useMemo(() => revenueWindowForRange(period, startDate, endDate), [period, startDate, endDate]);
   const rangeError = !startDate || !endDate
     ? "Select both dates to load revenue."
@@ -40,19 +39,11 @@ export function RevenueChart() {
   const canNavigateNext = !rangeError && (isCustomRange
     ? shiftDateByDays(endDate, spanDays) <= revenueBusinessDate()
     : offset < 0);
-  const key = `${period}:${startDate}:${endDate}:${version}`;
-  const [result, setResult] = useState<{ key: string; rows: RevenueBucket[]; error: string }>({ key: "", rows: [], error: "" });
-  const loading = !rangeError && result.key !== key;
-  const error = rangeError || (loading ? "" : result.error);
-  const data = revenueSeries(loading || rangeError ? [] : result.rows, window);
-  useEffect(() => {
-    if (rangeError) return;
-    const controller = new AbortController();
-    reportsService.getRevenue(period, window.start, window.end, controller.signal)
-      .then(rows => { if (!controller.signal.aborted) setResult({ key, rows, error: "" }); })
-      .catch(error => { if (!controller.signal.aborted) setResult({ key, rows: [], error: getApiErrorMessage(error, "Unable to load revenue.") }); });
-    return () => controller.abort();
-  }, [period, window.start, window.end, key, rangeError]);
+  const query = useCachedQuery(`dashboard:revenue:${period}:${startDate}:${endDate}`,
+    () => reportsService.getRevenue(period, window.start, window.end), ["dashboard"], !rangeError);
+  const loading = query.loading;
+  const error = rangeError || (query.error ? getApiErrorMessage(query.error, "Unable to load revenue.") : "");
+  const data = revenueSeries(rangeError ? [] : query.data ?? [], window);
 
   useEffect(() => {
     if (!customOpen) return;

@@ -1,18 +1,14 @@
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
-import { toastApiError } from "@/lib/errorHandling";
-import { useState, useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { BarChart2, Check, ClipboardList, Package } from "lucide-react";
 import { KPICard } from "@/components/data-display/KPICard";
 import { C } from "@/styles/tokens/colors";
 import { useTheme } from "@/styles/ThemeProvider";
-import { salesService, type Sale } from "@/features/sales/api/sales.service";
+import { salesService } from "@/features/sales/api/sales.service";
 import { ordersService } from "@/features/orders/api/orders.service";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { useAuth } from "@/features/auth/context/AuthContext";
 import { getSessionUserId } from "@/features/auth/api/auth.service";
-import { ApiError } from "@/lib/api";
-import type { OrderListItem } from "@/features/orders/types/order";
-import type { InventoryItem } from "@/features/inventory/types/inventory";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 function todayStr(): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -25,26 +21,11 @@ function todayStr(): string {
 export function StaffKPICards() {
   const { theme } = useTheme();
   const { user, loading: authLoading } = useAuth();
-  const reportVersion = useReportVersion();
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [orders, setOrders] = useState<OrderListItem[]>([]);
-  const [products, setProducts] = useState<InventoryItem[]>([]);
   const username = user?.username ?? null;
   const userId = user ? getSessionUserId(user) : null;
   const identityUnavailable = !authLoading && userId === null;
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setFailed(false);
-    if (authLoading) return;
-    if (userId === null) {
-      setLoading(false);
-      return;
-    }
-
+  const { data: metrics, loading, error } = useCachedQuery(`dashboard:staff-kpis:${userId}:${todayStr()}`, async () => {
     const today = todayStr();
     let deadline: ReturnType<typeof setTimeout>;
     const timeout = new Promise<never>((_, reject) => {
@@ -58,28 +39,10 @@ export function StaffKPICards() {
       ]);
     });
 
-    Promise.race([request, timeout])
-      .then(([s, o, p]) => {
-        if (!active) return;
-        setSales(s);
-        setOrders(o);
-        setProducts(p);
-      })
-      .catch(error => {
-        if (!active) return;
-        setFailed(true);
-        if (!(error instanceof ApiError && (error.status === 401 || error.status === 403))) toastApiError(error);
-      })
-      .finally(() => {
-        clearTimeout(deadline);
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-      clearTimeout(deadline);
-    };
-  }, [reportVersion, userId, authLoading]);
+    return Promise.race([request, timeout]).finally(() => clearTimeout(deadline));
+  }, ["dashboard"], !authLoading && userId !== null);
+  const [sales, orders, products] = metrics ?? [[], [], []];
+  const failed = !!error;
 
   const kpis = useMemo(() => {
     const today = todayStr();

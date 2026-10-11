@@ -1,7 +1,8 @@
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { ActionButton } from "@/components/buttons/ActionButton";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { Plus, Edit, Trash2, Eye, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
@@ -63,27 +64,12 @@ function CategoryForm({ form, setForm, iconOptions, showStatus = false }: { form
 }
 
 export function AdminCategories() {
-  const [cats, setCats] = useState<Category[]>([]);
-  const [catsLoading, setCatsLoading] = useState(true);
-  const [iconOptions, setIconOptions] = useState<CategoryIconOption[]>([{ value: "", label: "Automatic Selection" }]);
-
-  const loadCategories = async () => {
-    setCatsLoading(true);
-    try {
-      setCats(await inventoryService.getCategories());
-    } catch (error) {
-      toastApiError(error, "Failed to load categories.");
-    } finally {
-      setCatsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadCategories();
-    inventoryService.getCategoryIconOptions()
-      .then(setIconOptions)
-      .catch(error => toastApiError(error, "Icon options could not be loaded; automatic selection is available."));
-  }, []);
+  const query = useCachedQuery("categories:list", () => inventoryService.getCategories(), ["categories", "inventory"]);
+  const cats = query.data ?? [];
+  const catsLoading = query.loading;
+  const loadCategories = query.refresh;
+  const iconsQuery = useCachedQuery("categories:icons", () => inventoryService.getCategoryIconOptions(), ["categories"]);
+  const iconOptions: CategoryIconOption[] = iconsQuery.data ?? [{ value: "", label: "Automatic Selection" }];
 
   const [addOpen,    setAddOpen]    = useState(false);
   const [editOpen,   setEditOpen]   = useState(false);
@@ -104,7 +90,6 @@ export function AdminCategories() {
   const productCount = cats.reduce((total, cat) => total + cat.products, 0);
 
   const syncCategory = (id: number, changes: Partial<Category>) => {
-    setCats(current => current.map(cat => cat.id === id ? { ...cat, ...changes } : cat));
     setSelected(current => current?.id === id ? { ...current, ...changes } : current);
   };
 
@@ -188,9 +173,6 @@ export function AdminCategories() {
     setLoading(true);
     try {
       await inventoryService.updateCategory(category.id, { is_visible_to_staff: isVisible });
-      setCats(current => current.map(item => item.id === category.id
-        ? { ...item, is_visible_to_staff: isVisible }
-        : item));
       setSelected(current => current?.id === category.id
         ? { ...current, is_visible_to_staff: isVisible }
         : current);

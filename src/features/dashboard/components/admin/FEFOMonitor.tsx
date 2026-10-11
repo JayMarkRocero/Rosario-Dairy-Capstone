@@ -1,39 +1,15 @@
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
-import { toastApiError } from "@/lib/errorHandling";
-import { useState, useEffect } from "react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { AlertOctagon, AlertTriangle, PackageX, Wallet } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
-import type { FEFOItem, InventoryItem } from "@/features/inventory/types/inventory";
 
 export function FEFOMonitor() {
-  const reportVersion = useReportVersion();
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [fefoItems, setFefoItems] = useState<FEFOItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    setLoading(true);
-    Promise.all([inventoryService.getOverview(), inventoryService.getFEFO()])
-      .then(([allItems, fefo]) => {
-        if (!active) return;
-        setItems(allItems);
-        setFefoItems(fefo);
-      })
-      .catch(error => toastApiError(error))
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [reportVersion]);
+  const query = useCachedQuery("dashboard:fefo-monitor", () => Promise.all([inventoryService.getOverview(), inventoryService.getFEFO()]), ["dashboard", "inventory"]);
+  const [items, fefoItems] = query.data ?? [[], []];
+  const loading = query.loading;
 
   const expiredCount = fefoItems.filter(i => i.days < 0).length;
   const nearExpiryCount = fefoItems.filter(i => i.days >= 0 && i.st !== "green").length;

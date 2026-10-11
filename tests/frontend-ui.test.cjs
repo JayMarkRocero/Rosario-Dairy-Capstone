@@ -1,4 +1,4 @@
-const { test, beforeEach } = require('node:test');
+const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const Module = require('node:module');
@@ -8,6 +8,7 @@ const { AxiosError } = require('axios');
 
 // Exercise real event handlers with deterministic hook state, without a browser or database writes.
 let states, refs, stateIndex, refIndex, effects, authState, toastErrors;
+let effectCleanups = [];
 const hooks = {
   ...React,
   useState(initial) {
@@ -17,7 +18,7 @@ const hooks = {
   },
   useRef(initial) { return refs[refIndex++] ?? (refs[refIndex - 1] = { current: initial }); },
   useId() { return `test-tooltip-${refIndex++}`; },
-  useEffect(effect) { effects.push(effect); }, useLayoutEffect() {},
+  useEffect(effect) { effects.push(() => { const cleanup = effect(); if (typeof cleanup === 'function') effectCleanups.push(cleanup); return cleanup; }); }, useLayoutEffect() {},
   useContext() { return { theme: 'light', ...authState }; },
   useMemo: fn => fn(), useCallback: fn => fn,
 };
@@ -33,10 +34,15 @@ const compiled = buildSync({
     export { MobileInventoryCard } from './src/features/inventory/components/MobileInventoryCard';
     export { EnhancedTable } from './src/components/data-display/EnhancedTable';
     export * from './src/features/inventory/components/InventoryWarnings';
+    export { AdminCategories } from './src/features/inventory/pages/AdminCategories';
+    export { AdminCustomers } from './src/features/customers/pages/AdminCustomers';
+    export { AdminUserManagement } from './src/features/users/pages/AdminUserManagement';
     export { AdminSettings } from './src/features/settings/pages/AdminSettings';
     export { SETTINGS_UPDATED } from './src/features/settings/api/settings.service';
     export { useReportVersion } from './src/features/reports/hooks/useReportPreview';
     export { InventoryAlert } from './src/features/dashboard/components/staff/InventoryAlert';
+    export * from './src/lib/dataCache';
+    export { useCachedQuery } from './src/hooks/useCachedQuery';
   `, resolveDir: root },
   define: { 'import.meta.env': '{}' }, bundle: true, platform: 'node', format: 'cjs',
   packages: 'external', write: false, alias: { '@': path.join(root, 'src') },
@@ -49,6 +55,7 @@ loaded.require = id => id === 'react' ? hooks : id === 'react-dom' ? { ...requir
 } : require(id);
 loaded._compile(compiled, loaded.filename);
 const ui = loaded.exports;
+afterEach(() => { effectCleanups.forEach(cleanup => cleanup()); effectCleanups = []; });
 const render = (component, props = {}) => { stateIndex = refIndex = 0; return component(props); };
 function elements(tree, predicate) {
   if (Array.isArray(tree)) return tree.flatMap(child => elements(child, predicate));
@@ -56,6 +63,8 @@ function elements(tree, predicate) {
   return [...(predicate(tree) ? [tree] : []), ...elements(tree.props.children, predicate)];
 }
 beforeEach(() => {
+  effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
+  ui.clearDataCache();
   states = []; refs = []; effects = []; stateIndex = refIndex = 0;
   authState = { user: { username: 'audit' }, loading: false };
   toastErrors = [];
@@ -216,7 +225,7 @@ test('inventory settings save changed fields, reload canonical values and preser
   const patch = requests.find(request => request.method === 'patch');
   assert.equal(patch.url, '/settings/inventory/');
   assert.deepEqual(JSON.parse(patch.data), { near_expiry_threshold: 2, critical_expiry_threshold: 0 });
-  assert.equal(requests.filter(request => request.url === '/settings/' && request.method === 'get').length, 2);
+  assert.ok(requests.filter(request => request.url === '/settings/' && request.method === 'get').length >= 2);
   assert.equal(inputById(tree, 'business_name').props.value, 'Unsaved business name');
   assert.equal(elements(tree, node => node.props.role === 'switch')[0].props.checked, false);
   assert.equal(inputById(tree, 'critical_expiry_threshold').props.value, '0');
@@ -278,6 +287,62 @@ test('mounted inventory and dashboard version updates on global settings saves',
   cleanup();
   window.dispatchEvent(new Event(ui.SETTINGS_UPDATED));
   assert.equal(render(ui.useReportVersion), 1);
+});
+
+test('cached navigation renders data immediately and stale refresh stays silent', async () => {
+  let calls = 0, resolveRefresh;
+  const fetcher = () => { calls++; return calls === 1 ? Promise.resolve([1]) : new Promise(resolve => resolveRefresh = resolve); };
+  const props = () => ui.useCachedQuery('navigation:test', fetcher, ['dashboard']);
+  let result = render(props);
+  assert.equal(result.loading, true);
+  let cleanup = effects.at(-1)(); await settle();
+  assert.deepEqual(render(props).data, [1]);
+  cleanup(); states = []; refs = []; effects = [];
+  result = render(props);
+  assert.deepEqual(result.data, [1]); assert.equal(result.loading, false);
+  cleanup = effects.at(-1)(); await settle();
+  assert.equal(calls, 1);
+  cleanup(); states = []; refs = []; effects = [];
+  const originalNow = Date.now;
+  const future = Date.now() + ui.DEFAULT_STALE_TIME + 1;
+  try {
+    Date.now = () => future;
+    result = render(props);
+    assert.deepEqual(result.data, [1]); assert.equal(result.loading, false);
+    cleanup = effects.at(-1)(); await settle();
+    assert.equal(calls, 2);
+    assert.deepEqual(render(props).data, [1]); assert.equal(render(props).loading, false);
+    resolveRefresh([2]); await settle();
+    assert.deepEqual(render(props).data, [2]);
+  } finally { Date.now = originalNow; cleanup(); }
+});
+
+test('settings events refresh mounted dashboard cache while keeping previous data visible', async () => {
+  let calls = 0;
+  const props = () => ui.useCachedQuery('settings-event:test', () => Promise.resolve(++calls), ['dashboard', 'inventory']);
+  render(props); const cleanup = effects.at(-1)(); await settle();
+  assert.equal(render(props).data, 1);
+  window.dispatchEvent(new Event(ui.SETTINGS_UPDATED));
+  assert.equal(render(props).data, 1); assert.equal(render(props).loading, false);
+  await settle();
+  assert.equal(render(props).data, 2);
+  cleanup();
+});
+
+test('staff dashboard navigation shows cached KPI values without Updating badges or fresh requests', async () => {
+  let requests = 0;
+  ui.http.defaults.adapter = async config => { requests++; return { status: 200, config, headers: {}, data: [] }; };
+  render(ui.StaffKPICards);
+  let cleanup = effects.at(-1)(); await settle();
+  assert.equal(render(ui.StaffKPICards).props['aria-busy'], false);
+  cleanup(); states = []; refs = []; effects = [];
+  const count = requests;
+  const cached = render(ui.StaffKPICards);
+  assert.equal(cached.props['aria-busy'], false);
+  assert.ok(staffCards(cached).every(card => card.props.trendLabel !== 'Updating'));
+  cleanup = effects.at(-1)(); await settle();
+  assert.equal(requests, count);
+  cleanup();
 });
 
 test('staff dashboard uses permitted alert feeds and honors disabled notification feeds', async () => {
@@ -448,13 +513,13 @@ test('report download blocks double clicks and permits retry after failure', asy
   const tree = render(ui.AdminReports);
   const button = elements(tree, node => node.type === 'button')[0];
   const first = button.props.onClick();
-  await Promise.resolve(); await Promise.resolve();
+  await settle();
   await button.props.onClick();
   assert.equal(requests, 1);
   reject(new Error('Simulated download outage'));
   await first;
   const second = button.props.onClick();
-  await Promise.resolve(); await Promise.resolve();
+  await settle();
   assert.equal(requests, 2);
   reject(new Error('Simulated download outage'));
   await second;
@@ -501,4 +566,69 @@ test('POS confirmation sends only one request while checkout is pending', async 
   reject(new Error('Simulated checkout outage'));
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(refs[0].current, false);
+});
+
+
+test('categories, customers and users render cached lists before effects and refresh silently after invalidation', async () => {
+  authState.user.email = 'audit@example.com';
+  for (const [component, key, group, record] of [
+    [ui.AdminCategories, 'categories:list', 'categories', { id: 1, name: 'Milk', products: 1, is_active: true }],
+    [ui.AdminCustomers, 'customers:list:all', 'customers', { id: 1, name: 'Customer', isActive: true, phone: '', email: '', address: '', orders: 1, last: '', createdAt: '' }],
+    [ui.AdminUserManagement, 'users:list', 'users', { id: 1, name: 'Staff', username: 'staff', email: 'staff@example.com', role: 'Staff', status: 'Active', lastLogin: null }],
+  ]) {
+    effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
+    states = []; refs = []; effects = [];
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, [record], [group]);
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:icons`, [], ['categories']);
+    let requests = 0;
+    ui.http.defaults.adapter = async config => { requests++; return { status: 200, config, headers: {}, data: [] }; };
+    const table = tree => elements(tree, node => Array.isArray(node.props.columns) && Array.isArray(node.props.data))[0];
+    let tree = render(component);
+    assert.deepEqual(table(tree).props.data, [record]);
+    assert.equal(table(tree).props.loading, false);
+    effects.forEach(effect => effect()); await settle();
+    assert.equal(requests, 0);
+    ui.invalidateDataCache([group]);
+    tree = render(component);
+    assert.equal(table(tree).props.loading, false);
+    assert.deepEqual(table(tree).props.data, [record]);
+    await settle();
+    assert.ok(requests > 0);
+    assert.deepEqual(table(render(component)).props.data, []);
+  }
+});
+
+test('settings navigation renders cached fields immediately and stale background sync preserves dirty fields', async () => {
+  const cached = settingsFixture();
+  const key = `${ui.dataCacheEpoch()}:settings:bootstrap`;
+  ui.writeDataCache(key, cached, ['settings']);
+  let requests = 0, resolveRefresh;
+  ui.http.defaults.adapter = config => {
+    requests++;
+    return new Promise(resolve => { resolveRefresh = data => resolve({ status: 200, config, headers: {}, data }); });
+  };
+  let tree = render(ui.AdminSettings);
+  assert.equal(inputById(tree, 'business_name').props.value, 'Saved name');
+  const cleanup = effects.at(-1)(); await settle();
+  assert.equal(requests, 0);
+  cleanup(); states = []; refs = []; effects = [];
+  const originalNow = Date.now;
+  try {
+    Date.now = () => originalNow() + ui.DEFAULT_STALE_TIME;
+    tree = render(ui.AdminSettings);
+    assert.equal(inputById(tree, 'low_stock_threshold').props.value, '20');
+    effects.at(-1)(); await settle();
+    assert.equal(requests, 1);
+    inputById(tree, 'business_name').props.onChange({ target: { value: 'Unsaved business' } });
+    tree = render(ui.AdminSettings);
+    inputById(tree, 'low_stock_threshold').props.onChange({ target: { value: '24' } });
+    resolveRefresh({ ...cached, system: { ...cached.system, business_name: 'Server name', business_address: 'Updated address' },
+      inventory: { ...cached.inventory, low_stock_threshold: 30, near_expiry_threshold: 9 } });
+    await settle(); tree = render(ui.AdminSettings);
+    assert.equal(inputById(tree, 'business_name').props.value, 'Unsaved business');
+    assert.equal(inputById(tree, 'business_address').props.value, 'Updated address');
+    assert.equal(inputById(tree, 'low_stock_threshold').props.value, '24');
+    assert.equal(inputById(tree, 'near_expiry_threshold').props.value, '9');
+    assert.equal(toastErrors.length, 0);
+  } finally { Date.now = originalNow; }
 });

@@ -1,35 +1,24 @@
 import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
-import { toastApiError } from "@/lib/errorHandling";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Eye } from "lucide-react";
 import { TransactionDetails } from "@/features/sales/components/TransactionDetails";
 import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 const PAYMENT_METHODS = ["Cash", "Online"];
 
 export function AdminSalesHistory() {
   const pageCapacity = useAdminAutoPageSize(56);
-  const [records, setRecords] = useState<Sale[]>([]);
-  const [recordsLoading, setRecordsLoading] = useState(true);
   const [paymentFilter, setPaymentFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("");
   const [selected, setSelected] = useState<Sale | null>(null);
 
-  const loadSales = () => {
-    setRecordsLoading(true);
-    salesService.getAll({ startDate: dateFilter || undefined, endDate: dateFilter || undefined })
-      .then(setRecords)
-      .catch(error => toastApiError(error))
-      .finally(() => setRecordsLoading(false));
-  };
-
-  useEffect(() => {
-    loadSales();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFilter]);
+  const { data: cachedRecords, loading: recordsLoading } = useCachedQuery(`sales:history:${dateFilter}`,
+    () => salesService.getAll({ startDate: dateFilter || undefined, endDate: dateFilter || undefined }), ["sales"]);
+  const records = cachedRecords ?? [];
 
   const filteredRecords = useMemo(() => {
     return records.filter(s => paymentFilter === "All" || s.payment === paymentFilter);

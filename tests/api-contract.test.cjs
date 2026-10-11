@@ -11,6 +11,7 @@ const compiled = buildSync({
   stdin: { contents: `
     export { default as http } from './src/lib/api';
     export * from './src/lib/api';
+    export * from './src/lib/dataCache';
     export * from './src/hooks/useAutoPageSize';
     export * from './src/features/pos/api/checkout.service';
     export * from './src/features/orders/api/orders.service';
@@ -44,6 +45,7 @@ let calls;
 let responseData;
 let responseStatus;
 beforeEach(() => {
+  api.clearDataCache();
   const storage = new Map();
   global.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
   global.window = new EventTarget();
@@ -174,6 +176,74 @@ test('global inventory settings validate zero, invalid numbers, and coupled expi
   });
 });
 
+test('memory cache deduplicates requests, respects three-minute freshness, and preserves stale data on failure', async () => {
+  let calls = 0, resolve;
+  const first = api.fetchDataCache('orders:test', () => { calls++; return new Promise(done => resolve = done); }, ['orders']);
+  const second = api.fetchDataCache('orders:test', () => { throw new Error('Duplicate fetch'); }, ['orders']);
+  await new Promise(done => setImmediate(done));
+  assert.equal(calls, 1);
+  resolve([{ id: 1 }]); await Promise.all([first, second]);
+  await api.fetchDataCache('orders:test', () => { calls++; return Promise.resolve([]); }, ['orders']);
+  assert.equal(calls, 1);
+  const originalNow = Date.now;
+  const updated = api.readDataCache('orders:test').updatedAt;
+  try {
+    Date.now = () => updated + api.DEFAULT_STALE_TIME;
+    await assert.rejects(api.fetchDataCache('orders:test', () => Promise.reject(new Error('Offline')), ['orders']), /Offline/);
+    assert.deepEqual(api.readDataCache('orders:test').data, [{ id: 1 }]);
+    assert.equal(api.DEFAULT_STALE_TIME, 180000);
+  } finally { Date.now = originalNow; }
+});
+
+test('invalidation and session clearing discard outdated in-flight cache results', async () => {
+  let resolveOld;
+  const old = api.fetchDataCache('sales:race', () => new Promise(resolve => resolveOld = resolve), ['sales']);
+  await new Promise(done => setImmediate(done));
+  api.invalidateDataCache(['sales']);
+  await api.fetchDataCache('sales:race', () => Promise.resolve('new'), ['sales']);
+  resolveOld('old'); await old;
+  assert.equal(api.readDataCache('sales:race').data, 'new');
+  let resolveSession;
+  const pending = api.fetchDataCache('session:race', () => new Promise(resolve => resolveSession = resolve), ['dashboard']);
+  await new Promise(done => setImmediate(done));
+  api.setAccessToken('another-user');
+  resolveSession('previous-account'); await pending;
+  assert.equal(api.readDataCache('session:race').data, undefined);
+});
+
+test('successful writes invalidate dependent caches while failed writes leave them intact', async () => {
+  const seed = async () => {
+    for (const group of ['orders', 'sales', 'dashboard', 'inventory']) await api.fetchDataCache(group, () => Promise.resolve(group), [group], true);
+  };
+  await seed();
+  await api.http.post('/sales/orders/', {});
+  for (const group of ['orders', 'sales', 'dashboard', 'inventory']) assert.equal(api.readDataCache(group).updatedAt, 0);
+  await seed();
+  await api.http.post('/sales/checkout/', {});
+  assert.ok(api.readDataCache('orders').updatedAt > 0);
+  assert.equal(api.readDataCache('sales').updatedAt, 0);
+  assert.equal(api.readDataCache('dashboard').updatedAt, 0);
+  await seed();
+  responseStatus = 400;
+  await assert.rejects(api.http.patch('/settings/inventory/', {}));
+  assert.ok(api.readDataCache('inventory').updatedAt > 0);
+});
+
+test('permission loss removes stale data and normal token refresh preserves the current account cache', async () => {
+  await api.fetchDataCache('protected:cached', () => Promise.resolve('private'), ['dashboard']);
+  api.setAccessToken('rotated-token', true);
+  assert.equal(api.readDataCache('protected:cached').data, 'private');
+  await assert.rejects(api.fetchDataCache('protected:cached', () => Promise.reject(new api.ApiError(403, 'Denied')), ['dashboard'], true));
+  assert.equal(api.readDataCache('protected:cached').data, undefined);
+});
+
+test('staff sales history reuses initialized identity instead of a sequential account fetch', async () => {
+  responseData = [];
+  await api.salesService.getMine(7);
+  assert.deepEqual(calls.map(call => call.url), ['/sales/transactions/']);
+  assert.equal(calls[0].params.handled_by, 7);
+});
+
 test('inventory settings PATCH retains API field errors and uses the authenticated settings endpoint', async () => {
   await api.settingsService.updateInventory({ near_expiry_threshold: 2, critical_expiry_threshold: 0 });
   assert.equal(calls[0].method, 'patch');
@@ -273,6 +343,7 @@ test('PDF download requests a blob and converts JSON blob errors to useful messa
   assert.equal(calls[0].responseType, 'blob');
   assert.equal(clicked && removed, true);
   assert.match(link.download, /^daily_sales-.*\.pdf$/);
+  api.invalidateDataCache(['reports']);
   responseStatus = 400;
   responseData = new Blob([JSON.stringify({ error: 'Report unavailable.' })], { type: 'application/json' });
   await assert.rejects(api.reportsService.downloadReportPDF('daily_sales'), { message: 'Report unavailable.' });
@@ -674,4 +745,64 @@ test('checkout retains authoritative returned prices for the saved receipt', asy
   assert.equal(receipt.items[0].price, 'PHP 60.00');
   assert.equal(receipt.items[0].subtotal, 'PHP 60.00');
   assert.equal(result.totalAmount, 60);
+});
+
+
+test('navigation mutations invalidate their dependent groups and preserve unrelated cache entries', async () => {
+  const groups = ['categories', 'customers', 'users', 'settings', 'inventory', 'dashboard', 'reports', 'orders'];
+  for (const [method, url, affected] of [
+    ['post', '/inventory/categories/', ['categories', 'inventory', 'reports', 'dashboard']],
+    ['patch', '/inventory/categories/1/', ['categories', 'inventory', 'reports', 'dashboard']],
+    ['delete', '/inventory/categories/1/', ['categories', 'inventory', 'reports', 'dashboard']],
+    ['patch', '/sales/customers/1/', ['customers', 'reports']],
+    ['delete', '/sales/customers/1/', ['customers', 'reports']],
+    ['post', '/accounts/register/', ['users']],
+    ['patch', '/accounts/users/1/', ['users']],
+    ['delete', '/accounts/users/1/', ['users']],
+    ['patch', '/settings/system/', ['settings', 'inventory', 'dashboard', 'reports']],
+    ['patch', '/settings/inventory/', ['settings', 'inventory', 'dashboard', 'reports']],
+    ['patch', '/settings/notifications/', ['settings', 'inventory', 'dashboard', 'reports']],
+  ]) {
+    for (const group of groups) api.writeDataCache(group, group, [group]);
+    await api.http.request({ method, url, data: {} });
+    for (const group of groups) {
+      assert.equal(api.readDataCache(group).updatedAt === 0, affected.includes(group), `${url}: ${group}`);
+      assert.equal(api.readDataCache(group).data, group);
+    }
+  }
+  responseStatus = 400;
+  api.writeDataCache('customers', ['saved'], ['customers']);
+  await assert.rejects(api.http.patch('/sales/customers/1/', {}));
+  assert.ok(api.readDataCache('customers').updatedAt > 0);
+});
+
+test('ingredient reads reuse cache, distinguish inactive filters, and refresh after writes', async () => {
+  responseData = [{ id: 1, name: 'Milk' }];
+  await api.inventoryService.getIngredients();
+  await api.inventoryService.getIngredients();
+  assert.equal(calls.length, 1);
+  await api.inventoryService.getIngredients(true);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].params, { include_inactive: true });
+  await api.inventoryService.updateIngredient(1, { name: 'Fresh milk' });
+  responseData = [{ id: 1, name: 'Fresh milk' }];
+  assert.equal((await api.inventoryService.getIngredients())[0].name, 'Fresh milk');
+  assert.equal(calls.filter(call => call.method === 'get').length, 3);
+});
+
+test('PDF exports reuse fresh blobs and refetch after report refresh or three-minute expiry', async () => {
+  responseData = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+  global.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } };
+  await api.reportsService.downloadReportPDF('inventory');
+  await api.reportsService.downloadReportPDF('inventory');
+  assert.equal(calls.length, 1);
+  await api.reportsService.refreshReportCache();
+  await api.reportsService.downloadReportPDF('inventory');
+  assert.equal(calls.filter(call => call.url === '/api/reports/export-pdf/').length, 2);
+  const originalNow = Date.now;
+  try {
+    Date.now = () => originalNow() + api.DEFAULT_STALE_TIME;
+    await api.reportsService.downloadReportPDF('inventory');
+    assert.equal(calls.filter(call => call.url === '/api/reports/export-pdf/').length, 3);
+  } finally { Date.now = originalNow; }
 });

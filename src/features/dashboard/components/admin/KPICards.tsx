@@ -1,11 +1,9 @@
-﻿import { useEffect, useState } from "react";
 import { AlertTriangle, Calendar, ClipboardList, DollarSign } from "lucide-react";
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
-import { toastApiError } from "@/lib/errorHandling";
 import { getAllPages, type DjangoTransaction } from "@/lib/api";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { C } from "@/styles/tokens/colors";
 import { isLowStock } from "@/features/inventory/utils/stock";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 interface Props {
   /** Override when pending orders are managed outside the current sales API. */
@@ -29,38 +27,26 @@ const php = (value: number) => `₱${value.toLocaleString("en-PH", { minimumFrac
 const neutralBadge = "text-slate-600 bg-slate-100";
 
 export function KPICards({ pendingOrderCount }: Props = {}) {
-  const reportVersion = useReportVersion();
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setFailed(false);
+  const { data: metrics, loading, error } = useCachedQuery<Metrics>(`dashboard:admin-kpis:${businessDate()}:${pendingOrderCount ?? "api"}`, async () => {
     const today = businessDate();
     const yesterday = businessDate(-1);
-    Promise.all([
+    const [todayTransactions, yesterdayTransactions, products, batches, orders] = await Promise.all([
       getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: today, end_date: today }),
       getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: yesterday, end_date: yesterday }),
       inventoryService.getLowStockProducts(),
       inventoryService.getExpiringProducts(),
       pendingOrderCount === undefined ? getAllPages<{ status: string }>("/sales/orders/") : Promise.resolve([]),
-    ]).then(([todayTransactions, yesterdayTransactions, products, batches, orders]) => {
-      if (!active) return;
-      const total = (rows: DjangoTransaction[]) => rows.reduce((sum, row) => sum + Number(row.total_amount), 0);
-      setMetrics({
+    ]);
+    const total = (rows: DjangoTransaction[]) => rows.reduce((sum, row) => sum + Number(row.total_amount), 0);
+    return {
         todaySales: total(todayTransactions), yesterdaySales: total(yesterdayTransactions),
         lowStock: products.filter(product => product.is_active && isLowStock(product.total_stock, product.low_stock_threshold)).length,
         expiringSoon: batches.filter(batch => batch.product.is_active && batch.status === "available"
           && Number(batch.remaining_quantity) > 0 && batch.expiration_date >= today).length,
         pendingOrders: orders.filter(order => ["pending", "unfulfilled", "processing"].includes(order.status.toLowerCase())).length,
-      });
-    }).catch(error => {
-      if (active) { setFailed(true); toastApiError(error); }
-    }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [reportVersion, pendingOrderCount]);
+    };
+  }, ["dashboard"]);
+  const failed = !!error;
 
   const available = !failed;
   const today = metrics?.todaySales ?? 0;

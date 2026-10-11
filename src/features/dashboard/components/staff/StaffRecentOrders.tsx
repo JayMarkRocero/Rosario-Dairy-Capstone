@@ -1,6 +1,4 @@
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
-import { toastApiError } from "@/lib/errorHandling";
-import { useState, useEffect } from "react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { Card } from "@/components/data-display/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
@@ -8,31 +6,13 @@ import { DataTable } from "@/components/data-display/DataTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { C } from "@/styles/tokens/colors";
 import { ordersService } from "@/features/orders/api/orders.service";
-import type { OrderListItem } from "@/features/orders/types/order";
 
 const RECENT_ORDER_LIMIT = 5;
 
 export function StaffRecentOrders() {
-  const reportVersion = useReportVersion();
-  const [orders, setOrders] = useState<OrderListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    ordersService.getRecent(RECENT_ORDER_LIMIT)
-      .then((data) => {
-        if (active) setOrders(data.slice(0, RECENT_ORDER_LIMIT));
-      })
-      .catch(error => toastApiError(error))
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [reportVersion]);
+  const query = useCachedQuery("dashboard:recent-orders:5", () => ordersService.getRecent(RECENT_ORDER_LIMIT), ["dashboard", "orders"]);
+  const orders = (query.data ?? []).slice(0, RECENT_ORDER_LIMIT);
+  const loading = query.loading;
 
   return (
     <Card className="p-4 sm:p-5 h-full min-w-0">

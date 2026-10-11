@@ -1,9 +1,10 @@
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Plus, Eye, Edit, Trash2, Lock, PenBox, KeyIcon, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
@@ -111,20 +112,10 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
 export function AdminUserManagement() {
   const pageCapacity = useAdminAutoPageSize(56);
   const { user: currentUser } = useAuth();
-  const [users, setUsers] = useState<SystemUser[]>([]);
-  const [usersLoading, setUsersLoading] = useState(true);
-
-  const loadUsers = () => {
-    setUsersLoading(true);
-    userService.getAll()
-      .then(setUsers)
-      .catch(error => toastApiError(error, "Failed to load users."))
-      .finally(() => setUsersLoading(false));
-  };
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  const query = useCachedQuery("users:list", () => userService.getAll(), ["users"]);
+  const users = query.data ?? [];
+  const usersLoading = query.loading;
+  const loadUsers = query.refresh;
 
   const [roleFilter,  setRoleFilter]  = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");

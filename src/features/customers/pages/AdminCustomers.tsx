@@ -1,9 +1,10 @@
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Eye, Edit, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
@@ -60,20 +61,10 @@ function CustomerForm({ form, onChange }: { form: FormState; onChange: (f: FormS
 
 export function AdminCustomers() {
   const pageCapacity = useAdminAutoPageSize(56);
-  const [list, setList] = useState<Customer[]>([]);
-  const [listLoading, setListLoading] = useState(true);
-
-  const loadCustomers = () => {
-    setListLoading(true);
-    customersService.getAll(true)
-      .then(setList)
-      .catch(error => toastApiError(error, "Failed to load customers."))
-      .finally(() => setListLoading(false));
-  };
-
-  useEffect(() => {
-    loadCustomers();
-  }, []);
+  const query = useCachedQuery("customers:list:all", () => customersService.getAll(true), ["customers"]);
+  const list = query.data ?? [];
+  const listLoading = query.loading;
+  const loadCustomers = query.refresh;
 
   const [segFilter,  setSegFilter]  = useState("All");
   const [addOpen,    setAddOpen]    = useState(false);

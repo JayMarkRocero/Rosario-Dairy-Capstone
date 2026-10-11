@@ -1,39 +1,19 @@
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
-import { toastApiError } from "@/lib/errorHandling";
-import { useState, useEffect, useMemo } from "react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
+import { useMemo } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Card } from "@/components/data-display/Card";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
 import { C } from "@/styles/tokens/colors";
-import { salesService, type Sale } from "@/features/sales/api/sales.service";
+import { salesService } from "@/features/sales/api/sales.service";
 import { authService } from "@/features/auth/api/auth.service";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function MiniSalesChart() {
-  const reportVersion = useReportVersion();
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [username, setUsername] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    Promise.all([salesService.getAll(), authService.getCurrentUser()])
-      .then(([s, user]) => {
-        if (!active) return;
-        setSales(s);
-        setUsername(user.username);
-      })
-      .catch(error => toastApiError(error))
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [reportVersion]);
+  const query = useCachedQuery("dashboard:staff-weekly-sales", () => Promise.all([salesService.getAll(), authService.getCurrentUser()]), ["dashboard", "sales"]);
+  const sales = query.data?.[0] ?? [];
+  const username = query.data?.[1].username ?? null;
+  const loading = query.loading;
 
   const chartData = useMemo(() => {
     const mySales = sales.filter(s => s.cashier === username);

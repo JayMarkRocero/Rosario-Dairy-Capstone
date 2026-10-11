@@ -3,7 +3,7 @@ import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useMemo, useState, useRef } from "react";
 import { Plus, Eye, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Btn } from "@/components/buttons/Btn";
@@ -16,13 +16,14 @@ import { ordersService, mapOrder } from "@/features/orders/api/orders.service";
 import { CreateOrderModal } from "@/features/orders/components/CreateOrderModal";
 import type { OrderListItem } from "@/features/orders/types/order";
 import { C } from "@/styles/tokens/colors";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 const STATUSES = ["Fulfilled", "Cancelled"];
 
 export function AdminOrders() {
   const pageCapacity = useAdminAutoPageSize(56);
-  const [orders, setOrders] = useState<OrderListItem[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
+  const { data: cachedOrders, loading: loadingList, refresh: load } = useCachedQuery("orders:list", ordersService.getAll, ["orders"]);
+  const orders = cachedOrders ?? [];
   const [status, setStatus] = useState("All");
   const [selected, setSelected] = useState<OrderListItem | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
@@ -31,12 +32,6 @@ export function AdminOrders() {
   const cancellationLock = useRef(false);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const load = () => {
-    setLoadingList(true);
-    ordersService.getAll().then(setOrders).catch(error => toastApiError(error, "Failed to load orders."))
-      .finally(() => setLoadingList(false));
-  };
-  useEffect(load, []);
 
   const data = useMemo(() => status === "All" ? orders : orders.filter(order => order.status === status), [orders, status]);
   const view = (order: OrderListItem) => { setSelected(order); setViewOpen(true); };
@@ -47,7 +42,6 @@ export function AdminOrders() {
     setLoading(true);
     ordersService.cancelOrder(selected.id).then(order => {
       const updated = mapOrder(order);
-      setOrders(current => current.map(row => row.id === order.id ? updated : row));
       setSelected(current => current?.id === order.id ? updated : current);
       if (order.warning) toast.warning(order.warning); else toast.success("Order cancelled.");
       setCancelOpen(false); setViewOpen(false); load();

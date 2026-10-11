@@ -34,8 +34,8 @@ export function toSale(t: DjangoTransaction): Sale {
 }
 
 export const salesService = {
-  getMine: async (): Promise<Sale[]> => {
-    const userId = await authService.getCurrentUserId();
+  getMine: async (knownUserId?: number): Promise<Sale[]> => {
+    const userId = knownUserId ?? await authService.getCurrentUserId();
     const sales = await salesService.getAll({ handledBy: userId });
     return sales.filter(sale => sale.transaction.handled_by.id === userId);
   },

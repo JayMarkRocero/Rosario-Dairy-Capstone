@@ -1,34 +1,15 @@
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
-import { toastApiError } from "@/lib/errorHandling";
-import { useState, useEffect } from "react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { Card } from "@/components/data-display/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
 import { C } from "@/styles/tokens/colors";
-import { reportsService, type CategorySales } from "@/features/reports/api/reports.service";
+import { reportsService } from "@/features/reports/api/reports.service";
 
 export function SalesCategoryChart() {
-  const reportVersion = useReportVersion();
-  const [categoryData, setCategoryData] = useState<CategorySales[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    reportsService.getSalesByCategory()
-      .then((data) => {
-        if (active) setCategoryData(data);
-      })
-      .catch(error => toastApiError(error))
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [reportVersion]);
+  const query = useCachedQuery("dashboard:sales-categories", reportsService.getSalesByCategory, ["dashboard"]);
+  const categoryData = query.data ?? [];
+  const loading = query.loading;
 
   return (
     <Card className="p-5">

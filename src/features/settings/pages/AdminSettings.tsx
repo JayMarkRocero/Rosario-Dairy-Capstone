@@ -1,3 +1,4 @@
+import { dataCacheEpoch, DEFAULT_STALE_TIME, ensureCacheEvents, fetchDataCache, readDataCache, subscribeDataCache } from "@/lib/dataCache";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, Calendar, ClipboardList, FileText } from "lucide-react";
@@ -28,11 +29,25 @@ const businessFields: { key: keyof SystemSettings; label: string; placeholder: s
 
 type Section = "business" | "alerts" | "inventory";
 
+// Refresh clean fields while keeping unsaved edits in every settings section.
+function mergeDraft<T extends object>(current: T | undefined, previous: T | undefined, fresh: T | undefined): T | undefined {
+  if (!fresh || !current || !previous) return fresh;
+  const result = { ...fresh };
+  for (const key of Object.keys(current) as Array<keyof T>) {
+    if (current[key] !== previous[key]) result[key] = current[key];
+  }
+  return result;
+}
+
 export function AdminSettings() {
-  const [saved, setSaved] = useState<AppSettings | null>(null);
-  const [draft, setDraft] = useState<AppSettings | null>(null);
-  const [inventoryDraft, setInventoryDraft] = useState<InventorySettingsDraft | null>(null);
-  const [loading, setLoading] = useState(true);
+  const session = dataCacheEpoch();
+  const cacheKey = `${session}:settings:bootstrap`;
+  ensureCacheEvents();
+  const cached = readDataCache<AppSettings>(cacheKey).data;
+  const [saved, setSaved] = useState<AppSettings | null>(cached ?? null);
+  const [draft, setDraft] = useState<AppSettings | null>(cached ?? null);
+  const [inventoryDraft, setInventoryDraft] = useState<InventorySettingsDraft | null>(cached?.inventory ? inventorySettingsDraft(cached.inventory) : null);
+  const [loading, setLoading] = useState(!cached);
   const [saving, setSaving] = useState<Section | null>(null);
   const [loadError, setLoadError] = useState("");
   const [errors, setErrors] = useState<Record<Section, string>>({ business: "", alerts: "", inventory: "" });
@@ -40,16 +55,38 @@ export function AdminSettings() {
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setLoadError("");
-    settingsService.get().then(data => {
-      if (active) { setSaved(data); setDraft(data); setInventoryDraft(data.inventory ? inventorySettingsDraft(data.inventory) : null); }
-    }).catch(error => {
-      if (active) setLoadError(error instanceof Error ? error.message : "Unable to load settings.");
-    }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [reload]);
+    let previous = readDataCache<AppSettings>(cacheKey).data;
+    const refresh = () => {
+      if (session === dataCacheEpoch()) void fetchDataCache(cacheKey, settingsService.get, ["settings"]).catch(() => {});
+    };
+    const sync = () => {
+      if (session !== dataCacheEpoch()) { setSaved(null); setDraft(null); return; }
+      const snapshot = readDataCache<AppSettings>(cacheKey);
+      const data = snapshot.data;
+      if (data && data !== previous) {
+        const old = previous;
+        setDraft(current => ({ ...data,
+          system: mergeDraft(current?.system, old?.system, data.system),
+          notifications: mergeDraft(current?.notifications, old?.notifications, data.notifications)!,
+        }));
+        setInventoryDraft(current => data.inventory ? mergeDraft(current ?? undefined,
+          old?.inventory ? inventorySettingsDraft(old.inventory) : undefined, inventorySettingsDraft(data.inventory))! : null);
+        setSaved(data);
+        previous = data;
+      }
+      if (!data && snapshot.error) { setSaved(null); setDraft(null); }
+      setLoading(!data && !snapshot.error);
+      setLoadError(!data && snapshot.error ? (snapshot.error instanceof Error ? snapshot.error.message : "Unable to load settings.") : "");
+      if (!snapshot.updatedAt && !snapshot.error) refresh();
+    };
+    const unsubscribe = subscribeDataCache(cacheKey, sync);
+    sync();
+    if (reload) void fetchDataCache(cacheKey, settingsService.get, ["settings"], true).catch(() => {});
+    else refresh();
+    window.addEventListener("focus", refresh);
+    const timer = setInterval(refresh, DEFAULT_STALE_TIME);
+    return () => { unsubscribe(); clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [cacheKey, reload]);
 
   if (loading) return <EmptyState loading title="Opening settings" />;
   if (!draft || !saved) return <div className="space-y-4 p-4 sm:p-6">
@@ -87,7 +124,7 @@ export function AdminSettings() {
     setFieldErrors({});
     try {
       await settingsService.updateSystem(businessPatch);
-      const fresh = await settingsService.get();
+      const fresh = await fetchDataCache(cacheKey, settingsService.get, ["settings"]);
       setSaved(fresh);
       setDraft(current => ({ ...fresh, inventory: current?.inventory ?? fresh.inventory, notifications: current?.notifications ?? fresh.notifications }));
       toast.success("Business profile saved.");
@@ -107,7 +144,7 @@ export function AdminSettings() {
     setErrors(current => ({ ...current, alerts: "" }));
     try {
       await settingsService.updateNotifications(alertPatch);
-      const fresh = await settingsService.get();
+      const fresh = await fetchDataCache(cacheKey, settingsService.get, ["settings"]);
       setSaved(fresh);
       setDraft(current => ({ ...fresh, inventory: current?.inventory ?? fresh.inventory, system: current?.system ?? fresh.system }));
       toast.success("Notification preferences saved.");
@@ -129,7 +166,7 @@ export function AdminSettings() {
     setSaving("inventory");
     try {
       await settingsService.updateInventory(validation.payload);
-      const fresh = await settingsService.get();
+      const fresh = await fetchDataCache(cacheKey, settingsService.get, ["settings"]);
       if (!fresh.inventory) throw new Error("Unable to reload inventory alert settings.");
       setSaved(fresh);
       setDraft(current => ({ ...fresh, system: current?.system ?? fresh.system, notifications: current?.notifications ?? fresh.notifications }));

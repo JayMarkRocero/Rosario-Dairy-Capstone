@@ -4,7 +4,7 @@ import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Plus, Eye, Edit, Trash2, AlertTriangle, PackagePlus } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
@@ -20,7 +20,7 @@ import type { InventoryItem } from "@/features/inventory/types/inventory";
 import { MobileInventoryCard } from "@/features/inventory/components/MobileInventoryCard";
 import { InventoryStatusBadge, InventoryStockValue, InventoryExpiryValue } from "@/features/inventory/components/InventoryWarnings";
 import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 interface FormState {
@@ -156,29 +156,13 @@ function ProductDetail({ p }: { p: InventoryItem }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function AdminInventory() {
-  const inventoryVersion = useReportVersion();
   const pageCapacity = useAdminAutoPageSize(56, { minPageSize: 1, maxPageSize: 5 });
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [itemsLoading, setItemsLoading] = useState(true);
-  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
-  const inventoryRequest = useRef(0);
-
-  const loadItems = () => {
-    const request = ++inventoryRequest.current;
-    setItemsLoading(true);
-    inventoryService.getOverview()
-      .then(data => { if (request === inventoryRequest.current) setItems(data); })
-      .catch(error => { if (request === inventoryRequest.current) toastApiError(error, "Failed to load inventory."); })
-      .finally(() => { if (request === inventoryRequest.current) setItemsLoading(false); });
-  };
-
-  useEffect(() => {
-    loadItems();
-    inventoryService.getCategoriesRaw()
-      .then(setCategories)
-      .catch(error => toastApiError(error, "Failed to load categories."));
-    return () => { inventoryRequest.current += 1; };
-  }, [inventoryVersion]);
+  const query = useCachedQuery("inventory:admin", () => inventoryService.getOverview(), ["inventory"]);
+  const items = query.data ?? [];
+  const itemsLoading = query.loading;
+  const loadItems = query.refresh;
+  const categoryQuery = useCachedQuery("categories:active", () => inventoryService.getCategoriesRaw(), ["categories"]);
+  const categories = categoryQuery.data ?? [];
 
   const [catFilter,    setCatFilter]    = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");

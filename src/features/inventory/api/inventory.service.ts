@@ -1,3 +1,4 @@
+import { dataCacheEpoch, fetchDataCache } from "@/lib/dataCache";
 import http, {
   type CreateCategoryPayload,
   type CreateIngredientBatchPayload,
@@ -43,7 +44,7 @@ function fefoStatus(days: number, settings?: InventorySettings, expiryStatus?: D
 }
 
 export const inventoryService = {
-  getAll: async (staffVisibleOnly = false): Promise<InventoryItem[]> => {
+  getAll: async (staffVisibleOnly = false): Promise<InventoryItem[]> => fetchDataCache(`${dataCacheEpoch()}:inventory:products:${staffVisibleOnly}`, async () => {
   const [productsResponse, batchesResponse] = await Promise.all([
     http.get<DjangoProduct[]>("/inventory/products/"),
     http.get<DjangoProductBatch[]>("/inventory/product-batches/"),
@@ -80,7 +81,7 @@ export const inventoryService = {
         nearestBatch: nearestBatch ? { number: nearestBatch.batch_number, quantity: Number(nearestBatch.remaining_quantity) } : undefined,
       };
     });
-  },
+  }, ["inventory"]),
 
   // Admin inventory uses saved windows independently of notification switches.
   // Staff can only classify expiry warnings supplied by their permitted alert feed.
@@ -288,12 +289,12 @@ export const inventoryService = {
     return data;
   },
 
-  getIngredients: async (includeInactive = false): Promise<DjangoIngredient[]> => {
+  getIngredients: async (includeInactive = false): Promise<DjangoIngredient[]> => fetchDataCache(`${dataCacheEpoch()}:inventory:ingredients:${includeInactive}`, async () => {
     const { data } = await http.get<DjangoIngredient[]>("/inventory/ingredients/", {
       params: includeInactive ? { include_inactive: true } : undefined,
     });
     return data;
-  },
+  }, ["inventory"]),
 
   createIngredient: async (payload: CreateIngredientPayload): Promise<DjangoIngredient> => {
     const { data } = await http.post<DjangoIngredient>("/inventory/ingredients/", ingredientPayload(payload));

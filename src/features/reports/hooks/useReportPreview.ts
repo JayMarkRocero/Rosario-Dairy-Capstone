@@ -1,8 +1,8 @@
-import { toastApiError } from "@/lib/errorHandling";
 import { useEffect, useState } from "react";
 import { REPORTS_UPDATED, reportsService, type ReportPreview, type ReportType } from "@/features/reports/api/reports.service";
 import { getApiErrorMessage } from "@/lib/api";
 import { SETTINGS_UPDATED } from "@/features/settings/api/settings.service";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 export function useReportVersion() {
   const [version, setVersion] = useState(0);
@@ -19,19 +19,8 @@ export function useReportVersion() {
 }
 
 export function useReportPreview(type: ReportType, period?: "weekly" | "monthly" | "yearly") {
-  const version = useReportVersion();
-  const [data, setData] = useState<ReportPreview | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    setLoading(true); setData(null); setError("");
-    reportsService.fetchReportPreview(type, period).then(result => { if (active) setData(result.data); })
-      .catch(error => { if (active) { setError(getApiErrorMessage(error, "Unable to load report.")); toastApiError(error, "Unable to load report."); } })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [type, period, version]);
-  return { data, loading, error };
+  const query = useCachedQuery(`dashboard:preview:${type}:${period ?? "default"}`, async () => (await reportsService.fetchReportPreview(type, period)).data, ["dashboard", "reports"]);
+  return { data: query.data ?? null, loading: query.loading, error: query.error ? getApiErrorMessage(query.error, "Unable to load report.") : "" };
 }
 
 export function reportNumber(report: ReportPreview | null, key: string): number | null {

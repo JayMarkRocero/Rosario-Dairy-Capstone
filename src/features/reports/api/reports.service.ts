@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { dataCacheEpoch, ensureCacheEvents, fetchDataCache } from "@/lib/dataCache";
 import { getApiErrorMessage } from "@/lib/api";
 import http, { type DjangoBestSeller, type DjangoSalesByCategory } from "@/lib/api";
 import type { RevenueBucket, RevenuePeriod } from "@/features/reports/utils/revenueWindow";
@@ -85,11 +86,12 @@ export const reportsService = {
   },
 
   downloadReportPDF: async (type: ReportType): Promise<void> => {
-    const response = await http.get<Blob>("/api/reports/export-pdf/", {
-      params: { type },
-      responseType: "blob",
-    });
-    const url = URL.createObjectURL(response.data);
+    ensureCacheEvents();
+    const blob = await fetchDataCache(`${dataCacheEpoch()}:reports:pdf:${type}`, async () =>
+      (await http.get<Blob>("/api/reports/export-pdf/", {
+        params: { type }, responseType: "blob",
+      })).data, ["reports"]);
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = `${type}-${new Date().toISOString().slice(0, 10)}.pdf`;
@@ -104,6 +106,7 @@ export const reportsService = {
   },
 
   refreshReportCache: async (): Promise<void> => {
+    ensureCacheEvents();
     await http.post("/api/reports/refresh/", {});
     window.dispatchEvent(new Event(REPORTS_UPDATED));
   },

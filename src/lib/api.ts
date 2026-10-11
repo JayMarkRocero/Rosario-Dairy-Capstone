@@ -1,4 +1,5 @@
 import axios, { AxiosError } from "axios";
+import { clearDataCache, invalidateDataCache } from "./dataCache";
 
 const REFRESH_TOKEN_KEY = "rosario_refresh_token";
 
@@ -33,7 +34,8 @@ function notifyUnauthorized() {
   unauthorizedListeners.forEach((listener) => listener());
 }
 
-export function setAccessToken(token: string | null) {
+export function setAccessToken(token: string | null, refreshingSession = false) {
+  if (!refreshingSession && token !== getAccessToken()) clearDataCache();
   if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token);
   else localStorage.removeItem(ACCESS_TOKEN_KEY);
 }
@@ -43,6 +45,7 @@ export function getAccessToken(): string | null {
 }
 
 export function setRefreshToken(token: string | null) {
+  if (!token) clearDataCache();
   if (token) localStorage.setItem(REFRESH_TOKEN_KEY, token);
   else localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
@@ -62,7 +65,7 @@ export function refreshAccessToken(): Promise<string> {
     .then(({ data }) => {
       if (getRefreshToken() !== refresh) throw new ApiError(401, "Session changed. Please log in again.");
       if (!data.access) throw new ApiError(401, "Unable to refresh your session.");
-      setAccessToken(data.access);
+      setAccessToken(data.access, true);
       if (data.refresh) setRefreshToken(data.refresh);
       return data.access;
     }).finally(() => { refreshRequest = null; });
@@ -121,7 +124,20 @@ export function getApiErrorMessage(error: unknown, fallback = "Something went wr
 }
 
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = response.config.method?.toLowerCase();
+    const path = response.config.url ?? "";
+    if (method && !["get", "head", "options"].includes(method)) {
+      if (path.startsWith("/sales/orders/")) invalidateDataCache(["orders", "sales", "dashboard", "inventory", "reports", "customers"]);
+      else if (path.startsWith("/sales/checkout/") || path.startsWith("/sales/transactions/")) invalidateDataCache(["sales", "dashboard", "inventory", "reports", "customers"]);
+      else if (path.startsWith("/inventory/categories/")) invalidateDataCache(["categories", "inventory", "reports", "dashboard"]);
+      else if (path.startsWith("/inventory/")) invalidateDataCache(["inventory", "categories", "dashboard", "reports"]);
+      else if (path.startsWith("/sales/customers/")) invalidateDataCache(["customers", "reports"]);
+      else if (path.startsWith("/accounts/users/") || ["/accounts/register/", "/accounts/user/", "/accounts/admin-reset-password/"].includes(path)) invalidateDataCache(["users"]);
+      else if (path.startsWith("/settings/")) invalidateDataCache(["settings", "inventory", "dashboard", "reports"]);
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     if (!error.response) return Promise.reject(error);
 

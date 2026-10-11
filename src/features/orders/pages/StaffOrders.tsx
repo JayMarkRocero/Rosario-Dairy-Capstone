@@ -1,9 +1,8 @@
 import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
-import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Eye } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
 import { Btn } from "@/components/buttons/Btn";
@@ -14,22 +13,19 @@ import { ordersService } from "@/features/orders/api/orders.service";
 import { CreateOrderModal } from "@/features/orders/components/CreateOrderModal";
 import type { OrderListItem } from "@/features/orders/types/order";
 import { C } from "@/styles/tokens/colors";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 const STATUSES = ["Fulfilled", "Cancelled"];
 
 export function StaffOrders() {
   const pageCapacity = useStaffAutoPageSize(56);
-  const [orders, setOrders] = useState<OrderListItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: cachedOrders, loading, refresh } = useCachedQuery("orders:list", ordersService.getAll, ["orders"]);
+  const orders = cachedOrders ?? [];
   const [status, setStatus] = useState("All");
   const [selected, setSelected] = useState<OrderListItem | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
-  useEffect(() => {
-    ordersService.getAll().then(setOrders).catch(error => toastApiError(error, "Failed to load orders."))
-      .finally(() => setLoading(false));
-  }, []);
 
   const filtered = useMemo(() => orders.filter(order => status === "All" || order.status === status), [orders, status]);
   const view = (order: OrderListItem) => { setSelected(order); setViewOpen(true); };
@@ -59,6 +55,6 @@ export function StaffOrders() {
         <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>{selected.items.map((item,i)=><div key={i} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:justify-between sm:gap-3"><div className="min-w-0"><div className="break-words font-medium">{item.product}</div><div className="text-xs" style={{color:C.muted}}>Qty: {item.quantity}</div></div><b className="shrink-0">₱{item.subtotal.toLocaleString()}</b></div>)}<div className="space-y-1 px-4 py-3" style={{backgroundColor:C.navy+"08"}}><div className="flex justify-between text-sm"><span>Subtotal</span><span>₱{selected.subtotal.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Discount</span><span>−₱{selected.discountAmount.toLocaleString()}</span></div><div className="flex justify-between font-bold"><span>Total</span><span style={{color:C.blue}}>₱{selected.total.toLocaleString()}</span></div></div></div>
       </div>}
     </Drawer>
-    <CreateOrderModal open={createOpen} onClose={()=>setCreateOpen(false)} onCreated={()=>{ ordersService.getAll().then(setOrders).catch(error=>toastApiError(error, "Order saved, but the list could not refresh.")); }}/>
+    <CreateOrderModal open={createOpen} onClose={()=>setCreateOpen(false)} onCreated={refresh}/>
   </div>;
 }

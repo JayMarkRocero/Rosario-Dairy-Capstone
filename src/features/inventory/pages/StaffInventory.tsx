@@ -1,11 +1,10 @@
 import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
-import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { InventoryStockValue, InventoryExpiryValue, InventoryStatusBadge } from "@/features/inventory/components/InventoryWarnings";
 import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
-import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
@@ -15,20 +14,10 @@ import type { InventoryItem } from "@/features/inventory/types/inventory";
 const STATUSES = ["All", "Active", "Low Stock", "Near Expiry", "Expired"];
 
 export function StaffInventory() {
-  const inventoryVersion = useReportVersion();
   const pageCapacity = useStaffAutoPageSize(56);
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [itemsLoading, setItemsLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    setItemsLoading(true);
-    inventoryService.getOverview(true)
-      .then(data => { if (active) setItems(data); })
-      .catch(error => { if (active) toastApiError(error); })
-      .finally(() => { if (active) setItemsLoading(false); });
-    return () => { active = false; };
-  }, [inventoryVersion]);
+  const query = useCachedQuery("inventory:staff", () => inventoryService.getOverview(true), ["inventory"]);
+  const items = query.data ?? [];
+  const itemsLoading = query.loading;
 
   const [category, setCategory] = useState("All");
   const [status, setStatus] = useState("All");
