@@ -2,13 +2,18 @@ import { toastApiError } from "@/lib/errorHandling";
 import { useEffect, useState } from "react";
 import { REPORTS_UPDATED, reportsService, type ReportPreview, type ReportType } from "@/features/reports/api/reports.service";
 import { getApiErrorMessage } from "@/lib/api";
+import { SETTINGS_UPDATED } from "@/features/settings/api/settings.service";
 
 export function useReportVersion() {
   const [version, setVersion] = useState(0);
   useEffect(() => {
     const update = () => setVersion(value => value + 1);
     window.addEventListener(REPORTS_UPDATED, update);
-    return () => window.removeEventListener(REPORTS_UPDATED, update);
+    window.addEventListener(SETTINGS_UPDATED, update);
+    return () => {
+      window.removeEventListener(REPORTS_UPDATED, update);
+      window.removeEventListener(SETTINGS_UPDATED, update);
+    };
   }, []);
   return version;
 }

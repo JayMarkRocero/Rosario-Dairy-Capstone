@@ -19,7 +19,8 @@ import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 import { MobileInventoryCard } from "@/features/inventory/components/MobileInventoryCard";
 import { InventoryStatusBadge, InventoryStockValue, InventoryExpiryValue } from "@/features/inventory/components/InventoryWarnings";
-import { getInventoryWarnings, NEAR_EXPIRY_DAYS } from "@/features/inventory/utils/warnings";
+import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
+import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 interface FormState {
@@ -139,14 +140,14 @@ function ProductDetail({ p }: { p: InventoryItem }) {
         <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
           style={{backgroundColor:C.orange+"15",color:C.orange,border:`1px solid ${C.orange}30`}}>
           <AlertTriangle size={14}/>
-          <span>This product is below the minimum stock threshold.</span>
+          <span>This product is at or below the global stock threshold.</span>
         </div>
       )}
       {getInventoryWarnings(p).nearExpiry && (
         <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
           style={{backgroundColor:"#F59E0B"+"15",color:"#F59E0B",border:`1px solid #F59E0B30`}}>
           <AlertTriangle size={14}/>
-          <span>This product expires within {NEAR_EXPIRY_DAYS} days — prioritize it for sale (FEFO).</span>
+          <span>{getInventoryWarnings(p).expiryMessage} Prioritize it for sale (FEFO).</span>
         </div>
       )}
     </div>
@@ -155,17 +156,20 @@ function ProductDetail({ p }: { p: InventoryItem }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function AdminInventory() {
+  const inventoryVersion = useReportVersion();
   const pageCapacity = useAdminAutoPageSize(56, { minPageSize: 1, maxPageSize: 5 });
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
+  const inventoryRequest = useRef(0);
 
   const loadItems = () => {
+    const request = ++inventoryRequest.current;
     setItemsLoading(true);
-    inventoryService.getAll()
-      .then(setItems)
-      .catch(error => toastApiError(error, "Failed to load inventory."))
-      .finally(() => setItemsLoading(false));
+    inventoryService.getOverview()
+      .then(data => { if (request === inventoryRequest.current) setItems(data); })
+      .catch(error => { if (request === inventoryRequest.current) toastApiError(error, "Failed to load inventory."); })
+      .finally(() => { if (request === inventoryRequest.current) setItemsLoading(false); });
   };
 
   useEffect(() => {
@@ -173,7 +177,8 @@ export function AdminInventory() {
     inventoryService.getCategoriesRaw()
       .then(setCategories)
       .catch(error => toastApiError(error, "Failed to load categories."));
-  }, []);
+    return () => { inventoryRequest.current += 1; };
+  }, [inventoryVersion]);
 
   const [catFilter,    setCatFilter]    = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");

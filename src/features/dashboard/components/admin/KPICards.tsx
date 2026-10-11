@@ -2,7 +2,8 @@
 import { AlertTriangle, Calendar, ClipboardList, DollarSign } from "lucide-react";
 import { useReportVersion } from "@/features/reports/hooks/useReportPreview";
 import { toastApiError } from "@/lib/errorHandling";
-import { getAllPages, type DjangoProduct, type DjangoProductBatch, type DjangoTransaction } from "@/lib/api";
+import { getAllPages, type DjangoTransaction } from "@/lib/api";
+import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { C } from "@/styles/tokens/colors";
 import { isLowStock } from "@/features/inventory/utils/stock";
 
@@ -39,12 +40,11 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
     setFailed(false);
     const today = businessDate();
     const yesterday = businessDate(-1);
-    const expiryLimit = businessDate(7);
     Promise.all([
       getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: today, end_date: today }),
       getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: yesterday, end_date: yesterday }),
-      getAllPages<DjangoProduct>("/inventory/products/"),
-      getAllPages<DjangoProductBatch>("/inventory/product-batches/"),
+      inventoryService.getLowStockProducts(),
+      inventoryService.getExpiringProducts(),
       pendingOrderCount === undefined ? getAllPages<{ status: string }>("/sales/orders/") : Promise.resolve([]),
     ]).then(([todayTransactions, yesterdayTransactions, products, batches, orders]) => {
       if (!active) return;
@@ -53,7 +53,7 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
         todaySales: total(todayTransactions), yesterdaySales: total(yesterdayTransactions),
         lowStock: products.filter(product => product.is_active && isLowStock(product.total_stock, product.low_stock_threshold)).length,
         expiringSoon: batches.filter(batch => batch.product.is_active && batch.status === "available"
-          && Number(batch.remaining_quantity) > 0 && batch.expiration_date >= today && batch.expiration_date <= expiryLimit).length,
+          && Number(batch.remaining_quantity) > 0 && batch.expiration_date >= today).length,
         pendingOrders: orders.filter(order => ["pending", "unfulfilled", "processing"].includes(order.status.toLowerCase())).length,
       });
     }).catch(error => {
@@ -78,9 +78,9 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
       detail: `Completed sales · ${php(yesterday)} yesterday` },
     { title: "Low Stock Alerts", value: String(lowStock), icon: AlertTriangle, color: C.red,
       badge: lowStock > 0 ? "Action Required" : "All Clear", badgeClass: lowStock > 0 ? "text-red-700 bg-red-50" : neutralBadge,
-      detail: "Products below reorder threshold" },
+      detail: "Products at or below the global reorder threshold" },
     { title: "Expiring Soon", value: String(expiringSoon), icon: Calendar, color: C.orange,
-      badge: "Next 7 Days", badgeClass: expiringSoon > 0 ? "text-orange-700 bg-orange-50" : neutralBadge,
+      badge: "Configured window", badgeClass: expiringSoon > 0 ? "text-orange-700 bg-orange-50" : neutralBadge,
       detail: "In-stock dairy batches, including today" },
     { title: "Pending Orders", value: String(pending), icon: ClipboardList, color: C.blue,
       badge: "Needs Action", badgeClass: pending > 0 ? "text-blue-700 bg-blue-50" : neutralBadge,

@@ -23,15 +23,30 @@ export interface NotificationSettings {
 }
 
 export interface AppSettings {
-  system: SystemSettings;
+  system?: SystemSettings;
+  inventory?: InventorySettings;
   notifications: NotificationSettings;
   permissions: { can_manage_settings: boolean };
 }
+
+export interface InventorySettings {
+  id: number;
+  low_stock_threshold: number;
+  near_expiry_threshold: number;
+  critical_expiry_threshold: number;
+  updated_at: string;
+}
+
+export type InventorySettingsPatch = Partial<Pick<InventorySettings,
+  "low_stock_threshold" | "near_expiry_threshold" | "critical_expiry_threshold">>;
 
 export const SETTINGS_UPDATED = "rosario:settings-updated";
 
 export const settingsService = {
   get: async (): Promise<AppSettings> => (await http.get<AppSettings>("/settings/")).data,
+  getInventory: async (): Promise<InventorySettings> => (await http.get<InventorySettings>("/settings/inventory/")).data,
+  updateInventory: async (data: InventorySettingsPatch): Promise<InventorySettings> =>
+    (await http.patch<InventorySettings>("/settings/inventory/", data)).data,
   updateSystem: async (payload: Partial<SystemSettings>): Promise<void> => {
     await http.patch("/settings/system/", payload);
   },

@@ -4,14 +4,15 @@ import { AlertTriangle, Calendar, ClipboardList, FileText } from "lucide-react";
 import { ApiError } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
 import { Card } from "@/components/data-display/Card";
-import { settingsService, type AppSettings, type NotificationSettings, type SystemSettings } from "@/features/settings/api/settings.service";
+import { settingsService, SETTINGS_UPDATED, type AppSettings, type NotificationSettings, type SystemSettings } from "@/features/settings/api/settings.service";
+import { inventoryFields, inventorySettingsDraft, validateInventorySettings, type InventorySettingsDraft } from "@/features/settings/utils/inventorySettings";
 import { AppearanceSettings } from "@/features/settings/components/AppearanceSettings";
 import { AccountSecuritySettings } from "@/features/settings/components/AccountSecuritySettings";
 import { PersonalProfileSettings } from "@/features/settings/components/PersonalProfileSettings";
 import { C } from "@/styles/tokens/colors";
 
 const liveAlerts: { key: keyof NotificationSettings; label: string; description: string; icon: typeof AlertTriangle }[] = [
-  { key: "low_stock_alerts", label: "Low stock", description: "Show an alert when product or ingredient stock falls below its threshold.", icon: AlertTriangle },
+  { key: "low_stock_alerts", label: "Low stock", description: "Show an alert when product or ingredient stock is at or below the global threshold.", icon: AlertTriangle },
   { key: "near_expiry_alerts", label: "Batches nearing expiry", description: "Show alerts for product and ingredient batches approaching expiry.", icon: Calendar },
   { key: "new_order_alerts", label: "Fulfilled orders", description: "Show the two most recent fulfilled orders in the notification bell.", icon: ClipboardList },
 ];
@@ -25,15 +26,16 @@ const businessFields: { key: keyof SystemSettings; label: string; placeholder: s
   { key: "tin", label: "Tax identification number", placeholder: "TIN" },
 ];
 
-type Section = "business" | "alerts";
+type Section = "business" | "alerts" | "inventory";
 
 export function AdminSettings() {
   const [saved, setSaved] = useState<AppSettings | null>(null);
   const [draft, setDraft] = useState<AppSettings | null>(null);
+  const [inventoryDraft, setInventoryDraft] = useState<InventorySettingsDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Section | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [errors, setErrors] = useState<Record<Section, string>>({ business: "", alerts: "" });
+  const [errors, setErrors] = useState<Record<Section, string>>({ business: "", alerts: "", inventory: "" });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [reload, setReload] = useState(0);
 
@@ -42,7 +44,7 @@ export function AdminSettings() {
     setLoading(true);
     setLoadError("");
     settingsService.get().then(data => {
-      if (active) { setSaved(data); setDraft(data); }
+      if (active) { setSaved(data); setDraft(data); setInventoryDraft(data.inventory ? inventorySettingsDraft(data.inventory) : null); }
     }).catch(error => {
       if (active) setLoadError(error instanceof Error ? error.message : "Unable to load settings.");
     }).finally(() => { if (active) setLoading(false); });
@@ -58,9 +60,15 @@ export function AdminSettings() {
   </div>;
 
   const canManage = saved.permissions.can_manage_settings;
+  const savedSystem = saved.system;
+  const draftSystem = draft.system;
+  if (!savedSystem || !draftSystem) return <div className="space-y-4 p-4 sm:p-6">
+    <p className="text-sm text-slate-500">Shared settings are unavailable for your account.</p>
+    <AppearanceSettings /><PersonalProfileSettings /><AccountSecuritySettings />
+  </div>;
   const businessPatch: Partial<SystemSettings> = {};
   for (const { key } of businessFields) {
-    if (draft.system[key] !== saved.system[key]) businessPatch[key] = draft.system[key].trim();
+    if (draftSystem[key] !== savedSystem[key]) businessPatch[key] = draftSystem[key].trim();
   }
   const businessDirty = Object.keys(businessPatch).length > 0;
   const alertPatch: Partial<NotificationSettings> = {};
@@ -68,7 +76,8 @@ export function AdminSettings() {
     if (draft.notifications[key] !== saved.notifications[key]) alertPatch[key] = draft.notifications[key];
   }
   const alertsDirty = Object.keys(alertPatch).length > 0;
-  const fallbackName = saved.system.system_name || "Rosario Dairy";
+  const fallbackName = savedSystem.system_name || "Rosario Dairy";
+  const inventoryDirty = !!saved.inventory && !!inventoryDraft && inventoryFields.some(({ key }) => inventoryDraft[key] !== String(saved.inventory![key]));
 
   const saveBusiness = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -80,7 +89,7 @@ export function AdminSettings() {
       await settingsService.updateSystem(businessPatch);
       const fresh = await settingsService.get();
       setSaved(fresh);
-      setDraft(current => ({ ...fresh, notifications: current?.notifications ?? fresh.notifications }));
+      setDraft(current => ({ ...fresh, inventory: current?.inventory ?? fresh.inventory, notifications: current?.notifications ?? fresh.notifications }));
       toast.success("Business profile saved.");
     } catch (error) {
       setErrors(current => ({ ...current, business: error instanceof Error ? error.message : "Unable to save business profile." }));
@@ -100,12 +109,38 @@ export function AdminSettings() {
       await settingsService.updateNotifications(alertPatch);
       const fresh = await settingsService.get();
       setSaved(fresh);
-      setDraft(current => ({ ...fresh, system: current?.system ?? fresh.system }));
+      setDraft(current => ({ ...fresh, inventory: current?.inventory ?? fresh.inventory, system: current?.system ?? fresh.system }));
       toast.success("Notification preferences saved.");
     } catch (error) {
       setErrors(current => ({ ...current, alerts: error instanceof Error ? error.message : "Unable to save alerts." }));
       if (error instanceof ApiError && error.status === 403) {
         setSaved(current => current ? { ...current, permissions: { can_manage_settings: false } } : current);
+      }
+    } finally { setSaving(null); }
+  };
+
+  const saveInventory = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!canManage || !saved.inventory || !inventoryDraft || !inventoryDirty || saving) return;
+    const validation = validateInventorySettings(inventoryDraft, saved.inventory);
+    setFieldErrors(validation.errors);
+    setErrors(current => ({ ...current, inventory: "" }));
+    if (Object.keys(validation.errors).length) return;
+    setSaving("inventory");
+    try {
+      await settingsService.updateInventory(validation.payload);
+      const fresh = await settingsService.get();
+      if (!fresh.inventory) throw new Error("Unable to reload inventory alert settings.");
+      setSaved(fresh);
+      setDraft(current => ({ ...fresh, system: current?.system ?? fresh.system, notifications: current?.notifications ?? fresh.notifications }));
+      setInventoryDraft(inventorySettingsDraft(fresh.inventory));
+      window.dispatchEvent(new Event(SETTINGS_UPDATED));
+      toast.success("Inventory alert settings saved.");
+    } catch (error) {
+      setErrors(current => ({ ...current, inventory: error instanceof Error ? error.message : "Unable to save inventory alerts." }));
+      if (error instanceof ApiError) {
+        setFieldErrors(error.fieldErrors);
+        if (error.status === 403) setSaved(current => current ? { ...current, permissions: { can_manage_settings: false } } : current);
       }
     } finally { setSaving(null); }
   };
@@ -132,8 +167,8 @@ export function AdminSettings() {
           {businessFields.map(({ key, label, placeholder, type }) => <div key={key} className={key === "business_address" ? "sm:col-span-2" : ""}>
             <label htmlFor={key} className="mb-1.5 block text-xs font-semibold">{label}</label>
             <input id={key} type={type ?? "text"} maxLength={key === "business_contact" ? 15 : key === "tin" ? 50 : key === "business_type" ? 100 : key === "business_email" ? 254 : key === "business_address" ? undefined : 255}
-              disabled={!canManage || saving !== null} placeholder={placeholder} value={draft.system[key]}
-              onChange={event => { setDraft({ ...draft, system: { ...draft.system, [key]: event.target.value } }); setFieldErrors(current => ({ ...current, [key]: [] })); }}
+              disabled={!canManage || saving !== null} placeholder={placeholder} value={draftSystem[key]}
+              onChange={event => { setDraft({ ...draft, system: { ...draftSystem, [key]: event.target.value } }); setFieldErrors(current => ({ ...current, [key]: [] })); }}
               aria-invalid={!!fieldErrors[key]?.length}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
             {key === "business_name" && <p className="mt-1 text-xs text-slate-500">Leave blank to use “{fallbackName}”.</p>}
@@ -146,6 +181,29 @@ export function AdminSettings() {
             className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saving === "business" ? "Saving…" : "Save business profile"}</button>
         </div>}
       </form>
+    </Card>
+
+    <Card className="overflow-hidden">
+      {saved.inventory && inventoryDraft ? <form onSubmit={saveInventory} noValidate className="p-4 sm:p-5">
+        <h3 className="text-sm font-semibold">Inventory alerts</h3>
+        <p className="mt-1 text-xs text-slate-500">These global thresholds apply to all products and ingredients. Stock is low at or below the threshold, using each item's stock unit. Expiry windows include today.</p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          {inventoryFields.map(({ key, label }) => <div key={key}>
+            <label htmlFor={key} className="mb-1.5 block text-xs font-semibold">{label}</label>
+            <input id={key} type="number" min="0" step="1" required value={inventoryDraft[key]}
+              disabled={!canManage || saving !== null} aria-invalid={!!fieldErrors[key]?.length}
+              aria-describedby={key === "critical_expiry_threshold" ? "critical-expiry-help" : undefined}
+              onChange={event => { setInventoryDraft(current => current ? { ...current, [key]: event.target.value } : current); setFieldErrors(current => ({ ...current, [key]: [] })); }}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
+            {!!fieldErrors[key]?.length && <p role="alert" className="mt-1 text-xs text-red-600">{fieldErrors[key].join(" ")}</p>}
+          </div>)}
+        </div>
+        <p id="critical-expiry-help" className="mt-3 text-xs text-slate-500">Zero is valid. The critical window cannot exceed the expiration alert window; reduce both together when needed. Notification switches below control alert feeds separately.</p>
+        {errors.inventory && <p role="alert" className="mt-3 text-xs text-red-600">{errors.inventory}</p>}
+        {canManage && <div className="mt-4 flex justify-end border-t border-slate-100 pt-4">
+          <button type="submit" disabled={!inventoryDirty || saving !== null} className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saving === "inventory" ? "Saving…" : "Save inventory alerts"}</button>
+        </div>}
+      </form> : <div className="p-4 sm:p-5"><h3 className="text-sm font-semibold">Inventory alerts</h3><p role="alert" className="mt-2 text-xs text-slate-500">Inventory configuration is unavailable.</p><button type="button" onClick={() => setReload(value => value + 1)} className="mt-2 text-sm text-blue-600 underline">Retry loading settings</button></div>}
     </Card>
 
     <Card className="overflow-hidden">

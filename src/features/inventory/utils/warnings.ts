@@ -1,14 +1,14 @@
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 import { daysUntilExpiry } from "./expiry";
-
-export const NEAR_EXPIRY_DAYS = 7;
+import { isLowStock } from "./stock";
 
 export function getInventoryWarnings(item: InventoryItem, now = new Date()) {
   const daysLeft = daysUntilExpiry(item.expiry, now);
   const expired = daysLeft !== null && daysLeft < 0;
-  const nearExpiry = daysLeft !== null && daysLeft >= 0 && daysLeft <= NEAR_EXPIRY_DAYS;
+  const nearExpiry = daysLeft !== null && daysLeft >= 0 && (item.nearExpiryThreshold != null
+    ? daysLeft <= item.nearExpiryThreshold : item.expiryStatus === "critical" || item.expiryStatus === "near_expiry");
   const threshold = item.reorderThreshold;
-  const lowStock = threshold != null && Number.isFinite(threshold) ? item.stock <= threshold : item.low;
+  const lowStock = threshold != null ? isLowStock(item.stock, threshold) : item.low;
   const status = expired ? "Expired" : lowStock && nearExpiry ? "Low Stock & Near Expiry" : lowStock ? "Low" : nearExpiry ? "Near Expiry" : "Active";
   const lowMessage = threshold != null && Number.isFinite(threshold)
     ? `Stock level (${item.stock}) is at or below the reorder threshold (${threshold}).`

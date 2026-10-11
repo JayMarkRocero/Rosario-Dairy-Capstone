@@ -212,7 +212,7 @@ export interface DjangoProduct {
   unit: string;
   unit_price: string;
   shelf_life: number;
-  low_stock_threshold: number;
+  readonly low_stock_threshold: number;
   is_active: boolean;
   category: DjangoCategory;
   total_stock: string;
@@ -229,6 +229,7 @@ export interface DjangoProductBatch {
   initial_quantity: string;
   remaining_quantity: string;
   expiration_date: string;
+  expiry_status?: "critical" | "near_expiry";
   date_received: string;
   status: string;
   notes: string | null;
@@ -242,7 +243,6 @@ export interface CreateProductPayload {
   unit: string;
   unit_price: string | number;
   shelf_life: number;
-  low_stock_threshold: number;
   category_id: number;
 }
 
@@ -269,7 +269,7 @@ export interface DjangoIngredient {
   unit_price: string;
   shelf_life: number;
   ingredient_type: "raw_milk" | "processing" | "packaging";
-  low_stock_threshold: number;
+  readonly low_stock_threshold: number;
   is_active: boolean;
   total_stock: string | number;
   created_at: string;
@@ -282,7 +282,6 @@ export interface CreateIngredientPayload {
   unit_price: string | number;
   shelf_life: number;
   ingredient_type?: DjangoIngredient["ingredient_type"];
-  low_stock_threshold?: number;
 }
 
 export type UpdateIngredientPayload = Partial<CreateIngredientPayload>;
@@ -296,6 +295,7 @@ export interface DjangoIngredientBatch {
   initial_quantity: string;
   remaining_quantity: string;
   expiration_date: string;
+  expiry_status?: "critical" | "near_expiry";
   date_received: string;
   status: string;
   notes: string | null;

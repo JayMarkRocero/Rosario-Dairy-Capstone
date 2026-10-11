@@ -22,6 +22,10 @@ export interface InventoryItem {
   expiry: string;
   low: boolean;
   reorderThreshold?: number;
+  unit?: string;
+  nearExpiryThreshold?: number;
+  criticalExpiryThreshold?: number;
+  expiryStatus?: "critical" | "near_expiry";
   nearestBatch?: { number: string; quantity: number };
 }
 

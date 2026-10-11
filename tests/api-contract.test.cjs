@@ -20,6 +20,7 @@ const compiled = buildSync({
     export * from './src/features/inventory/utils/warnings';
     export * from './src/features/auth/api/auth.service';
     export * from './src/features/settings/api/settings.service';
+    export * from './src/features/settings/utils/inventorySettings';
     export * from './src/features/inventory/api/inventory.service';
     export * from './src/features/reports/api/reports.service';
     export * from './src/lib/notifications.service';
@@ -158,6 +159,80 @@ test('all inventory alert endpoints accept empty arrays with no inventory fallba
     '/inventory/expiring/products/', '/inventory/expiring/ingredients/',
   ]);
   assert.equal(calls.length, 6);
+});
+
+test('global inventory settings validate zero, invalid numbers, and coupled expiry changes', () => {
+  const saved = { low_stock_threshold: 20, near_expiry_threshold: 7, critical_expiry_threshold: 3 };
+  const draft = api.inventorySettingsDraft(saved);
+  for (const invalid of ['', ' ', '1.5', '-1', 'Infinity', 'NaN', null]) {
+    assert.ok(api.validateInventorySettings({ ...draft, low_stock_threshold: invalid }, saved).errors.low_stock_threshold);
+  }
+  assert.deepEqual(api.validateInventorySettings({ ...draft, low_stock_threshold: '0' }, saved), { errors: {}, payload: { low_stock_threshold: 0 } });
+  assert.ok(api.validateInventorySettings({ ...draft, near_expiry_threshold: '2' }, saved).errors.critical_expiry_threshold);
+  assert.deepEqual(api.validateInventorySettings({ ...draft, near_expiry_threshold: '2', critical_expiry_threshold: '0' }, saved), {
+    errors: {}, payload: { near_expiry_threshold: 2, critical_expiry_threshold: 0 },
+  });
+});
+
+test('inventory settings PATCH retains API field errors and uses the authenticated settings endpoint', async () => {
+  await api.settingsService.updateInventory({ near_expiry_threshold: 2, critical_expiry_threshold: 0 });
+  assert.equal(calls[0].method, 'patch');
+  assert.equal(calls[0].url, '/settings/inventory/');
+  assert.deepEqual(JSON.parse(calls[0].data), { near_expiry_threshold: 2, critical_expiry_threshold: 0 });
+  responseStatus = 400; responseData = { critical_expiry_threshold: ['Must not exceed the near-expiry threshold.'] };
+  await assert.rejects(api.settingsService.updateInventory({ near_expiry_threshold: 1 }), error => {
+    assert.deepEqual(error.fieldErrors, responseData); return true;
+  });
+});
+
+test('product and ingredient writes omit global threshold even for legacy ingredient callers', async () => {
+  responseData = { id: 1 };
+  await api.inventoryService.createProduct({ name: 'Milk', categoryId: 1, price: 10, stock: 1, expiry: '2099-01-01' });
+  await api.inventoryService.updateProduct(1, { name: 'Milk', categoryId: 1, price: 12, low_stock_threshold: 10 });
+  await api.inventoryService.createIngredient({ name: 'Milk powder', unit: 'kg', unit_price: 1, shelf_life: 30, low_stock_threshold: null });
+  await api.inventoryService.updateIngredient(1, { name: 'Milk powder', low_stock_threshold: 10 });
+  const writes = calls.filter(call => ['/inventory/products/', '/inventory/products/1/', '/inventory/ingredients/', '/inventory/ingredients/1/'].includes(call.url));
+  assert.equal(writes.length, 4);
+  assert.ok(writes.every(call => !Object.hasOwn(JSON.parse(call.data), 'low_stock_threshold')));
+});
+
+test('admin uses saved expiry windows while staff uses permitted feeds without requesting global settings', async () => {
+  const date = offset => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const product = { id: 1, name: 'Milk', unit: 'litre', is_active: true, category: { name: 'Dairy', is_active: true, is_visible_to_staff: true }, unit_price: '1', total_stock: '0', low_stock_threshold: 0 };
+  const batch = { id: 1, product, status: 'available', remaining_quantity: '2', expiration_date: date(12), expiry_status: 'near_expiry' };
+  const settings = { low_stock_threshold: 0, near_expiry_threshold: 15, critical_expiry_threshold: 2 };
+  let disabled = false;
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    const data = config.url === '/settings/inventory/' ? settings : config.url === '/inventory/products/' ? [product] : config.url === '/inventory/expiring/products/' && disabled ? [] : [batch];
+    return { status: 200, config, headers: {}, data };
+  };
+  let items = await api.inventoryService.getOverview(false);
+  assert.equal(api.getInventoryWarnings(items[0]).nearExpiry, true);
+  assert.equal(items[0].nearExpiryThreshold, 15);
+  assert.equal(items[0].low, true);
+  settings.near_expiry_threshold = 2;
+  items = await api.inventoryService.getOverview(false);
+  assert.equal(api.getInventoryWarnings(items[0]).nearExpiry, false);
+  calls = [];
+  items = await api.inventoryService.getOverview(true);
+  assert.equal(api.getInventoryWarnings(items[0]).nearExpiry, true);
+  assert.equal(items[0].expiryStatus, 'near_expiry');
+  assert.ok(calls.every(call => !call.url.startsWith('/settings/')));
+  disabled = true;
+  items = await api.inventoryService.getOverview(true);
+  assert.equal(api.getInventoryWarnings(items[0]).nearExpiry, false);
+  assert.equal(items[0].low, true);
+});
+
+test('FEFO classifications follow saved critical windows and backend expiry annotations', async () => {
+  const date = offset => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  const batches = [-1, 0, 2, 12, 16].map((days, id) => ({ id, product: { name: 'Milk', is_active: true }, remaining_quantity: '2', status: 'available', expiration_date: date(days) }));
+  api.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data: config.url === '/settings/inventory/' ? { near_expiry_threshold: 15, critical_expiry_threshold: 2 } : batches });
+  const rows = await api.inventoryService.getFEFO();
+  assert.deepEqual(rows.map(row => row.priority), ['Critical', 'Critical', 'Critical', 'High', 'Low']);
+  api.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data: [{ ...batches[3], expiry_status: 'critical' }] });
+  assert.equal((await api.inventoryService.getNearExpiry())[0].priority, 'Critical');
 });
 
 test('notification feed trusts backend unread and dismissed state without reconstructing alerts', async () => {
@@ -350,7 +425,7 @@ test('category patch excludes read-only activation even from untyped callers', a
 
 test('inventory warnings preserve dual status, calendar boundaries and independent stock warnings', () => {
   const now = new Date(2026, 9, 10, 12);
-  const product = { stock: 5, reorderThreshold: 5, low: false, expiry: '2026-10-17' };
+  const product = { stock: 5, reorderThreshold: 5, low: false, expiry: '2026-10-17', nearExpiryThreshold: 7 };
   let warning = api.getInventoryWarnings(product, now);
   assert.equal(warning.status, 'Low Stock & Near Expiry');
   assert.equal(warning.daysLeft, 7);

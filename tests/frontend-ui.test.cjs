@@ -4,6 +4,7 @@ const path = require('node:path');
 const Module = require('node:module');
 const { buildSync } = require('esbuild');
 const React = require('react');
+const { AxiosError } = require('axios');
 
 // Exercise real event handlers with deterministic hook state, without a browser or database writes.
 let states, refs, stateIndex, refIndex, effects, authState, toastErrors;
@@ -32,6 +33,10 @@ const compiled = buildSync({
     export { MobileInventoryCard } from './src/features/inventory/components/MobileInventoryCard';
     export { EnhancedTable } from './src/components/data-display/EnhancedTable';
     export * from './src/features/inventory/components/InventoryWarnings';
+    export { AdminSettings } from './src/features/settings/pages/AdminSettings';
+    export { SETTINGS_UPDATED } from './src/features/settings/api/settings.service';
+    export { useReportVersion } from './src/features/reports/hooks/useReportPreview';
+    export { InventoryAlert } from './src/features/dashboard/components/staff/InventoryAlert';
   `, resolveDir: root },
   define: { 'import.meta.env': '{}' }, bundle: true, platform: 'node', format: 'cjs',
   packages: 'external', write: false, alias: { '@': path.join(root, 'src') },
@@ -176,6 +181,120 @@ test('stretched desktop inventory rows fill both full and partial pages', () => 
 
 const staffCards = tree => elements(tree, node => typeof node.props.trendLabel === 'string');
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+const settingsFixture = () => ({
+  system: { system_name: 'Rosario Dairy', business_name: 'Saved name', business_type: '', business_address: '', business_contact: '', business_email: '', tin: '' },
+  notifications: { low_stock_alerts: true, near_expiry_alerts: true, new_order_alerts: true },
+  inventory: { id: 1, low_stock_threshold: 20, near_expiry_threshold: 7, critical_expiry_threshold: 3, updated_at: '' },
+  permissions: { can_manage_settings: true },
+});
+const inputById = (tree, id) => elements(tree, node => node.type === 'input' && node.props.id === id)[0];
+const inventoryForm = tree => elements(tree, node => node.type === 'form')[1];
+
+test('inventory settings save changed fields, reload canonical values and preserve other drafts', async () => {
+  let saved = settingsFixture();
+  const requests = [];
+  ui.http.defaults.adapter = async config => {
+    requests.push(config);
+    if (config.method === 'patch') saved = { ...saved, inventory: { ...saved.inventory, ...JSON.parse(config.data) } };
+    return { status: 200, config, headers: {}, data: config.method === 'patch' ? saved.inventory : saved };
+  };
+  render(ui.AdminSettings); effects.at(-1)(); await settle();
+  let tree = render(ui.AdminSettings);
+  inputById(tree, 'business_name').props.onChange({ target: { value: 'Unsaved business name' } });
+  tree = render(ui.AdminSettings);
+  elements(tree, node => node.props.role === 'switch')[0].props.onChange({ target: { checked: false } });
+  tree = render(ui.AdminSettings);
+  inputById(tree, 'near_expiry_threshold').props.onChange({ target: { value: '2' } });
+  tree = render(ui.AdminSettings);
+  inputById(tree, 'critical_expiry_threshold').props.onChange({ target: { value: '0' } });
+  tree = render(ui.AdminSettings);
+  let refreshed = 0;
+  window.addEventListener(ui.SETTINGS_UPDATED, () => refreshed++);
+  await inventoryForm(tree).props.onSubmit({ preventDefault() {} });
+  tree = render(ui.AdminSettings);
+  const patch = requests.find(request => request.method === 'patch');
+  assert.equal(patch.url, '/settings/inventory/');
+  assert.deepEqual(JSON.parse(patch.data), { near_expiry_threshold: 2, critical_expiry_threshold: 0 });
+  assert.equal(requests.filter(request => request.url === '/settings/' && request.method === 'get').length, 2);
+  assert.equal(inputById(tree, 'business_name').props.value, 'Unsaved business name');
+  assert.equal(elements(tree, node => node.props.role === 'switch')[0].props.checked, false);
+  assert.equal(inputById(tree, 'critical_expiry_threshold').props.value, '0');
+  assert.equal(refreshed, 1);
+  assert.equal(elements(inventoryForm(tree), node => node.type === 'button')[0].props.disabled, true);
+});
+
+test('inventory settings reject invalid drafts, preserve failed saves and respect server permission errors', async () => {
+  const saved = settingsFixture();
+  let status = 400, patches = 0, events = 0;
+  ui.http.defaults.adapter = async config => {
+    if (config.method === 'patch') {
+      patches++;
+      const response = { status, config, headers: {}, data: status === 400 ? { near_expiry_threshold: ['Server validation error.'] } : { detail: 'Permission denied.' } };
+      throw new AxiosError('Rejected', undefined, config, undefined, response);
+    }
+    return { status: 200, config, headers: {}, data: saved };
+  };
+  window.addEventListener(ui.SETTINGS_UPDATED, () => events++);
+  render(ui.AdminSettings); effects.at(-1)(); await settle();
+  let tree = render(ui.AdminSettings);
+  inputById(tree, 'near_expiry_threshold').props.onChange({ target: { value: '2' } });
+  tree = render(ui.AdminSettings);
+  await inventoryForm(tree).props.onSubmit({ preventDefault() {} });
+  assert.equal(patches, 0);
+  tree = render(ui.AdminSettings);
+  assert.equal(inputById(tree, 'critical_expiry_threshold').props['aria-invalid'], true);
+  inputById(tree, 'critical_expiry_threshold').props.onChange({ target: { value: '1' } });
+  tree = render(ui.AdminSettings);
+  await inventoryForm(tree).props.onSubmit({ preventDefault() {} });
+  tree = render(ui.AdminSettings);
+  assert.equal(inputById(tree, 'near_expiry_threshold').props.value, '2');
+  assert.equal(inputById(tree, 'near_expiry_threshold').props['aria-invalid'], true);
+  assert.equal(events, 0);
+  status = 403;
+  await inventoryForm(tree).props.onSubmit({ preventDefault() {} });
+  tree = render(ui.AdminSettings);
+  assert.equal(inputById(tree, 'low_stock_threshold').props.disabled, true);
+  assert.equal(elements(inventoryForm(tree), node => node.type === 'button').length, 0);
+});
+
+test('staff settings bootstrap omits admin sections and never requests global inventory settings', async () => {
+  const requests = [];
+  ui.http.defaults.adapter = async config => {
+    requests.push(config.url);
+    return { status: 200, config, headers: {}, data: { notifications: {}, permissions: { can_manage_settings: false } } };
+  };
+  render(ui.AdminSettings); effects.at(-1)(); await settle();
+  const tree = render(ui.AdminSettings);
+  assert.equal(inputById(tree, 'low_stock_threshold'), undefined);
+  assert.deepEqual(requests, ['/settings/']);
+});
+
+test('mounted inventory and dashboard version updates on global settings saves', () => {
+  assert.equal(render(ui.useReportVersion), 0);
+  const cleanup = effects.at(-1)();
+  window.dispatchEvent(new Event(ui.SETTINGS_UPDATED));
+  assert.equal(render(ui.useReportVersion), 1);
+  cleanup();
+  window.dispatchEvent(new Event(ui.SETTINGS_UPDATED));
+  assert.equal(render(ui.useReportVersion), 1);
+});
+
+test('staff dashboard uses permitted alert feeds and honors disabled notification feeds', async () => {
+  const requests = [];
+  ui.http.defaults.adapter = async config => {
+    requests.push(config.url);
+    return { status: 200, config, headers: {}, data: [] };
+  };
+  render(ui.InventoryAlert); effects.at(-1)(); await settle();
+  const tree = render(ui.InventoryAlert);
+  assert.equal(tree.props['aria-busy'], false);
+  assert.ok(requests.includes('/inventory/low-stock/products/'));
+  assert.ok(requests.includes('/inventory/expiring/products/'));
+  assert.ok(requests.every(url => !url.startsWith('/settings/')));
+  const counts = elements(tree, node => node.type === 'span' && typeof node.props.children === 'number').map(node => node.props.children);
+  assert.deepEqual(counts, [0, 0, 0]);
+});
 
 test('staff KPI requests wait for auth initialization then use the token identity', async () => {
   const requests = [];

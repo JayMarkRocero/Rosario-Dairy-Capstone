@@ -7,26 +7,24 @@ import { AlertTriangle, CalendarClock, PackageCheck } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
-import { daysUntilExpiry } from "@/features/inventory/utils/expiry";
-
-const NEAR_EXPIRY_DAYS = 7;
-
-function isNearExpiry(expiry: string): boolean {
-  const days = daysUntilExpiry(expiry);
-  return days !== null && days >= 0 && days <= NEAR_EXPIRY_DAYS;
-}
 
 export function InventoryAlert() {
   const reportVersion = useReportVersion();
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [alertCounts, setAlertCounts] = useState({ lowStock: 0, nearExpiry: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-
-    inventoryService.getAll(true)
-      .then((data) => {
-        if (active) setItems(data);
+    setLoading(true);
+    Promise.all([inventoryService.getAll(true), inventoryService.getLowStockProducts(), inventoryService.getExpiringProducts()])
+      .then(([data, lowStock, expiring]) => {
+        if (active) {
+          setItems(data);
+          const visible = new Set(data.map(item => item.id));
+          setAlertCounts({ lowStock: lowStock.filter(item => visible.has(item.id)).length,
+            nearExpiry: new Set(expiring.filter(batch => visible.has(batch.product.id)).map(batch => batch.product.id)).size });
+        }
       })
       .catch(error => toastApiError(error))
       .finally(() => {
@@ -38,8 +36,8 @@ export function InventoryAlert() {
     };
   }, [reportVersion]);
 
-  const lowStockCount = items.filter(i => i.low).length;
-  const nearExpiryCount = items.filter(i => isNearExpiry(i.expiry)).length;
+  const lowStockCount = alertCounts.lowStock;
+  const nearExpiryCount = alertCounts.nearExpiry;
   const availableCount = items.filter(i => i.stock > 0 && !i.low).length;
 
   const ALERTS = [

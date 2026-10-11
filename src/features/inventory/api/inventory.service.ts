@@ -19,17 +19,26 @@ import type { InventoryItem, FEFOItem, Category } from "@/features/inventory/typ
 import { normalizeCategoryIcon, type CategoryIconKey } from "@/features/inventory/utils/categoryIcons";
 import { daysUntilExpiry, isExpiredProduct } from "@/features/inventory/utils/expiry";
 import { isLowStock } from "@/features/inventory/utils/stock";
+import { settingsService, type InventorySettings } from "@/features/settings/api/settings.service";
 
 export interface CategoryIconOption { value: CategoryIconKey; label: string }
+
+// Explicit writable fields also keep legacy runtime callers from forwarding
+// read-only threshold values copied from an ingredient response.
+function ingredientPayload(input: UpdateIngredientPayload): UpdateIngredientPayload {
+  return Object.fromEntries(["name", "unit", "unit_price", "shelf_life", "ingredient_type"]
+    .filter(key => input[key as keyof UpdateIngredientPayload] !== undefined)
+    .map(key => [key, input[key as keyof UpdateIngredientPayload]]));
+}
 
 function daysUntil(dateStr: string): number {
   return daysUntilExpiry(dateStr) ?? -1;
 }
 
-function fefoStatus(days: number): { st: FEFOItem["st"]; priority: string } {
+function fefoStatus(days: number, settings?: InventorySettings, expiryStatus?: DjangoProductBatch["expiry_status"]): { st: FEFOItem["st"]; priority: string } {
   if (days <= -1) return { st: "red", priority: "Critical" };
-  if (days <= 7) return { st: "orange", priority: "High" };
-  if (days <= 14) return { st: "yellow", priority: "Medium" };
+  if (expiryStatus === "critical" || settings && days <= settings.critical_expiry_threshold) return { st: "orange", priority: "Critical" };
+  if (expiryStatus === "near_expiry" || settings && days <= settings.near_expiry_threshold) return { st: "yellow", priority: "High" };
   return { st: "green", priority: "Low" };
 }
 
@@ -64,6 +73,7 @@ export const inventoryService = {
         cat: p.category.name,
         price: parseFloat(p.unit_price),
         stock,
+        unit: p.unit,
         expiry: nearestExpiry,
         low: isLowStock(stock, p.low_stock_threshold),
         reorderThreshold: Number.isFinite(Number(p.low_stock_threshold)) ? Number(p.low_stock_threshold) : undefined,
@@ -72,8 +82,26 @@ export const inventoryService = {
     });
   },
 
+  // Admin inventory uses saved windows independently of notification switches.
+  // Staff can only classify expiry warnings supplied by their permitted alert feed.
+  getOverview: async (staffVisibleOnly = false): Promise<InventoryItem[]> => {
+    const [items, config] = await Promise.all([
+      inventoryService.getAll(staffVisibleOnly),
+      staffVisibleOnly ? inventoryService.getExpiringProducts() : settingsService.getInventory(),
+    ]);
+    return items.map(item => {
+      if (Array.isArray(config)) {
+        const batch = config.find(batch => batch.product.id === item.id && batch.expiration_date === item.expiry);
+        return { ...item, expiryStatus: batch?.expiry_status };
+      }
+      return { ...item, nearExpiryThreshold: config.near_expiry_threshold, criticalExpiryThreshold: config.critical_expiry_threshold };
+    });
+  },
+
   getFEFO: async (): Promise<FEFOItem[]> => {
-  const { data: batches } = await http.get<DjangoProductBatch[]>("/inventory/product-batches/");
+  const [{ data: batches }, settings] = await Promise.all([
+    http.get<DjangoProductBatch[]>("/inventory/product-batches/"), settingsService.getInventory(),
+  ]);
 
   return batches
     .filter((b: DjangoProductBatch) => b.status === "available" && b.product.is_active && Number(b.remaining_quantity) > 0)
@@ -81,7 +109,7 @@ export const inventoryService = {
 
 
         const days = daysUntil(b.expiration_date);
-        const { st, priority } = fefoStatus(days);
+        const { st, priority } = fefoStatus(days, settings);
         return {
           id: b.id,
           product: [b.product.name, b.product.variant].filter(Boolean).join(" "),
@@ -157,7 +185,7 @@ export const inventoryService = {
       return {
         id: batch.id, product: batch.product.name, batch: batch.batch_number,
         qty: Number(batch.remaining_quantity), expiry: batch.expiration_date,
-        days, ...fefoStatus(days),
+        days, ...fefoStatus(days, undefined, batch.expiry_status),
       };
     });
   },
@@ -175,7 +203,6 @@ export const inventoryService = {
       unit: "unit",
       unit_price: input.price,
       shelf_life: 30,
-      low_stock_threshold: 10,
       category_id: input.categoryId,
     };
     const { data: product } = await http.post<DjangoProduct>("/inventory/products/", productPayload);
@@ -269,12 +296,12 @@ export const inventoryService = {
   },
 
   createIngredient: async (payload: CreateIngredientPayload): Promise<DjangoIngredient> => {
-    const { data } = await http.post<DjangoIngredient>("/inventory/ingredients/", payload);
+    const { data } = await http.post<DjangoIngredient>("/inventory/ingredients/", ingredientPayload(payload));
     return data;
   },
 
   updateIngredient: async (ingredientId: number, payload: UpdateIngredientPayload): Promise<DjangoIngredient> => {
-    const { data } = await http.patch<DjangoIngredient>(`/inventory/ingredients/${ingredientId}/`, payload);
+    const { data } = await http.patch<DjangoIngredient>(`/inventory/ingredients/${ingredientId}/`, ingredientPayload(payload));
     return data;
   },
 

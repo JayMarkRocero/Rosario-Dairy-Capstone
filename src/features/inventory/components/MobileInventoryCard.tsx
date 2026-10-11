@@ -38,7 +38,7 @@ export function MobileInventoryCard({ product, busy, onEdit, onDelete }: Props) 
         {[
           ["Stock level", <InventoryStockValue product={product} />],
           ["Expiry date", <InventoryExpiryValue product={product} />],
-          ["Reorder threshold", product.reorderThreshold != null ? product.reorderThreshold.toLocaleString("en-PH") : "Not available"],
+          ["Global reorder threshold", product.reorderThreshold != null ? `${product.reorderThreshold.toLocaleString("en-PH")} ${product.unit || "units"}` : "Not available"],
           ["Product code", `PRD-${String(product.id).padStart(3, "0")}`],
         ].map(([label, value]) => <div key={String(label)} className="min-w-0">
           <dt className="text-xs text-slate-500">{label}</dt>

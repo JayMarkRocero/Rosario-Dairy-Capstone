@@ -18,7 +18,8 @@ export function FEFOMonitor() {
   useEffect(() => {
     let active = true;
 
-    Promise.all([inventoryService.getAll(), inventoryService.getFEFO()])
+    setLoading(true);
+    Promise.all([inventoryService.getOverview(), inventoryService.getFEFO()])
       .then(([allItems, fefo]) => {
         if (!active) return;
         setItems(allItems);
@@ -35,7 +36,7 @@ export function FEFOMonitor() {
   }, [reportVersion]);
 
   const expiredCount = fefoItems.filter(i => i.days < 0).length;
-  const nearExpiryCount = fefoItems.filter(i => i.days >= 0 && i.days <= 7).length;
+  const nearExpiryCount = fefoItems.filter(i => i.days >= 0 && i.st !== "green").length;
   const lowStockCount = items.filter(i => i.low).length;
   const invValue = items.reduce((sum, i) => sum + i.price * i.stock, 0);
 
@@ -123,7 +124,7 @@ export function FEFOMonitor() {
               <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                 <div><p style={{ color: C.muted }}>Quantity</p><p className="mt-0.5 font-medium" style={{ color: C.text }}>{item.qty}</p></div>
                 <div><p style={{ color: C.muted }}>Expiry</p><p className="mt-0.5 font-medium" style={{ color: C.text }}>{item.expiry}</p></div>
-                <div className="text-right"><p style={{ color: C.muted }}>Days left</p><p className="mt-0.5 font-semibold" style={{ color: item.days <= -1 ? C.red : item.days <= 7 ? C.orange : C.text }}>{item.days}d</p></div>
+                <div className="text-right"><p style={{ color: C.muted }}>Days left</p><p className="mt-0.5 font-semibold" style={{ color: item.days < 0 ? C.red : item.st !== "green" ? C.orange : C.text }}>{item.days}d</p></div>
               </div>
             </div>)}
           </div>
@@ -162,7 +163,7 @@ export function FEFOMonitor() {
                   <td className="py-2.5 text-left px-2 whitespace-nowrap"             style={{ color: C.text }}>{item.expiry}</td>
                   <td
                     className="py-2.5 text-right pl-2 pr-4 font-semibold"
-                    style={{ color: item.days <= -1 ? C.red : item.days <= 7 ? C.orange : C.muted }}
+                    style={{ color: item.days < 0 ? C.red : item.st !== "green" ? C.orange : C.muted }}
                   >
                     {item.days}d
                   </td>
