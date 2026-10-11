@@ -1,3 +1,4 @@
+import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";
 import { TableCard } from "@/components/data-display/TableCard";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
@@ -37,13 +38,13 @@ export function StaffOrders() {
     { key:"actions", header:"Actions", align:"center", width:"12%", render:o=><div onClick={e=>e.stopPropagation()}><ActionButton label="View details" onClick={()=>view(o)}><Eye size={13}/></ActionButton></div> },
   ];
 
-  return <div className="records-page viewport-records-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
+  return <div className="records-page viewport-records-page orders-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
     <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Manage and track customer orders</h2><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green], ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
     <TableCard className="viewport-table-card">
-      <EnhancedTable contentHeight reserveTableHeight pageSize={5} rowHeight={52} columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.customer,o.staff]} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
+      <EnhancedTable contentHeight reserveTableHeight pageSize={5} rowHeight={52} columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} />} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
     </TableCard>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md">
       {selected&&<div className="space-y-5">

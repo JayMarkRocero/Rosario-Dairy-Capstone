@@ -34,6 +34,9 @@ const compiled = buildSync({
     export { ConfirmDialog } from './src/components/feedback/ConfirmDialog';
     export { AdminReports } from './src/features/reports/pages/AdminReports';
     export { CreateOrderModal } from './src/features/orders/components/CreateOrderModal';
+    export { MobileOrderCard } from './src/features/orders/components/MobileOrderCard';
+    export { AdminOrders } from './src/features/orders/pages/AdminOrders';
+    export { StaffOrders } from './src/features/orders/pages/StaffOrders';
     export { StaffPOS } from './src/features/pos/pages/StaffPOS';
     export { StaffKPICards } from './src/features/dashboard/components/staff/StaffKPICards';
     export { MobileCategoryCard } from './src/features/inventory/components/MobileCategoryCard';
@@ -81,6 +84,40 @@ beforeEach(() => {
   global.localStorage = { getItem: key => key === 'rosario_access_token' ? token : null, setItem() {}, removeItem() {} };
   global.window = new EventTarget();
   global.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+});
+
+test('mobile order cards preserve details and enforce cancellation availability', () => {
+  const order = { id: 7, invoiceNumber: 'INV-000007', customer: 'A very long customer name', staff: 'Staff member', date: '2026-10-11', total: 120, status: 'Fulfilled', isHistorical: false };
+  let viewed, cancelled;
+  const props = { order, onView: value => { viewed = value; }, onCancel: value => { cancelled = value; } };
+  let tree = render(ui.MobileOrderCard, props);
+  assert.equal(elements(tree, node => node.type === 'dd').length, 4);
+  elements(tree, node => node.props['aria-label'] === 'View details')[0].props.onClick();
+  elements(tree, node => node.props['aria-label'] === 'Cancel order')[0].props.onClick();
+  assert.equal(viewed, order);
+  assert.equal(cancelled, order);
+  assert.equal(elements(render(ui.MobileOrderCard, { ...props, busy: true }), node => node.props['aria-label'] === 'Cancel order')[0].props.disabled, true);
+  for (const changes of [{ isHistorical: true }, { status: 'Cancelled' }]) {
+    tree = render(ui.MobileOrderCard, { ...props, order: { ...order, ...changes } });
+    assert.equal(elements(tree, node => node.props['aria-label'] === 'Cancel order').length, 0);
+  }
+  assert.equal(elements(render(ui.MobileOrderCard, { order, onView: props.onView }), node => node.type === 'button').length, 1);
+});
+
+test('admin and staff Orders use five mobile cards without the default sort selector', () => {
+  const orders = Array.from({ length: 6 }, (_, index) => ({ id: index + 1, invoiceNumber: `INV-${index}`, customer: 'Customer', staff: 'Staff', date: '2026-10-11', total: 120, status: 'Fulfilled', isHistorical: false }));
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:orders:list`, orders, ['orders']);
+  for (const Page of [ui.AdminOrders, ui.StaffOrders]) {
+    states = []; refs = [];
+    const table = elements(render(Page), node => node.type === ui.EnhancedTable)[0];
+    assert.equal(table.props.pageSize, 5);
+    assert.equal(table.props.renderMobileRow(orders[0]).type, ui.MobileOrderCard);
+    states = []; refs = [];
+    const tree = render(ui.EnhancedTable, table.props);
+    assert.equal(elements(tree, node => node.type === ui.MobileOrderCard).length, 5);
+    assert.equal(elements(tree, node => node.props['aria-label'] === 'Sort records').length, 0);
+    assert.ok(elements(tree, node => node.props.children === 'Page 1 of 2').length > 0);
+  }
 });
 
 test('mobile inventory cards toggle metadata and preserve edit and delete actions', () => {
