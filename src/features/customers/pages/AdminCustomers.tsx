@@ -1,5 +1,5 @@
+import { TableCard } from "@/components/data-display/TableCard";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
-import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
@@ -7,7 +7,6 @@ import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo } from "react";
 import { Plus, Eye, Edit, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { Card } from "@/components/data-display/Card";
 import { Btn } from "@/components/buttons/Btn";
 import { Modal } from "@/components/overlays/Modal";
 import { Drawer } from "@/components/overlays/Drawer";
@@ -60,7 +59,6 @@ function CustomerForm({ form, onChange }: { form: FormState; onChange: (f: FormS
 }
 
 export function AdminCustomers() {
-  const pageCapacity = useAdminAutoPageSize(56);
   const query = useCachedQuery("customers:list:all", () => customersService.getAll(true), ["customers"]);
   const list = query.data ?? [];
   const listLoading = query.loading;
@@ -168,7 +166,7 @@ export function AdminCustomers() {
   ];
 
   return (
-    <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page flex flex-1 flex-col h-auto overflow-visible gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Customer profiles and purchase activity</h2>
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
@@ -186,14 +184,16 @@ export function AdminCustomers() {
         ))}
       </div>
 
-      <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+      <TableCard>
         <EnhancedTable
+          contentHeight
+          pageSize={5}
           mobileTable
           rowHeight={56}
           columns={columns}
           data={filteredList}
           rowKey={r=>r.id}
-          pageCapacity={pageCapacity}
+
           searchable
           searchKeys={r=>[r.name,r.email,r.phone]}
           searchPlaceholder="Search customers…"
@@ -212,7 +212,7 @@ export function AdminCustomers() {
             </select>
           }
         />
-      </Card>
+      </TableCard>
 
       <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="Add Customer" size="sm"
         footer={<><Btn variant="secondary" onClick={()=>setAddOpen(false)}>Cancel</Btn>

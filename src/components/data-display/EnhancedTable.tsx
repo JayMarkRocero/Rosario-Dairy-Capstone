@@ -33,6 +33,7 @@ interface Props<T> {
   showExport?:      boolean;
   showCount?:       boolean;
   fillHeight?:      boolean;
+  contentHeight?:   boolean;
   stretchRows?:     boolean;
   rowHeight?:       52 | 56;
   scrollBody?:      boolean;
@@ -52,7 +53,7 @@ export function EnhancedTable<T>({
   searchable = true, searchKeys, searchPlaceholder = "Search…",
   onRowClick, extraControls, emptyTitle = "No records found",
   emptyDesc = "Try adjusting your search or add a new record.", loading,
-  showExport = true, showCount = true, fillHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
+  showExport = true, showCount = true, fillHeight = false, contentHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
   mobileTable = false, renderMobileRow,
 }: Props<T>) {
   const defaultCapacity = useAutoPageSize(rowHeight);
@@ -67,9 +68,10 @@ export function EnhancedTable<T>({
     return () => media.removeEventListener("change", update);
   }, []);
   const pageSize = autoPageSize && desktopTable ? capacity.pageSize : requestedPageSize;
-  fillHeight = fillHeight || autoPageSize;
-  scrollBody = scrollBody || autoPageSize;
-  disableScroll = disableScroll || autoPageSize;
+  // Keep page sizing independent of content height to avoid shrinking-page feedback.
+  fillHeight = !contentHeight && (fillHeight || autoPageSize);
+  scrollBody = !contentHeight && (scrollBody || autoPageSize);
+  disableScroll = !contentHeight && (disableScroll || autoPageSize);
   const [search,     setSearch]    = useState("");
   const [sortCol,    setSortCol]   = useState<string | null>(null);
   const [sortDir,    setSortDir]   = useState<SortDir>(null);
@@ -118,7 +120,7 @@ export function EnhancedTable<T>({
   if (loading) {
     return (
       <div role="status" aria-label="Loading records" aria-busy="true"
-        className={`min-h-52 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:bg-card ${fillHeight ? "xl:flex-1" : ""}`}
+        className={`${contentHeight ? "h-auto" : "min-h-52"} bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:bg-card ${fillHeight ? "xl:flex-1" : ""}`}
         style={{ borderColor: C.border }}>
         <span className="sr-only">Loading records</span>
         <div className={`${renderMobileRow ? "block md:hidden" : mobileTable ? "hidden" : "xl:hidden"} space-y-3 p-3`}>
@@ -140,17 +142,20 @@ export function EnhancedTable<T>({
     );
   }
 
+  const emptyState = contentHeight
+    ? <div className="min-h-[300px] flex items-center justify-center"><EmptyState title={emptyTitle} description={emptyDesc} /></div>
+    : <EmptyState title={emptyTitle} description={emptyDesc} />;
   const tableScrollBody = scrollBody && desktopTable;
   const tableDisableScroll = disableScroll && desktopTable;
   const rowStyle = tableScrollBody ? { display: "grid", gridTemplateColumns: columns.map(col => col.width || "minmax(0, 1fr)").join(" ") } : undefined;
 
   const showControlsBar = searchable || !!extraControls || showCount || showExport;
 
-  const maxPageButtons = 5;
+  const maxPageButtons = contentHeight && !desktopTable ? 3 : 5;
   const pageButtons = Array.from({ length: Math.min(maxPageButtons, totalPages) }, (_, i) => Math.max(1, Math.min(safePage - 2, totalPages - maxPageButtons + 1)) + i);
 
   return (
-    <div className={`enhanced-table flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-visible xl:overflow-hidden" : "h-auto xl:h-full"}`}>
+    <div className={`enhanced-table flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-visible xl:overflow-hidden" : contentHeight ? "h-auto" : "h-auto xl:h-full"}`}>
       {/* Controls bar */}
       {showControlsBar && (
         <div className={renderMobileRow ? "flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between mb-2 md:mb-4 shrink-0" : "flex flex-wrap items-center justify-between gap-3 mb-4 flex-shrink-0"}>
@@ -195,9 +200,9 @@ export function EnhancedTable<T>({
       )}
 
       {/* Table */}
-      <div ref={autoPageSize && desktopTable ? capacity.containerRef : undefined} className={`relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
+      <div ref={autoPageSize && desktopTable && !contentHeight ? capacity.containerRef : undefined} className={contentHeight ? "relative h-auto bg-slate-50/50 rounded-lg border border-slate-100 overflow-hidden" : `relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
         {renderMobileRow && <div className="block md:hidden space-y-3 px-1 py-2">
-          {pageData.length === 0 ? <EmptyState title={emptyTitle} description={emptyDesc} /> : pageData.map((row, index) => <div key={rowKey(row)}>{renderMobileRow(row, index)}</div>)}
+          {pageData.length === 0 ? emptyState : pageData.map((row, index) => <div key={rowKey(row)}>{renderMobileRow(row, index)}</div>)}
         </div>}
         <div className={`record-list-scroll ${renderMobileRow || mobileTable ? "hidden" : "xl:hidden"} overflow-visible ${pageData.length === 0 ? "flex min-h-64 items-center justify-center" : ""}`}>
           {!renderMobileRow && sorted.length > 0 && columns.some(col => col.sortKey) && <div className="mb-3 flex justify-end">
@@ -213,7 +218,7 @@ export function EnhancedTable<T>({
               ]))}
             </select>
           </div>}
-          {pageData.length === 0 ? <EmptyState title={emptyTitle} description={emptyDesc} /> : <div>
+          {pageData.length === 0 ? emptyState : <div>
             {pageData.map((row, ri) => <div key={rowKey(row)} onClick={() => onRowClick?.(row)}
               className={`record-card border-b py-4 last:border-b-0 ${onRowClick ? "cursor-pointer" : ""}`}
               style={{ borderColor: C.border }}>
@@ -239,13 +244,13 @@ export function EnhancedTable<T>({
           </div>}
         </div>
         {mobileTable && pageData.length === 0 && <div className="flex min-h-64 items-center justify-center xl:hidden">
-          <EmptyState title={emptyTitle} description={emptyDesc} />
+          {emptyState}
         </div>}
         <div
-          className={`${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
+          className={`${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${contentHeight ? "h-auto" : ""} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          <table className={`w-full table-fixed text-sm text-slate-700 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
+          <table className={`w-full ${contentHeight ? "h-auto" : ""} table-fixed text-sm text-slate-700 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
             <thead ref={autoPageSize ? capacity.headerRef : undefined} className={`bg-slate-50/80 border-b border-slate-100 ${tableScrollBody ? `block shrink-0 overflow-hidden ${tableDisableScroll ? "" : "[scrollbar-gutter:stable]"}` : ""}`}>
               <tr style={rowStyle}>
                 {columns.map(col => (
@@ -269,11 +274,11 @@ export function EnhancedTable<T>({
                 ))}
               </tr>
             </thead>
-            <tbody style={stretchRows && tableScrollBody && pageData.length > 0 ? { display: "grid", gridTemplateRows: `repeat(${pageData.length}, minmax(0, 1fr))` } : undefined} className={tableScrollBody ? `${pageData.length === 0 ? "flex flex-col" : "block"} flex-1 min-h-0 overflow-hidden` : undefined}>
+            <tbody style={stretchRows && tableScrollBody && pageData.length > 0 ? { display: "grid", gridTemplateRows: `repeat(${pageData.length}, minmax(0, 1fr))` } : undefined} className={tableScrollBody ? `${pageData.length === 0 ? "flex flex-col" : "flex flex-col justify-start"} flex-1 min-h-0 overflow-hidden` : undefined}>
               {pageData.length === 0 ? (
                 <tr className={tableScrollBody ? "flex flex-1 min-h-0" : undefined}>
                   <td colSpan={columns.length} className={tableScrollBody ? "flex flex-1 min-w-0 items-center justify-center" : "text-center"}>
-                    <EmptyState title={emptyTitle} description={emptyDesc} />
+                    {emptyState}
                   </td>
                 </tr>
               ) : (
@@ -281,7 +286,7 @@ export function EnhancedTable<T>({
                   <tr
                     key={rowKey(row)}
                     style={rowStyle}
-                    className={`${stretchRows && tableScrollBody ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                    className={`${stretchRows && tableScrollBody ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} shrink-0 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
                     onClick={() => onRowClick?.(row)}
                   >
                     {columns.map(col => (
@@ -302,13 +307,15 @@ export function EnhancedTable<T>({
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className={`flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
-          <span className="text-xs order-2 sm:order-1" style={{ color: C.muted }}>
+      {(totalPages > 1 || contentHeight && sorted.length > 0) && (
+        <div className={contentHeight ? "flex items-center justify-between pt-2 px-1 gap-2 shrink-0" : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
+          <span className={contentHeight ? "text-xs whitespace-nowrap" : "text-xs order-2 sm:order-1"} style={{ color: C.muted }}>
+            {contentHeight ? `Page ${safePage} of ${totalPages}` : <>
             <span className="hidden sm:inline">Page {safePage} of {totalPages}</span>
             <span className="sm:hidden">{safePage} / {totalPages}</span>
+            </>}
           </span>
-          <div className="flex gap-1 order-1 sm:order-2 w-full sm:w-auto justify-center sm:justify-end">
+          <div className={contentHeight ? "flex gap-1 shrink-0" : "flex gap-1 order-1 sm:order-2 w-full sm:w-auto justify-center sm:justify-end"}>
             <button
               disabled={safePage === 1}
               onClick={() => setPage(p => Math.max(1, p - 1))}

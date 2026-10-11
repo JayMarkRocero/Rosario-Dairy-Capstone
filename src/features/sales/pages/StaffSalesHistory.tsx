@@ -1,4 +1,4 @@
-import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
+import { TableCard } from "@/components/data-display/TableCard";
 import { useMemo, useState, useEffect } from "react";
 import { Eye } from "lucide-react";
 import { filterSelectClass } from "@/styles/controlClasses";
@@ -6,7 +6,6 @@ import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { TransactionDetails } from "@/features/sales/components/TransactionDetails";
 import { useAuth } from "@/features/auth/context/AuthContext";
 import { getSessionUserId } from "@/features/auth/api/auth.service";
-import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
@@ -23,7 +22,6 @@ function staffSalesDate(timestamp: string): string {
 export function StaffSalesHistory() {
   const { user } = useAuth();
   const userId = getSessionUserId(user);
-  const pageCapacity = useStaffAutoPageSize(56, 200);
   const [selected, setSelected] = useState<Sale | null>(null);
 
   const { data: cachedRecords, loading: recordsLoading } = useCachedQuery(`sales:mine:${userId ?? user?.username ?? "anonymous"}`,
@@ -87,16 +85,16 @@ export function StaffSalesHistory() {
   ];
 
   return (
-    <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden max-w-[1400px] mx-auto w-full">
+    <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-auto gap-3 overflow-visible max-w-[1400px] mx-auto w-full">
       <h2 className="text-base sm:text-lg font-bold shrink-0" style={{ color: C.muted }}>Your transaction records</h2>
       <div className="grid grid-cols-2 gap-2 shrink-0">
         <SummaryCard compact label="Total Revenue" subtitle="Your lifetime sales processed" value={`₱${summary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.blue}/>
         <SummaryCard compact label="Total Transactions" subtitle="Your lifetime transactions processed" value={summary.totalTransactions} color={C.green}/>
       </div>
-      <Card className="records-card p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        <EnhancedTable rowHeight={56} fillHeight scrollBody disableScroll columns={columns} data={filteredRecords} rowKey={s=>s.receipt} pageCapacity={pageCapacity} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search receipt or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
+      <TableCard>
+        <EnhancedTable contentHeight pageSize={5} rowHeight={56} columns={columns} data={filteredRecords} rowKey={s=>s.receipt} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search receipt or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
           extraControls={<><select aria-label="Payment method" value={payment} onChange={e=>setPayment(e.target.value)} className={filterSelectClass}>{paymentOptions.map(p=><option key={p} value={p}>{p === "All" ? "All payments" : p}</option>)}</select><input aria-label="Transaction date" type="date" value={date} onChange={e=>setDate(e.target.value)} className={filterSelectClass}/></>}/>
-      </Card>
+      </TableCard>
       <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>
     </div>
   );

@@ -18,6 +18,7 @@ import { C } from "@/styles/tokens/colors";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { inventoryService, type CategoryIconOption } from "@/features/inventory/api/inventory.service";
 import { normalizeCategoryIcon, type CategoryIconKey } from "@/features/inventory/utils/categoryIcons";
+import { MobileCategoryCard } from "@/features/inventory/components/MobileCategoryCard";
 import type { Category } from "@/features/inventory/types/inventory";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
@@ -220,37 +221,43 @@ export function AdminCategories() {
 
   return (
     <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
-      <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
+      <div className="flex shrink-0 min-h-10 flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Organize product categories and catalogs</h2>
-        <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
+        <Btn fullWidth variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Category
         </Btn>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-shrink-0">
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 md:gap-3 flex-shrink-0">
         {[
           {label:"Categories", value:cats.length, color:C.blue},
           {label:"Active", value:activeCategories, color:C.green},
           {label:"Products", value:productCount, color:C.navy},
         ].map(stat => (
-          <SummaryCard compact key={stat.label} label={stat.label} value={stat.value} color={stat.color} />
+          <div key={stat.label} className={stat.label === "Products" ? "col-span-2 md:col-span-1" : "min-w-0"}>
+            <SummaryCard compact mobileCompact label={stat.label} value={stat.value} color={stat.color} />
+          </div>
         ))}
       </div>
 
-      <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        <EnhancedTable mobileTable rowHeight={56} columns={columns}
+      <Card className="records-card p-3 md:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+        <EnhancedTable rowHeight={56} columns={columns}
           data={sortedCategories} rowKey={cat => cat.id} pageCapacity={pageCapacity}
           searchable searchKeys={cat => [cat.name]} searchPlaceholder="Search categories…"
           onRowClick={cat => { setSelected(cat); setViewOpen(true); }}
+          renderMobileRow={cat => <MobileCategoryCard category={cat} busy={loading}
+            onView={category => { setSelected(category); setViewOpen(true); }}
+            onEdit={openEdit} onDelete={category => { setSelected(category); setDeleteOpen(true); }}
+            onReactivate={handleReactivate} onVisibility={handleStaffVisibility} />}
           showExport={false} loading={catsLoading}
           emptyTitle={statusFilter === "Inactive" ? "No inactive categories" : statusFilter === "Active" ? "No active categories" : "No categories found"}
           emptyDesc={statusFilter === "Inactive" ? "Deactivated categories will appear here." : statusFilter === "Active" ? "Reactivate a category or add a new one." : "Add a category to organize your products."}
-          extraControls={<select aria-label="Category status" value={statusFilter}
-            onChange={event => setStatusFilter(event.target.value as CategoryStatus)} className={filterSelectClass}>
+          extraControls={<div className="grid grid-cols-1 gap-2"><select aria-label="Category status" value={statusFilter}
+            onChange={event => setStatusFilter(event.target.value as CategoryStatus)} className={`${filterSelectClass} w-full md:w-auto`}>
             <option value="All">All Statuses</option>
             <option value="Active">Active</option>
             <option value="Inactive">Inactive</option>
-          </select>} />
+          </select></div>} />
       </Card>
 
       {/* Add Modal */}

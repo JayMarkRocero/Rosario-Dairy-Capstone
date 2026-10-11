@@ -1,5 +1,5 @@
+import { TableCard } from "@/components/data-display/TableCard";
 import { daysUntilExpiry as calendarDaysUntilExpiry } from "@/features/inventory/utils/expiry";
-import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
@@ -7,7 +7,6 @@ import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useRef } from "react";
 import { Plus, Eye, Edit, Trash2, AlertTriangle, PackagePlus } from "lucide-react";
 import { toast } from "sonner";
-import { Card } from "@/components/data-display/Card";
 import { Btn } from "@/components/buttons/Btn";
 import { Modal } from "@/components/overlays/Modal";
 import { Drawer } from "@/components/overlays/Drawer";
@@ -31,7 +30,7 @@ const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
-const STATUSES = ["Active", "Low Stock", "Near Expiry", "Expired"];
+const STATUSES = ["Low Stock", "Near Expiry", "Expired", "In Stock"];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -156,7 +155,6 @@ function ProductDetail({ p }: { p: InventoryItem }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function AdminInventory() {
-  const pageCapacity = useAdminAutoPageSize(56, { minPageSize: 1, maxPageSize: 5 });
   const query = useCachedQuery("inventory:admin", () => inventoryService.getOverview(), ["inventory"]);
   const items = query.data ?? [];
   const itemsLoading = query.loading;
@@ -188,7 +186,7 @@ export function AdminInventory() {
         (statusFilter === "Low Stock" ? warning.lowStock :
          statusFilter === "Near Expiry" ? warning.nearExpiry :
          statusFilter === "Expired" ? warning.expired :
-         warning.status === "Active");
+         statusFilter === "In Stock" && !warning.lowStock && !warning.nearExpiry && !warning.expired);
       return matchesCat && matchesStatus;
     })
     // FEFO ordering: soonest expiry first. Items with no expiry date sort last.
@@ -388,7 +386,7 @@ export function AdminInventory() {
   );
 
   return (
-    <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page flex flex-1 flex-col h-auto overflow-visible gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       {/* Header */}
       <div className="block shrink-0 min-h-10 md:flex md:items-center md:justify-between md:gap-3">
         <div className="min-w-0 flex-1">
@@ -424,16 +422,17 @@ export function AdminInventory() {
       </div>
 
       {/* Table */}
-      <Card className="records-card p-3 md:p-4 min-w-0 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-visible xl:overflow-hidden">
+      <TableCard>
+        <div className="flex h-auto min-w-0 flex-col justify-start">
           <EnhancedTable
+            contentHeight
+            pageSize={5}
             renderMobileRow={product => <MobileInventoryCard product={product} status={getStatus(product)} busy={loading} onEdit={openEdit} onDelete={openDelete} />}
             rowHeight={56}
-            stretchRows
             columns={columns}
             data={filteredItems}
             rowKey={r => r.id}
-            pageCapacity={pageCapacity}
+
             searchable
             searchKeys={r => [r.name, r.cat]}
             searchPlaceholder="Search products…"
@@ -466,7 +465,7 @@ export function AdminInventory() {
             }
           />
         </div>
-      </Card>
+      </TableCard>
 
       {/* Add Modal */}
       <Modal busy={loading} open={addOpen} onClose={() => setAddOpen(false)}

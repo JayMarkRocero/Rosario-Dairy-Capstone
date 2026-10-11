@@ -1,5 +1,5 @@
+import { TableCard } from "@/components/data-display/TableCard";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
-import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
@@ -7,7 +7,6 @@ import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useRef } from "react";
 import { Plus, Eye, Edit, Trash2, Lock, PenBox, KeyIcon, UserCheck } from "lucide-react";
 import { toast } from "sonner";
-import { Card } from "@/components/data-display/Card";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { Btn } from "@/components/buttons/Btn";
 import { Modal } from "@/components/overlays/Modal";
@@ -110,7 +109,6 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
 }
 
 export function AdminUserManagement() {
-  const pageCapacity = useAdminAutoPageSize(56);
   const { user: currentUser } = useAuth();
   const query = useCachedQuery("users:list", () => userService.getAll(), ["users"]);
   const users = query.data ?? [];
@@ -330,7 +328,7 @@ export function AdminUserManagement() {
   ];
 
   return (
-    <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page flex flex-1 flex-col h-auto overflow-visible gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>
           Manage administrator and staff accounts
@@ -346,16 +344,15 @@ export function AdminUserManagement() {
   ))}
 </div>
 
-      <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
+      <TableCard>
         <EnhancedTable
+          contentHeight
+          pageSize={5}
           rowHeight={56}
-          fillHeight
-          scrollBody
-          disableScroll
           columns={columns}
           data={filteredUsers}
           rowKey={r=>r.id}
-          pageCapacity={pageCapacity}
+
           searchable
           searchKeys={r=>[r.name,r.email,r.role]}
           searchPlaceholder="Search users…"
@@ -383,7 +380,7 @@ export function AdminUserManagement() {
             </>
           }
         />
-      </Card>
+      </TableCard>
 
       {/* View Drawer */}
       <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="User Profile" subtitle={selected?.role} size="sm"

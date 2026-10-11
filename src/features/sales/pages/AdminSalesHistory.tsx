@@ -1,4 +1,4 @@
-import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
+import { TableCard } from "@/components/data-display/TableCard";
 import { useState, useMemo } from "react";
 import { Eye } from "lucide-react";
 import { TransactionDetails } from "@/features/sales/components/TransactionDetails";
@@ -11,7 +11,6 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 const PAYMENT_METHODS = ["Cash", "Online"];
 
 export function AdminSalesHistory() {
-  const pageCapacity = useAdminAutoPageSize(56);
   const [paymentFilter, setPaymentFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("");
   const [selected, setSelected] = useState<Sale | null>(null);
@@ -62,7 +61,7 @@ export function AdminSalesHistory() {
   ];
 
   return (
-    <div className="records-page flex flex-1 flex-col h-full min-h-0 gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full overflow-hidden">
+    <div className="records-page flex flex-1 flex-col h-auto gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full overflow-visible">
       <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
         <div className="min-w-0 flex-1">
           <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{ color: C.muted }}>Complete transaction records</h2>
@@ -88,17 +87,16 @@ export function AdminSalesHistory() {
         </Card>
       </div>
 
-      <Card className="records-card p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+      <TableCard>
+        <div className="h-auto flex flex-col">
           <EnhancedTable
+            contentHeight
+            pageSize={5}
             rowHeight={56}
-            fillHeight
-            scrollBody
-            disableScroll
             columns={columns}
             data={filteredRecords}
             rowKey={r => r.receipt}
-            pageCapacity={pageCapacity}
+
             searchable
             searchKeys={r => [r.receipt, r.cashier]}
             searchPlaceholder="Search transactions…"
@@ -137,7 +135,7 @@ export function AdminSalesHistory() {
             }
           />
         </div>
-      </Card>
+      </TableCard>
       <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>
     </div>
   );

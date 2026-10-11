@@ -31,9 +31,12 @@ const compiled = buildSync({
     export { CreateOrderModal } from './src/features/orders/components/CreateOrderModal';
     export { StaffPOS } from './src/features/pos/pages/StaffPOS';
     export { StaffKPICards } from './src/features/dashboard/components/staff/StaffKPICards';
+    export { MobileCategoryCard } from './src/features/inventory/components/MobileCategoryCard';
     export { MobileInventoryCard } from './src/features/inventory/components/MobileInventoryCard';
     export { EnhancedTable } from './src/components/data-display/EnhancedTable';
     export * from './src/features/inventory/components/InventoryWarnings';
+    export { AdminInventory } from './src/features/inventory/pages/AdminInventory';
+    export { StaffInventory } from './src/features/inventory/pages/StaffInventory';
     export { AdminCategories } from './src/features/inventory/pages/AdminCategories';
     export { AdminCustomers } from './src/features/customers/pages/AdminCustomers';
     export { AdminUserManagement } from './src/features/users/pages/AdminUserManagement';
@@ -631,4 +634,119 @@ test('settings navigation renders cached fields immediately and stale background
     assert.equal(inputById(tree, 'near_expiry_threshold').props.value, '9');
     assert.equal(toastErrors.length, 0);
   } finally { Date.now = originalNow; }
+});
+
+
+test('mobile category menu preserves actions and closes after selection or Escape', () => {
+  const category = { id: 1, name: 'Milk and dairy drinks', icon: '', products: 290, is_active: true, is_visible_to_staff: true };
+  const calls = [];
+  const props = { category, onView: value => calls.push(['view', value]), onEdit: value => calls.push(['edit', value]),
+    onDelete: value => calls.push(['delete', value]), onReactivate: value => calls.push(['reactivate', value]), onVisibility: value => calls.push(['visibility', value]) };
+  const buttons = tree => elements(tree, node => node.type === 'button');
+  const openMenu = overrides => {
+    const tree = render(ui.MobileCategoryCard, { ...props, ...overrides });
+    buttons(tree)[0].props.onClick();
+    return render(ui.MobileCategoryCard, { ...props, ...overrides });
+  };
+  let tree = render(ui.MobileCategoryCard, props);
+  assert.equal(buttons(tree)[0].props['aria-expanded'], false);
+  for (const [label, action] of [['View details', 'view'], ['Edit category', 'edit'], ['Hide from staff', 'visibility'], ['Delete category', 'delete']]) {
+    tree = openMenu();
+    const button = buttons(tree).find(node => React.Children.toArray(node.props.children).includes(label));
+    button.props.onClick();
+    assert.deepEqual(calls.at(-1), [action, category]);
+    assert.equal(buttons(render(ui.MobileCategoryCard, props))[0].props['aria-expanded'], false);
+  }
+  tree = openMenu();
+  elements(tree, node => typeof node.props.onKeyDown === 'function')[0].props.onKeyDown({ key: 'Escape' });
+  assert.equal(buttons(render(ui.MobileCategoryCard, props))[0].props['aria-expanded'], false);
+  const inactive = { ...category, is_active: false };
+  tree = openMenu({ category: inactive });
+  assert.equal(buttons(tree).some(node => React.Children.toArray(node.props.children).includes('Delete category')), false);
+  buttons(tree).find(node => React.Children.toArray(node.props.children).includes('Reactivate category')).props.onClick();
+  assert.deepEqual(calls.at(-1), ['reactivate', inactive]);
+  tree = openMenu();
+  tree = render(ui.MobileCategoryCard, { ...props, busy: true });
+  assert.ok(buttons(tree).every(node => node.props.disabled));
+});
+
+test('Categories mobile renderer shares filtered records and opens existing edit and delete dialogs', () => {
+  const category = { id: 1, name: 'Milk', icon: '', products: 290, is_active: true, is_visible_to_staff: true };
+  const inactive = { ...category, id: 2, name: 'Other', is_active: false };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:list`, [category, inactive], ['categories']);
+  let tree = render(ui.AdminCategories);
+  const table = root => elements(root, node => Array.isArray(node.props.columns) && Array.isArray(node.props.data))[0];
+  assert.deepEqual(table(tree).props.data, [category]);
+  const mobile = table(tree).props.renderMobileRow(category);
+  mobile.props.onEdit(category);
+  tree = render(ui.AdminCategories);
+  assert.equal(elements(tree, node => node.props.title === 'Edit Category')[0].props.open, true);
+  mobile.props.onDelete(category);
+  tree = render(ui.AdminCategories);
+  assert.equal(elements(tree, node => node.props.title === 'Delete Category')[0].props.open, true);
+  const status = elements(table(tree).props.extraControls, node => node.type === 'select')[0];
+  status.props.onChange({ target: { value: 'Inactive' } });
+  tree = render(ui.AdminCategories);
+  assert.deepEqual(table(tree).props.data, [inactive]);
+  assert.equal(table(tree).props.renderMobileRow(inactive).props.category, inactive);
+});
+
+
+test('admin and staff inventory filters expose alert statuses and retain compound warnings', () => {
+  const nearDate = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+  const base = { cat: 'Milk', price: 100, stock: 20, reorderThreshold: 5, low: false, expiry: '', nearExpiryThreshold: 7 };
+  const products = [
+    { ...base, id: 1, name: 'Normal' },
+    { ...base, id: 2, name: 'Low', stock: 5 },
+    { ...base, id: 3, name: 'Near', expiry: nearDate },
+    { ...base, id: 4, name: 'Dual', stock: 2, expiry: nearDate },
+    { ...base, id: 5, name: 'Expired', expiry: '2000-01-01' },
+  ];
+  for (const [component, key, label] of [[ui.AdminInventory, 'inventory:admin', 'Filter by status'], [ui.StaffInventory, 'inventory:staff', 'Status']]) {
+    states = []; refs = []; effects = [];
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, products, ['inventory']);
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:active`, [], ['categories']);
+    const table = tree => elements(tree, node => Array.isArray(node.props.columns) && Array.isArray(node.props.data))[0];
+    let tree = render(component);
+    const dropdown = elements(table(tree).props.extraControls, node => node.type === 'select' && node.props['aria-label'] === label)[0];
+    assert.deepEqual(elements(dropdown, node => node.type === 'option').map(node => node.props.children),
+      ['All Statuses', 'Low Stock', 'Near Expiry', 'Expired', 'In Stock']);
+    for (const [status, ids] of [['Low Stock', [2, 4]], ['Near Expiry', [3, 4]], ['Expired', [5]], ['In Stock', [1]], ['All', [1, 2, 3, 4, 5]]]) {
+      dropdown.props.onChange({ target: { value: status } });
+      tree = render(component);
+      assert.deepEqual(table(tree).props.data.map(row => row.id).sort((a, b) => a - b), ids, `${key}: ${status}`);
+    }
+  }
+});
+
+
+test('five-row content tables paginate and attach a valid footer after searches shrink the results', () => {
+  const props = {
+    contentHeight: true, pageSize: 5, rowHeight: 56, showExport: false,
+    columns: [{ key: 'name', header: 'Name' }],
+    data: Array.from({ length: 12 }, (_, id) => ({ id, name: `Record ${id}` })),
+    rowKey: row => row.id, searchKeys: row => [row.name],
+  };
+  const rows = tree => elements(elements(tree, node => node.type === 'tbody')[0], node => node.type === 'tr');
+  const footer = (tree, text) => elements(tree, node => node.type === 'span' && node.props.children === text);
+  let tree = render(ui.EnhancedTable, props);
+  assert.equal(rows(tree).length, 5);
+  assert.equal(footer(tree, 'Page 1 of 3').length, 1);
+  elements(tree, node => node.type === 'button').at(-1).props.onClick();
+  tree = render(ui.EnhancedTable, props);
+  assert.equal(rows(tree).length, 5);
+  assert.equal(footer(tree, 'Page 2 of 3').length, 1);
+  elements(tree, node => node.type === 'button').at(-1).props.onClick();
+  tree = render(ui.EnhancedTable, props);
+  assert.equal(rows(tree).length, 2);
+  assert.equal(footer(tree, 'Page 3 of 3').length, 1);
+  elements(tree, node => node.type === 'input')[0].props.onChange({ target: { value: 'Record 11' } });
+  tree = render(ui.EnhancedTable, props);
+  assert.equal(rows(tree).length, 1);
+  assert.equal(footer(tree, 'Page 1 of 1').length, 1);
+  assert.ok(elements(tree, node => node.type === 'button').filter(node => node.props.onClick && node.props.children?.type).every(node => node.props.disabled));
+  elements(tree, node => node.type === 'input')[0].props.onChange({ target: { value: 'Missing record' } });
+  tree = render(ui.EnhancedTable, props);
+  assert.equal(footer(tree, 'Page 1 of 1').length, 0);
+  assert.ok(elements(tree, node => node.props.title === 'No records found').length > 0);
 });

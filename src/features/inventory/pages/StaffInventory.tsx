@@ -1,20 +1,18 @@
+import { TableCard } from "@/components/data-display/TableCard";
 import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { InventoryStockValue, InventoryExpiryValue, InventoryStatusBadge } from "@/features/inventory/components/InventoryWarnings";
-import { useStaffAutoPageSize } from "@/hooks/useAutoPageSize";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useMemo, useState } from "react";
-import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 
-const STATUSES = ["All", "Active", "Low Stock", "Near Expiry", "Expired"];
+const STATUSES = ["All", "Low Stock", "Near Expiry", "Expired", "In Stock"];
 
 export function StaffInventory() {
-  const pageCapacity = useStaffAutoPageSize(56);
   const query = useCachedQuery("inventory:staff", () => inventoryService.getOverview(true), ["inventory"]);
   const items = query.data ?? [];
   const itemsLoading = query.loading;
@@ -37,7 +35,7 @@ export function StaffInventory() {
         (status === "Low Stock" ? warning.lowStock :
          status === "Near Expiry" ? warning.nearExpiry :
          status === "Expired" ? warning.expired :
-         warning.status === "Active");
+         status === "In Stock" && !warning.lowStock && !warning.nearExpiry && !warning.expired);
       return matchesCategory && matchesStatus;
     })
     // FEFO ordering: soonest expiry first. Items with no expiry date sort last.
@@ -72,7 +70,7 @@ export function StaffInventory() {
   ];
 
   return (
-    <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-full min-h-0 gap-3 overflow-hidden max-w-[1400px] mx-auto w-full">
+    <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-auto gap-3 overflow-visible max-w-[1400px] mx-auto w-full">
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Products and stock levels</h2>
         <span className="text-xs" style={{color:C.muted}}>Read-only access</span>
@@ -81,10 +79,10 @@ export function StaffInventory() {
         ["Products", items.length, C.blue], ["Low stock", items.filter(p=>getInventoryWarnings(p).lowStock).length, C.orange],
         ["Near expiry", items.filter(p=>getInventoryWarnings(p).nearExpiry).length, C.orange], ["Expired", items.filter(p=>getInventoryWarnings(p).expired).length, C.red],
       ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-      <Card className="records-card p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        <EnhancedTable rowHeight={56} fillHeight scrollBody disableScroll columns={columns} data={filteredItems} rowKey={p=>p.id} pageCapacity={pageCapacity} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
-          extraControls={<><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className={filterSelectClass}>{categories.map(cat=><option key={cat} value={cat}>{cat === "All" ? "All categories" : cat}</option>)}</select><select aria-label="Status" value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}>{STATUSES.map(s=><option key={s} value={s}>{s === "All" ? "All statuses" : s}</option>)}</select></>}/>
-      </Card>
+      <TableCard>
+        <EnhancedTable contentHeight pageSize={5} rowHeight={56} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
+          extraControls={<><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className={filterSelectClass}>{categories.map(cat=><option key={cat} value={cat}>{cat === "All" ? "All categories" : cat}</option>)}</select><select aria-label="Status" value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}>{STATUSES.map(s=><option key={s} value={s}>{s === "All" ? "All Statuses" : s}</option>)}</select></>}/>
+      </TableCard>
     </div>
   );
 }
