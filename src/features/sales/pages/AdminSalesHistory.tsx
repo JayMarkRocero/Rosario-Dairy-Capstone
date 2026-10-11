@@ -1,3 +1,4 @@
+import { MobileSaleCard } from "@/features/sales/components/MobileSaleCard";
 import { TableCard } from "@/components/data-display/TableCard";
 import { useState, useMemo } from "react";
 import { Eye } from "lucide-react";
@@ -61,7 +62,7 @@ export function AdminSalesHistory() {
   ];
 
   return (
-    <div className="records-page viewport-records-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
+    <div className="records-page viewport-records-page sales-history-page flex flex-1 flex-col gap-3 px-3.5 sm:px-4 pt-2 max-w-[1400px] mx-auto w-full">
       <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
         <div className="min-w-0 flex-1">
           <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{ color: C.muted }}>Complete transaction records</h2>
@@ -97,36 +98,39 @@ export function AdminSalesHistory() {
             columns={columns}
             data={filteredRecords}
             rowKey={r => r.receipt}
+            renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected} />}
 
             searchable
-            searchKeys={r => [r.receipt, r.cashier]}
+            searchKeys={r => [r.receipt, r.customer, r.cashier]}
             searchPlaceholder="Search transactions…"
             loading={recordsLoading}
             emptyTitle="No transactions found"
             emptyDesc="Sales records will appear here once transactions are made."
             showExport={false}
             extraControls={
-              <div className="flex flex-wrap gap-2">
+              <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-row md:flex-wrap">
                 <select
+                  aria-label="Payment method"
                   value={paymentFilter}
                   onChange={e => setPaymentFilter(e.target.value)}
-                  className="px-3 py-2 rounded-xl text-sm outline-none border"
+                  className="w-full min-w-0 md:w-auto px-3 py-2 rounded-xl text-sm outline-none border"
                   style={{ borderColor: C.border, color: C.text, backgroundColor: "var(--input-background)" }}
                 >
                   <option value="All">All Payment Methods</option>
                   {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
                 <input
+                  aria-label="Transaction date"
                   type="date"
                   value={dateFilter}
                   onChange={e => setDateFilter(e.target.value)}
-                  className="px-3 py-2 rounded-xl text-sm outline-none border"
+                  className="w-full min-w-0 md:w-auto px-3 py-2 rounded-xl text-sm outline-none border"
                   style={{ borderColor: C.border, color: C.text, backgroundColor: "var(--input-background)" }}
                 />
                 {dateFilter && (
                   <button
                     onClick={() => setDateFilter("")}
-                    className="px-3 py-2 rounded-xl text-sm border"
+                    className="w-full min-w-0 md:w-auto px-3 py-2 rounded-xl text-sm border"
                     style={{ borderColor: C.border, color: C.muted, backgroundColor: "var(--input-background)" }}
                   >
                     Clear date

@@ -36,6 +36,10 @@ const compiled = buildSync({
     export { CreateOrderModal } from './src/features/orders/components/CreateOrderModal';
     export { MobileOrderCard } from './src/features/orders/components/MobileOrderCard';
     export { MobileCustomerCard } from './src/features/customers/components/MobileCustomerCard';
+    export { MobileSaleCard } from './src/features/sales/components/MobileSaleCard';
+    export { MobileUserCard } from './src/features/users/components/MobileUserCard';
+    export { AdminSalesHistory } from './src/features/sales/pages/AdminSalesHistory';
+    export { StaffSalesHistory } from './src/features/sales/pages/StaffSalesHistory';
     export { AdminOrders } from './src/features/orders/pages/AdminOrders';
     export { StaffOrders } from './src/features/orders/pages/StaffOrders';
     export { StaffPOS } from './src/features/pos/pages/StaffPOS';
@@ -153,6 +157,56 @@ test('Customers shares five-record pagination between mobile cards and the deskt
   assert.equal(elements(tree, node => node.type === ui.MobileCustomerCard).length, 5);
   assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 5);
   assert.ok(elements(tree, node => node.props.children === 'Page 1 of 2').length > 0);
+});
+
+test('mobile sales cards keep full transaction details available and open the selected sale', () => {
+  const sale = { receipt: 'TXN-038118', customer: 'A very long customer name', cashier: 'Cashier', date: '2026-10-11', payment: 'Cash', total: 120 };
+  let selected;
+  const tree = render(ui.MobileSaleCard, { sale, onView: value => { selected = value; } });
+  const values = elements(tree, node => node.type === 'dd');
+  assert.deepEqual(values.map(node => node.props.children), [sale.receipt, sale.customer, sale.cashier, sale.date, sale.payment, '₱120']);
+  assert.equal(values[1].props.title, sale.customer);
+  elements(tree, node => node.props['aria-label'] === 'View Details')[0].props.onClick();
+  assert.equal(selected, sale);
+});
+
+test('admin and staff Sales History use mobile cards without a sort selector and preserve five-item pagination', () => {
+  const sales = Array.from({ length: 6 }, (_, index) => ({ receipt: `TXN-${index}`, customer: 'Customer', cashier: 'Cashier', date: '2026-10-11', payment: 'Cash', total: 120 }));
+  for (const [Page, key] of [[ui.AdminSalesHistory, 'sales:history:'], [ui.StaffSalesHistory, 'sales:mine:7']]) {
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, sales, ['sales']);
+    states = []; refs = [];
+    const table = elements(render(Page), node => node.type === ui.EnhancedTable)[0];
+    assert.equal(table.props.pageSize, 5);
+    assert.equal(table.props.renderMobileRow(sales[0]).type, ui.MobileSaleCard);
+    const controls = table.props.extraControls;
+    assert.equal(elements(controls, node => node.type === 'select').length, 1);
+    assert.equal(elements(controls, node => node.type === 'input' && node.props.type === 'date').length, 1);
+    states = []; refs = [];
+    const tree = render(ui.EnhancedTable, table.props);
+    assert.equal(elements(tree, node => node.type === ui.MobileSaleCard).length, 5);
+    assert.equal(elements(tree, node => node.props['aria-label'] === 'Sort records').length, 0);
+    assert.ok(elements(tree, node => node.props.children === 'Page 1 of 2').length > 0);
+  }
+});
+
+test('mobile user cards share existing account actions and keep five records with single-page pagination', () => {
+  authState = { user: { username: 'audit', email: 'audit@example.com' }, loading: false };
+  const users = Array.from({ length: 5 }, (_, index) => ({ id: index + 1, name: `Staff ${index + 1}`, username: `staff${index}`, email: `staff${index}@example.com`, role: 'Staff', status: index === 4 ? 'Inactive' : 'Active', last: 'Oct 11, 2026, 10:30 AM', lastLogin: null, phone: '', address: '', deactivationReason: 'none' }));
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:users:list`, users, ['users']);
+  const table = elements(render(ui.AdminUserManagement), node => node.type === ui.EnhancedTable)[0];
+  const mobile = table.props.renderMobileRow(users[0], 0);
+  assert.equal(mobile.type, ui.MobileUserCard);
+  const card = render(ui.MobileUserCard, mobile.props);
+  assert.equal(elements(card, node => node.props.title === users[0].email).length, 1);
+  assert.equal(elements(card, node => node.type === 'dd').at(-1).props.children, users[0].last);
+  assert.deepEqual(elements(card, node => node.props.label).map(node => node.props.label), ['View details', 'Edit', 'Reset password', 'Deactivate']);
+  const inactive = table.props.renderMobileRow(users[4], 4);
+  assert.deepEqual(elements(render(ui.MobileUserCard, inactive.props), node => node.props.label).map(node => node.props.label), ['View details', 'Edit', 'Reset password', 'Reactivate Account']);
+  states = []; refs = [];
+  const tree = render(ui.EnhancedTable, table.props);
+  assert.equal(elements(tree, node => node.type === ui.MobileUserCard).length, 5);
+  assert.equal(elements(tree, node => node.props['aria-label'] === 'Sort records').length, 0);
+  assert.ok(elements(tree, node => node.props.children === 'Page 1 of 1').length > 0);
 });
 
 test('mobile inventory cards toggle metadata and preserve edit and delete actions', () => {

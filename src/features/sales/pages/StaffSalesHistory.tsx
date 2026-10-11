@@ -1,3 +1,4 @@
+import { MobileSaleCard } from "@/features/sales/components/MobileSaleCard";
 import { TableCard } from "@/components/data-display/TableCard";
 import { useMemo, useState, useEffect } from "react";
 import { Eye } from "lucide-react";
@@ -85,15 +86,15 @@ export function StaffSalesHistory() {
   ];
 
   return (
-    <div className="records-page viewport-records-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
+    <div className="records-page viewport-records-page sales-history-page flex flex-1 flex-col gap-3 px-3.5 sm:px-4 pt-2 max-w-[1400px] mx-auto w-full">
       <h2 className="text-base sm:text-lg font-bold shrink-0" style={{ color: C.muted }}>Your transaction records</h2>
       <div className="grid grid-cols-2 gap-2.5 shrink-0">
         <SummaryCard compact label="Total Revenue" subtitle="Your lifetime sales processed" value={`₱${summary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.blue}/>
         <SummaryCard compact label="Total Transactions" subtitle="Your lifetime transactions processed" value={summary.totalTransactions} color={C.green}/>
       </div>
       <TableCard className="viewport-table-card">
-        <EnhancedTable contentHeight reserveTableHeight pageSize={5} rowHeight={52} columns={columns} data={filteredRecords} rowKey={s=>s.receipt} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search receipt or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
-          extraControls={<><select aria-label="Payment method" value={payment} onChange={e=>setPayment(e.target.value)} className={filterSelectClass}>{paymentOptions.map(p=><option key={p} value={p}>{p === "All" ? "All payments" : p}</option>)}</select><input aria-label="Transaction date" type="date" value={date} onChange={e=>setDate(e.target.value)} className={filterSelectClass}/></>}/>
+        <EnhancedTable contentHeight reserveTableHeight pageSize={5} rowHeight={52} columns={columns} data={filteredRecords} rowKey={s=>s.receipt} renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected} />} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search receipt or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
+          extraControls={<div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-row"><select aria-label="Payment method" value={payment} onChange={e=>setPayment(e.target.value)} className={`${filterSelectClass} w-full min-w-0 md:w-auto`}>{paymentOptions.map(p=><option key={p} value={p}>{p === "All" ? "All Payment Methods" : p}</option>)}</select><input aria-label="Transaction date" type="date" value={date} onChange={e=>setDate(e.target.value)} className={`${filterSelectClass} w-full min-w-0 md:w-auto`}/></div>}/>
       </TableCard>
       <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>
     </div>

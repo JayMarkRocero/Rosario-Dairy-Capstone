@@ -1,4 +1,5 @@
 import { TableCard } from "@/components/data-display/TableCard";
+import { MobileUserCard } from "@/features/users/components/MobileUserCard";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
@@ -328,8 +329,8 @@ export function AdminUserManagement() {
   ];
 
   return (
-    <div className="records-page viewport-records-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-      <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
+    <div className="records-page viewport-records-page users-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
+      <div className="flex flex-wrap shrink-0 min-h-10 items-center justify-between gap-2">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>
           Manage administrator and staff accounts
         </h2>
@@ -353,6 +354,7 @@ export function AdminUserManagement() {
           columns={columns}
           data={filteredUsers}
           rowKey={r=>r.id}
+          renderMobileRow={(user, index) => <MobileUserCard user={user} actions={columns.find(column => column.key === "actions")?.render?.(user, index)} />}
 
           searchable
           searchKeys={r=>[r.name,r.email,r.role]}
@@ -363,22 +365,22 @@ export function AdminUserManagement() {
           emptyTitle="No users found"
           emptyDesc="Add your first user to get started."
           extraControls={
-            <>
+            <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-row">
             <select
               aria-label="Role"
               value={roleFilter}
               onChange={e => setRoleFilter(e.target.value)}
-              className={filterSelectClass}
+              className={`${filterSelectClass} w-full min-w-0 md:w-auto`}
             >
               <option value="All">All Roles</option>
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
-            <select aria-label="Status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={filterSelectClass}>
+            <select aria-label="Status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${filterSelectClass} w-full min-w-0 md:w-auto`}>
               <option value="All">All Statuses</option>
               <option value="Active">Active</option>
               <option value="Inactive">Inactive</option>
             </select>
-            </>
+            </div>
           }
         />
       </TableCard>
