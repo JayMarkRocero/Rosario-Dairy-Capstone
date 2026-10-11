@@ -1,3 +1,4 @@
+import { ProductTable } from "@/features/inventory/components/ProductTable";
 import { TableCard } from "@/components/data-display/TableCard";
 import { daysUntilExpiry as calendarDaysUntilExpiry } from "@/features/inventory/utils/expiry";
 import { toastApiError } from "@/lib/errorHandling";
@@ -5,14 +6,15 @@ import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useRef } from "react";
-import { Plus, Eye, Edit, Trash2, AlertTriangle, PackagePlus } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, AlertTriangle, PackagePlus, Box } from "lucide-react";
 import { toast } from "sonner";
 import { Btn } from "@/components/buttons/Btn";
 import { Modal } from "@/components/overlays/Modal";
 import { Drawer } from "@/components/overlays/Drawer";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
-import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
+import { type Column } from "@/components/data-display/EnhancedTable";
 import { CategoryIcon } from "@/components/data-display/CategoryIcon";
+
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
@@ -30,7 +32,7 @@ const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
-const STATUSES = ["Low Stock", "Near Expiry", "Expired", "In Stock"];
+const STATUSES = ["Low Stock", "Near Expiry", "Expired"];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -155,7 +157,7 @@ function ProductDetail({ p }: { p: InventoryItem }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function AdminInventory() {
-  const query = useCachedQuery("inventory:admin", () => inventoryService.getOverview(), ["inventory"]);
+  const query = useCachedQuery("inventory:admin", () => inventoryService.getCatalogOverview(), ["inventory"]);
   const items = query.data ?? [];
   const itemsLoading = query.loading;
   const loadItems = query.refresh;
@@ -185,12 +187,13 @@ export function AdminInventory() {
         statusFilter === "All" ||
         (statusFilter === "Low Stock" ? warning.lowStock :
          statusFilter === "Near Expiry" ? warning.nearExpiry :
-         statusFilter === "Expired" ? warning.expired :
-         statusFilter === "In Stock" && !warning.lowStock && !warning.nearExpiry && !warning.expired);
+         statusFilter === "Expired" && warning.expired);
       return matchesCat && matchesStatus;
     })
     // FEFO ordering: soonest expiry first. Items with no expiry date sort last.
     .sort((a, b) => {
+      const expiredOrder = Number(getInventoryWarnings(b).expired) - Number(getInventoryWarnings(a).expired);
+      if (expiredOrder) return expiredOrder;
       if (!a.expiry && !b.expiry) return 0;
       if (!a.expiry) return 1;
       if (!b.expiry) return -1;
@@ -199,7 +202,7 @@ export function AdminInventory() {
 }, [items, catFilter, statusFilter]);
 
   const stats = useMemo(() => {
-    const totalProducts = items.length;
+    const totalProducts = new Set(items.filter(item => item.expiredBatch?.kind !== 'ingredient').map(item => item.id)).size;
     const lowStock = items.filter(i => getInventoryWarnings(i).lowStock).length;
     const expired = items.filter(i => getStatus(i) === "Expired").length;
     const nearExpiry = items.filter(i => getInventoryWarnings(i).nearExpiry).length;
@@ -226,7 +229,8 @@ export function AdminInventory() {
   const restockMatches = useMemo(() => {
     const query = restockQuery.trim().toLowerCase();
     if (!query || (selected && restockQuery === selected.name)) return [];
-    return items.filter(item => `${item.name} ${item.cat}`.toLowerCase().includes(query))
+    return items.filter(item => item.expiredBatch?.kind !== "ingredient" && `${item.name} ${item.cat}`.toLowerCase().includes(query))
+      .filter((item, index, rows) => rows.findIndex(row => row.id === item.id) === index)
       .sort((a, b) => a.name.localeCompare(b.name)).slice(0, 8);
   }, [items, restockQuery, selected]);
 
@@ -323,14 +327,14 @@ export function AdminInventory() {
       render: r => (
         <div className="flex items-center gap-3">
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            className="bg-blue-50 p-2 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ backgroundColor: C.blue + "12" }}
           >
-            <CategoryIcon name={r.cat} size={16} color={C.blue} />
+            <Box size={16} className="text-blue-500" aria-hidden="true" />
           </div>
           <div>
             <div className="font-medium text-sm" style={{color:C.text}}>{r.name}</div>
-            <div className="text-xs mt-0.5" style={{color:C.muted}}>PRD-{String(r.id).padStart(3,"0")}</div>
+            <div className="text-xs mt-0.5" style={{color:C.muted}}>{r.expiredBatch ? `Batch ${r.expiredBatch.batch}` : `PRD-${String(r.id).padStart(3,"0")}`}</div>
           </div>
         </div>
       ),
@@ -339,8 +343,8 @@ export function AdminInventory() {
       key:"cat", header:"Category", align:"center", width:"14%",
       sortKey: r => r.cat,
       render: r => (
-        <span className="text-xs px-2.5 py-1 rounded-md font-medium inline-flex items-center gap-1 border border-blue-200/60"
-          style={{backgroundColor:C.blue+"15",color:C.blue}}>{r.cat}</span>
+        <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1"
+          >{r.cat}</span>
       ),
     },
     {
@@ -385,8 +389,32 @@ export function AdminInventory() {
     </>
   );
 
+  const filterControls = (
+    <div className="grid w-full min-w-0 grid-cols-2 gap-2 md:flex md:w-auto">
+      <select
+        value={catFilter}
+        onChange={e => setCatFilter(e.target.value)}
+        aria-label="Filter by category"
+        className={`${filterSelectClass} w-full min-w-0 md:w-auto`}
+      >
+        <option value="All">All Categories</option>
+        {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+        {items.some(item => item.cat === "Ingredients") && !categories.some(c => c.name === "Ingredients") && <option value="Ingredients">Ingredients</option>}
+      </select>
+      <select
+        value={statusFilter}
+        onChange={e => setStatusFilter(e.target.value)}
+        aria-label="Filter by status"
+        className={`${filterSelectClass} w-full min-w-0 md:w-auto`}
+      >
+        <option value="All">All Statuses</option>
+        {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+      </select>
+    </div>
+  );
+
   return (
-    <div className="records-page flex flex-1 flex-col h-auto overflow-visible gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page inventory-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
       {/* Header */}
       <div className="block shrink-0 min-h-10 md:flex md:items-center md:justify-between md:gap-3">
         <div className="min-w-0 flex-1">
@@ -422,13 +450,13 @@ export function AdminInventory() {
       </div>
 
       {/* Table */}
-      <TableCard>
+      <TableCard className="inventory-table-card">
         <div className="flex h-auto min-w-0 flex-col justify-start">
-          <EnhancedTable
+          <ProductTable
             contentHeight
             pageSize={5}
             renderMobileRow={product => <MobileInventoryCard product={product} status={getStatus(product)} busy={loading} onEdit={openEdit} onDelete={openDelete} />}
-            rowHeight={56}
+            rowHeight={52}
             columns={columns}
             data={filteredItems}
             rowKey={r => r.id}
@@ -441,28 +469,7 @@ export function AdminInventory() {
             emptyTitle="No products found"
             emptyDesc="Add your first product to get started."
             showExport={false}
-            extraControls={
-              <div className="grid w-full min-w-0 grid-cols-2 gap-2 md:flex md:w-auto">
-                <select
-                  value={catFilter}
-                  onChange={e => setCatFilter(e.target.value)}
-                  aria-label="Filter by category"
-                  className={`${filterSelectClass} w-full min-w-0 md:w-auto`}
-                >
-                  <option value="All">All Categories</option>
-                  {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
-                <select
-                  value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
-                  aria-label="Filter by status"
-                  className={`${filterSelectClass} w-full min-w-0 md:w-auto`}
-                >
-                  <option value="All">All Statuses</option>
-                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-            }
+            extraControls={filterControls}
           />
         </div>
       </TableCard>

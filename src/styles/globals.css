@@ -150,6 +150,51 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
   scrollbar-color: var(--border) transparent;
 }
 
+.records-page {
+  padding-bottom: 2rem;
+}
+
+/* Keep five-row data views inside the space below the fixed application header. */
+.records-page.inventory-page,
+.records-page.viewport-records-page {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0.5rem;
+}
+
+.inventory-page > .inventory-table-card,
+.viewport-records-page > .viewport-table-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0;
+  margin-bottom: 0;
+  padding: 1rem;
+  overflow: hidden;
+}
+
+.inventory-table-card > div,
+.viewport-table-card > div,
+.inventory-page .enhanced-table,
+.viewport-records-page .enhanced-table {
+  flex: 1 1 0%;
+  min-height: 0;
+  height: 100%;
+}
+
+.inventory-page [data-table-surface],
+.viewport-records-page [data-table-surface] {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.inventory-page .enhanced-table > :first-child,
+.viewport-records-page .enhanced-table > :first-child {
+  margin-bottom: 0.75rem;
+}
+
 @media (max-width: 1279px) {
   .records-page {
     height: auto;

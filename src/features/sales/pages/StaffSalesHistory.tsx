@@ -85,14 +85,14 @@ export function StaffSalesHistory() {
   ];
 
   return (
-    <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-auto gap-3 overflow-visible max-w-[1400px] mx-auto w-full">
+    <div className="records-page viewport-records-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
       <h2 className="text-base sm:text-lg font-bold shrink-0" style={{ color: C.muted }}>Your transaction records</h2>
-      <div className="grid grid-cols-2 gap-2 shrink-0">
+      <div className="grid grid-cols-2 gap-2.5 shrink-0">
         <SummaryCard compact label="Total Revenue" subtitle="Your lifetime sales processed" value={`₱${summary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.blue}/>
         <SummaryCard compact label="Total Transactions" subtitle="Your lifetime transactions processed" value={summary.totalTransactions} color={C.green}/>
       </div>
-      <TableCard>
-        <EnhancedTable contentHeight pageSize={5} rowHeight={56} columns={columns} data={filteredRecords} rowKey={s=>s.receipt} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search receipt or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
+      <TableCard className="viewport-table-card">
+        <EnhancedTable contentHeight reserveTableHeight pageSize={5} rowHeight={52} columns={columns} data={filteredRecords} rowKey={s=>s.receipt} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search receipt or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
           extraControls={<><select aria-label="Payment method" value={payment} onChange={e=>setPayment(e.target.value)} className={filterSelectClass}>{paymentOptions.map(p=><option key={p} value={p}>{p === "All" ? "All payments" : p}</option>)}</select><input aria-label="Transaction date" type="date" value={date} onChange={e=>setDate(e.target.value)} className={filterSelectClass}/></>}/>
       </TableCard>
       <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>

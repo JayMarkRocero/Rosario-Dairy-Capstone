@@ -806,3 +806,193 @@ test('PDF exports reuse fresh blobs and refetch after report refresh or three-mi
     assert.equal(calls.filter(call => call.url === '/api/reports/export-pdf/').length, 3);
   } finally { Date.now = originalNow; }
 });
+
+
+test('expiry notifications use permitted feed classification and retain backend acknowledgement identity', async () => {
+  const inbox = [
+    { id: 'expiry-product-1', revision: 'a'.repeat(64), unread: false, dismissed: true },
+    { id: 'expiry-ingredient-1', revision: 'b'.repeat(64), unread: true, dismissed: false },
+    { id: 'low-stock-products', revision: 'c'.repeat(64), unread: true, dismissed: false },
+  ];
+  const today = new Date();
+  const expiry = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 5);
+  const date = `${expiry.getFullYear()}-${String(expiry.getMonth() + 1).padStart(2, '0')}-${String(expiry.getDate()).padStart(2, '0')}`;
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    const data = config.url === '/settings/inbox/' ? inbox : [{ id: 1, expiration_date: date,
+      expiry_status: config.url.endsWith('/products/') ? 'critical' : 'near_expiry' }];
+    return { status: 200, config, headers: {}, data };
+  };
+  const items = await api.notificationsService.getAllWithExpiry();
+  assert.deepEqual(items[0], { ...inbox[0], expiry: { status: 'critical', daysLeft: 5 } });
+  assert.deepEqual(items[1], { ...inbox[1], expiry: { status: 'near_expiry', daysLeft: 5 } });
+  assert.deepEqual(items[2], inbox[2]);
+  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/inventory/product-batches/', '/inventory/ingredient-batches/', '/inventory/expiring/products/', '/inventory/expiring/ingredients/']);
+});
+
+test('expiry enrichment keeps inbox alerts if a feed fails and avoids guessing critical windows', async () => {
+  const inbox = [{ id: 'expiry-product-1' }, { id: 'expiry-ingredient-2' }];
+  api.http.defaults.adapter = async config => {
+    if (config.url.endsWith('/products/')) throw new Error('Feed unavailable');
+    return { status: 200, config, headers: {}, data: config.url === '/settings/inbox/' ? inbox : [{ id: 2, expiration_date: '2099-01-01', expiry_status: 'near_expiry' }] };
+  };
+  const items = await api.notificationsService.getAllWithExpiry();
+  assert.deepEqual(items[0], inbox[0]);
+  assert.equal(items[1].expiry.status, 'near_expiry');
+  responseData = [];
+  api.http.defaults.adapter = async config => { calls.push(config); return { status: 200, config, headers: {}, data: [] }; };
+  assert.deepEqual(await api.notificationsService.getAllWithExpiry(), []);
+  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/inventory/product-batches/', '/inventory/ingredient-batches/']);
+});
+
+
+test('server expiry metadata includes expired items without redundant feed requests', async () => {
+  responseData = [{ id: 'expiry-product-1', revision: 'a'.repeat(64), unread: true, dismissed: false,
+    expiry: { status: 'expired', daysLeft: -3 } }];
+  const items = await api.notificationsService.getAllWithExpiry();
+  assert.deepEqual(items, responseData);
+  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/inventory/product-batches/', '/inventory/ingredient-batches/']);
+});
+
+test('expired inventory batches include products and ingredients with remaining stock only', async () => {
+  const product = { id: 1, name: 'Milk', unit: 'liter', is_active: true,
+    category: { name: 'Dairy', is_active: true, is_visible_to_staff: true } };
+  const ingredient = { id: 1, name: 'Cream', unit: 'liter' };
+  const batch = { id: 1, batch_number: 'PAST', expiration_date: '2000-01-01', remaining_quantity: '5', status: 'available' };
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    const data = config.url.endsWith('/product-batches/') ? [
+      { ...batch, product }, { ...batch, id: 2, product, remaining_quantity: '0' },
+      { ...batch, id: 3, product, status: 'disposed' }, { ...batch, id: 4, product, expiration_date: '2099-01-01' },
+      { ...batch, id: 5, product: { ...product, category: { ...product.category, is_visible_to_staff: false } } },
+    ] : [{ ...batch, ingredient, status: 'expired' }, { ...batch, id: 2, ingredient, status: 'depleted' }];
+    return { status: 200, config, headers: {}, data };
+  };
+  assert.deepEqual((await api.inventoryService.getExpiredBatches(true)).map(row => row.key), ['product-1', 'ingredient-1']);
+  assert.deepEqual(calls.map(call => call.url), ['/inventory/product-batches/', '/inventory/ingredient-batches/']);
+  assert.deepEqual((await api.inventoryService.getExpiredBatches()).map(row => row.key), ['product-1', 'product-5', 'ingredient-1']);
+});
+
+
+function expiredFeedAdapter(inbox = []) {
+  const product = { id: 1, name: 'Milk', unit: 'liter', is_active: true,
+    category: { name: 'Dairy', is_active: true, is_visible_to_staff: true } };
+  const batch = { id: 1, batch_number: 'PAST', expiration_date: '2000-01-01', remaining_quantity: '5', status: 'available' };
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    const data = config.url === '/settings/inbox/' ? inbox : config.url === '/inventory/product-batches/' ? [
+      { ...batch, product }, { ...batch, id: 2, product, remaining_quantity: '0' },
+      { ...batch, id: 3, product, status: 'disposed' }, { ...batch, id: 4, product, expiration_date: '2099-01-01' },
+      { ...batch, id: 5, product: { ...product, category: { ...product.category, is_visible_to_staff: false } } },
+    ] : [{ ...batch, ingredient: { name: 'Cream', unit: 'liter' }, status: 'expired' }];
+    return { status: 200, config, headers: {}, data };
+  };
+}
+
+test('frontend combines expired batches with an empty inbox and preserves staff visibility', async () => {
+  expiredFeedAdapter();
+  const items = await api.notificationsService.getAllWithExpiry(true);
+  assert.deepEqual(items.map(item => item.id), ['expiry-product-1', 'expiry-ingredient-1']);
+  assert.ok(items.every(item => item.clientOnly && item.unread && !item.dismissed && item.expiry.status === 'expired'));
+  assert.equal(items[0].title, 'EXPIRED \u2022 Action Required');
+  assert.match(items[0].body, /Milk.*PAST.*5 liter remaining/);
+  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/inventory/product-batches/', '/inventory/ingredient-batches/']);
+});
+
+test('inventory-derived duplicates retain server revisions and acknowledgement states', async () => {
+  const server = { id: 'expiry-product-1', revision: 'b'.repeat(64), unread: false, dismissed: true };
+  expiredFeedAdapter([server]);
+  const items = await api.notificationsService.getAllWithExpiry(true);
+  assert.equal(items.filter(item => item.id === server.id).length, 1);
+  const merged = items.find(item => item.id === server.id);
+  assert.equal(merged.revision, server.revision); assert.equal(merged.unread, false);
+  assert.equal(merged.dismissed, true); assert.equal(merged.clientOnly, undefined);
+  assert.equal(merged.expiry.status, 'expired');
+});
+
+test('frontend-only alert acknowledgements survive refresh and never post synthetic references', async () => {
+  expiredFeedAdapter();
+  let item = (await api.notificationsService.getAllWithExpiry(true))[0];
+  calls = [];
+  await api.notificationsService.update('dismiss', [item]);
+  assert.equal(calls.length, 0);
+  item = (await api.notificationsService.getAllWithExpiry(true))[0];
+  assert.equal(item.dismissed, true); assert.equal(item.unread, false);
+  await api.notificationsService.update('restore', [item]);
+  item = (await api.notificationsService.getAllWithExpiry(true))[0];
+  assert.equal(item.dismissed, false); assert.equal(item.unread, false);
+  api.clearDataCache();
+  item = (await api.notificationsService.getAllWithExpiry(true))[0];
+  assert.equal(item.dismissed, false); assert.equal(item.unread, true);
+  await api.notificationsService.update('read', [item, { id: 'server-alert', revision: 'c'.repeat(64) }]);
+  assert.deepEqual(JSON.parse(calls.at(-1).data), { action: 'read', notifications: [{ id: 'server-alert', revision: 'c'.repeat(64) }] });
+});
+
+test('partial expired batch feed failure keeps inbox and available ingredient alerts', async () => {
+  expiredFeedAdapter([{ id: 'stock-alert', revision: 'd'.repeat(64) }]);
+  const adapter = api.http.defaults.adapter;
+  api.http.defaults.adapter = async config => {
+    if (config.url === '/inventory/product-batches/') throw new Error('Unavailable');
+    return adapter(config);
+  };
+  const items = await api.notificationsService.getAllWithExpiry(true);
+  assert.deepEqual(items.map(item => item.id), ['stock-alert', 'expiry-ingredient-1']);
+});
+
+
+test('expired batch disposal writes off the full authoritative quantity with the proper batch reference', async () => {
+  for (const kind of ['product', 'ingredient']) {
+    calls = [];
+    let refreshed = 0;
+    window.addEventListener(api.REPORTS_UPDATED, () => refreshed++);
+    api.http.defaults.adapter = async config => {
+      calls.push(config);
+      const data = config.method === 'get' ? { status: 'available', expiration_date: '2000-01-01',
+        remaining_quantity: '5.25', unit_price: '12.34', batch_number: 'EX-01' } : {};
+      return { status: 200, config, headers: {}, data };
+    };
+    await api.inventoryService.disposeExpiredBatch({ id: 7, kind, quantity: 5.25 });
+    assert.equal(calls[0].url, `/inventory/${kind}-batches/7/`);
+    assert.equal(calls[1].url, '/inventory/stock-adjustments/');
+    assert.deepEqual(JSON.parse(calls[1].data), { [`${kind}_batch_id`]: 7, adjustment_type: 'expired',
+      quantity: '5.25', unit_cost: '12.34', reason: 'Expired batch EX-01: full remaining stock disposed.' });
+    assert.ok(refreshed > 0);
+  }
+});
+
+test('disposal rejects changed stock, nonexpired dates, blocked status and failed writes', async () => {
+  const base = { status: 'available', expiration_date: '2000-01-01', remaining_quantity: '5', unit_price: '12.34', batch_number: 'EX-01' };
+  for (const change of [{ remaining_quantity: '4' }, { status: 'expired' }, { status: 'disposed' },
+    { expiration_date: '2099-01-01' }, { unit_price: '-1' }, { remaining_quantity: '0' }]) {
+    calls = [];
+    api.http.defaults.adapter = async config => { calls.push(config); return { status: 200, config, headers: {}, data: { ...base, ...change } }; };
+    await assert.rejects(api.inventoryService.disposeExpiredBatch({ id: 7, kind: 'product', quantity: 5 }));
+    assert.equal(calls.length, 1);
+  }
+  api.http.defaults.adapter = async config => {
+    if (config.method === 'post') throw new Error('Write failed');
+    return { status: 200, config, headers: {}, data: base };
+  };
+  await assert.rejects(api.inventoryService.disposeExpiredBatch({ id: 7, kind: 'product', quantity: 5 }), /Write failed/);
+});
+
+
+test('unified catalog includes expired batches first without modifying the sellable catalog', async () => {
+  const originalOverview = api.inventoryService.getOverview;
+  const originalExpired = api.inventoryService.getExpiredBatches;
+  const valid = { id: 1, name: 'Milk', cat: 'Dairy', stock: 10, price: 20, expiry: '2099-01-01', low: false };
+  const batch = { id: 7, itemId: 1, key: 'product-7', kind: 'product', name: 'Milk', category: 'Dairy',
+    unitCost: '20', quantity: 3, expiry: '2000-01-01', unit: 'liter' };
+  api.inventoryService.getOverview = async () => [valid];
+  api.inventoryService.getExpiredBatches = async () => [batch, { ...batch, id: 8, itemId: 1, key: 'ingredient-8', kind: 'ingredient', name: 'Cream', category: 'Ingredients' }];
+  try {
+    const rows = await api.inventoryService.getCatalogOverview();
+    assert.deepEqual(rows.map(row => row.catalogKey || row.id), ['expired-product-7', 'expired-ingredient-8', 1]);
+    assert.equal(rows[0].stock, 3); assert.equal(rows[0].expiredBatch, batch);
+    assert.equal(rows[2], valid); assert.equal(valid.expiry, '2099-01-01');
+    api.inventoryService.getOverview = async () => [{ ...valid, stock: 0, low: true, expiry: batch.expiry }];
+    const emptyStockRows = await api.inventoryService.getCatalogOverview();
+    const product = emptyStockRows.find(item => !item.expiredBatch);
+    assert.equal(product.stock, 0); assert.equal(product.low, true); assert.equal(product.expiry, '');
+  } finally { api.inventoryService.getOverview = originalOverview; api.inventoryService.getExpiredBatches = originalExpired; }
+});

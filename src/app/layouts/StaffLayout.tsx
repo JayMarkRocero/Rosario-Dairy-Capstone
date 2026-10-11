@@ -48,7 +48,7 @@ export function StaffLayout({ onLogout }: Props) {
           onMenuClick={() => setSidebarOpen(true)}
         />
         </div>
-        <main className={`flex-1 min-h-0 overflow-y-auto flex ${page === "settings" || page === "dashboard" ? "" : "xl:overflow-hidden"}`}>
+        <main className={`flex-1 min-h-0 flex ${page === "orders" || page === "sales" ? "overflow-hidden" : page === "pos" ? "overflow-y-auto xl:overflow-hidden" : page === "inventory" ? "items-start overflow-y-auto" : "overflow-y-auto"}`}>
           {page === "dashboard" && <StaffDashboard />}
           {page === "pos"       && <StaffPOS />}
           {page === "orders"    && <StaffOrders />}

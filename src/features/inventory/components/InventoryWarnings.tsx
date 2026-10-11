@@ -33,6 +33,7 @@ export function InventoryWarningTooltip({ message, expired = false }: { message:
 
 export function InventoryStatusBadge({ product }: { product: InventoryItem }) {
   const { status } = getInventoryWarnings(product);
+  if (status === 'Expired') return <span className="inline-flex bg-red-50 text-red-600 font-medium px-2.5 py-1 rounded-full text-xs">Expired</span>;
   return <span className="inline-flex max-w-full [&>span]:whitespace-normal [&>span]:text-center [&>span]:leading-tight">
     <StatusBadge status={status === "Low" ? "Low Stock" : status === "Active" ? "In Stock" : status} />
   </span>;

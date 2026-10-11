@@ -59,13 +59,13 @@ export function AdminOrders() {
     </div> },
   ];
 
-  return <div className="records-page flex flex-1 flex-col h-auto overflow-visible gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+  return <div className="records-page viewport-records-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
     <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center"><h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Manage and track all customer orders</h2><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0">{[
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 flex-shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green],
       ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red], ["Warnings", orders.filter(o=>o.warning).length, C.orange],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-    <TableCard><EnhancedTable contentHeight pageSize={5} rowHeight={56} columns={columns} data={data} rowKey={o=>o.id} searchable
+    <TableCard className="viewport-table-card"><EnhancedTable contentHeight reserveTableHeight pageSize={5} rowHeight={52} columns={columns} data={data} rowKey={o=>o.id} searchable
       searchKeys={o=>[String(o.id),o.customer,o.staff]} onRowClick={view} showExport={false}
       loading={loadingList} emptyTitle="No orders found" emptyDesc="No orders match your filters."
       extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/></TableCard>

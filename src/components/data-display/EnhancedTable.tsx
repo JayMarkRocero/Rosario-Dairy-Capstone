@@ -34,6 +34,7 @@ interface Props<T> {
   showCount?:       boolean;
   fillHeight?:      boolean;
   contentHeight?:   boolean;
+  reserveTableHeight?: boolean;
   stretchRows?:     boolean;
   rowHeight?:       52 | 56;
   scrollBody?:      boolean;
@@ -53,7 +54,7 @@ export function EnhancedTable<T>({
   searchable = true, searchKeys, searchPlaceholder = "Search…",
   onRowClick, extraControls, emptyTitle = "No records found",
   emptyDesc = "Try adjusting your search or add a new record.", loading,
-  showExport = true, showCount = true, fillHeight = false, contentHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
+  showExport = true, showCount = true, fillHeight = false, contentHeight = false, reserveTableHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
   mobileTable = false, renderMobileRow,
 }: Props<T>) {
   const defaultCapacity = useAutoPageSize(rowHeight);
@@ -200,7 +201,7 @@ export function EnhancedTable<T>({
       )}
 
       {/* Table */}
-      <div ref={autoPageSize && desktopTable && !contentHeight ? capacity.containerRef : undefined} className={contentHeight ? "relative h-auto bg-slate-50/50 rounded-lg border border-slate-100 overflow-hidden" : `relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
+      <div data-table-surface ref={autoPageSize && desktopTable && !contentHeight ? capacity.containerRef : undefined} className={contentHeight ? `relative h-auto bg-slate-50/50 rounded-lg border border-slate-100 overflow-hidden ${reserveTableHeight ? "md:min-h-[360px] flex flex-col justify-start shrink-0" : ""}` : `relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
         {renderMobileRow && <div className="block md:hidden space-y-3 px-1 py-2">
           {pageData.length === 0 ? emptyState : pageData.map((row, index) => <div key={rowKey(row)}>{renderMobileRow(row, index)}</div>)}
         </div>}
@@ -286,13 +287,13 @@ export function EnhancedTable<T>({
                   <tr
                     key={rowKey(row)}
                     style={rowStyle}
-                    className={`${stretchRows && tableScrollBody ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} shrink-0 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                    className={`${stretchRows && tableScrollBody ? "min-h-0" : (tableDisableScroll || contentHeight) && rowHeight === 52 ? "h-[52px]" : "h-14"} shrink-0 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
                     onClick={() => onRowClick?.(row)}
                   >
                     {columns.map(col => (
                       <td
                         key={col.key}
-                        className={`py-2 pl-4 ${alignmentClasses(col.align)} whitespace-nowrap ${tableScrollBody ? `min-w-0 flex flex-col justify-center overflow-hidden ${col.align === "center" ? "items-center" : col.align === "right" ? "items-end" : "items-start"}` : ""}`}
+                        className={`${contentHeight && rowHeight === 52 ? "py-2.5" : "py-2"} pl-4 ${alignmentClasses(col.align)} whitespace-nowrap ${tableScrollBody ? `min-w-0 flex flex-col justify-center overflow-hidden ${col.align === "center" ? "items-center" : col.align === "right" ? "items-end" : "items-start"}` : ""}`}
                       >
                         {col.render ? col.render(row, ri) : String((row as any)[col.key] ?? "")}
                       </td>
@@ -308,7 +309,7 @@ export function EnhancedTable<T>({
 
       {/* Pagination */}
       {(totalPages > 1 || contentHeight && sorted.length > 0) && (
-        <div className={contentHeight ? "flex items-center justify-between pt-2 px-1 gap-2 shrink-0" : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
+        <div className={contentHeight ? `flex items-center justify-between pt-2 px-1 gap-2 shrink-0 ${reserveTableHeight ? "mt-auto" : ""}` : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
           <span className={contentHeight ? "text-xs whitespace-nowrap" : "text-xs order-2 sm:order-1"} style={{ color: C.muted }}>
             {contentHeight ? `Page ${safePage} of ${totalPages}` : <>
             <span className="hidden sm:inline">Page {safePage} of {totalPages}</span>

@@ -1,19 +1,21 @@
+import { ProductTable } from "@/features/inventory/components/ProductTable";
 import { TableCard } from "@/components/data-display/TableCard";
 import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { InventoryStockValue, InventoryExpiryValue, InventoryStatusBadge } from "@/features/inventory/components/InventoryWarnings";
 import { filterSelectClass } from "@/styles/controlClasses";
+import { Box } from "lucide-react";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useMemo, useState } from "react";
-import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
+import { type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 
-const STATUSES = ["All", "Low Stock", "Near Expiry", "Expired", "In Stock"];
+const STATUSES = ["All", "Low Stock", "Near Expiry", "Expired"];
 
 export function StaffInventory() {
-  const query = useCachedQuery("inventory:staff", () => inventoryService.getOverview(true), ["inventory"]);
+  const query = useCachedQuery("inventory:staff", () => inventoryService.getCatalogOverview(true), ["inventory"]);
   const items = query.data ?? [];
   const itemsLoading = query.loading;
 
@@ -23,7 +25,7 @@ export function StaffInventory() {
   const categories = useMemo(() => {
     const unique = Array.from(new Set(items.map(p => p.cat)));
     return ["All", ...unique.sort((a, b) => a.localeCompare(b))];
-  }, [items]);
+  }, [items, status]);
 
  const filteredItems = useMemo(() => {
   return items
@@ -34,12 +36,13 @@ export function StaffInventory() {
         status === "All" ||
         (status === "Low Stock" ? warning.lowStock :
          status === "Near Expiry" ? warning.nearExpiry :
-         status === "Expired" ? warning.expired :
-         status === "In Stock" && !warning.lowStock && !warning.nearExpiry && !warning.expired);
+         status === "Expired" && warning.expired);
       return matchesCategory && matchesStatus;
     })
     // FEFO ordering: soonest expiry first. Items with no expiry date sort last.
     .sort((a, b) => {
+      const expiredOrder = Number(getInventoryWarnings(b).expired) - Number(getInventoryWarnings(a).expired);
+      if (expiredOrder) return expiredOrder;
       if (!a.expiry && !b.expiry) return 0;
       if (!a.expiry) return 1;
       if (!b.expiry) return -1;
@@ -49,11 +52,11 @@ export function StaffInventory() {
 
   const columns: Column<InventoryItem>[] = [
     { key:"name", header:"Product", align:"left", width:"26%",
-      render: p => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{p.name}</span> },
+      render: p => <div className="flex items-center gap-3"><span className="bg-blue-50 text-blue-500 p-2 rounded-lg shrink-0"><Box size={16} /></span><span className="font-medium text-sm" style={{ color: C.text }}>{p.name}</span></div> },
     { key:"cat", header:"Category", align:"center", width:"15%",
       render: p => (
         <div className="flex items-center justify-center gap-2">
-          <span className="text-xs px-2.5 py-1 rounded-md font-medium whitespace-nowrap inline-flex items-center gap-1 border border-blue-200/60" style={{ backgroundColor: C.blue + "15", color: C.blue }}>
+          <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1" >
             {p.cat}
           </span>
         </div>
@@ -61,27 +64,31 @@ export function StaffInventory() {
     { key:"price", header:"Price", align:"center", width:"14%",
       sortKey: p => p.price,
       render: p => <span className="font-medium text-sm tabular-nums" style={{ color: C.text }}>₱{p.price.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> },
-    { key:"stock", header:"Available Qty", align:"center", width:"15%",
+    { key:"stock", header:"Stock", align:"center", width:"15%",
       render: p => <InventoryStockValue product={p} /> },
-    { key:"expiry", header:"Expiry Date", align:"center", width:"16%",
+    { key:"expiry", header:"Expiry", align:"center", width:"16%",
       render: p => <span className="text-xs"><InventoryExpiryValue product={p} /></span> },
     { key:"status", header:"Status", align:"center", width:"14%",
       render: p => <InventoryStatusBadge product={p} /> },
   ];
 
+  const filterControls = (
+    <><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className={filterSelectClass}>{categories.map(cat=><option key={cat} value={cat}>{cat === "All" ? "All categories" : cat}</option>)}</select><select aria-label="Status" value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}>{STATUSES.map(s=><option key={s} value={s}>{s === "All" ? "All Statuses" : s}</option>)}</select></>
+  );
+
   return (
     <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-auto gap-3 overflow-visible max-w-[1400px] mx-auto w-full">
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Products and stock levels</h2>
-        <span className="text-xs" style={{color:C.muted}}>Read-only access</span>
+        <span className="text-xs" style={{color:C.muted}}>Product catalog and batch details</span>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">{[
         ["Products", items.length, C.blue], ["Low stock", items.filter(p=>getInventoryWarnings(p).lowStock).length, C.orange],
         ["Near expiry", items.filter(p=>getInventoryWarnings(p).nearExpiry).length, C.orange], ["Expired", items.filter(p=>getInventoryWarnings(p).expired).length, C.red],
       ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
       <TableCard>
-        <EnhancedTable contentHeight pageSize={5} rowHeight={56} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
-          extraControls={<><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className={filterSelectClass}>{categories.map(cat=><option key={cat} value={cat}>{cat === "All" ? "All categories" : cat}</option>)}</select><select aria-label="Status" value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}>{STATUSES.map(s=><option key={s} value={s}>{s === "All" ? "All Statuses" : s}</option>)}</select></>}/>
+        <ProductTable contentHeight pageSize={5} rowHeight={56} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
+          extraControls={filterControls}/>
       </TableCard>
     </div>
   );

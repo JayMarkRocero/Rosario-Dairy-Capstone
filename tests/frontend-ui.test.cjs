@@ -26,6 +26,11 @@ const root = path.resolve(__dirname, '..');
 const compiled = buildSync({
   stdin: { contents: `
     export { default as http } from './src/lib/api';
+    export { ProductTable } from './src/features/inventory/components/ProductTable';
+    export { ExpiredBatchTable } from './src/features/inventory/components/ExpiredBatchTable';
+    export { AdminLayout } from './src/app/layouts/AdminLayout';
+    export { StaffLayout } from './src/app/layouts/StaffLayout';
+    export { NotificationBell } from './src/components/navigation/NotificationBell';
     export { ConfirmDialog } from './src/components/feedback/ConfirmDialog';
     export { AdminReports } from './src/features/reports/pages/AdminReports';
     export { CreateOrderModal } from './src/features/orders/components/CreateOrderModal';
@@ -48,6 +53,7 @@ const compiled = buildSync({
     export { useCachedQuery } from './src/hooks/useCachedQuery';
   `, resolveDir: root },
   define: { 'import.meta.env': '{}' }, bundle: true, platform: 'node', format: 'cjs',
+  loader: { '.jpg': 'dataurl' },
   packages: 'external', write: false, alias: { '@': path.join(root, 'src') },
 }).outputFiles[0].text;
 const loaded = new Module(path.join(root, 'tests', 'ui-in-memory.cjs'), module);
@@ -710,10 +716,11 @@ test('admin and staff inventory filters expose alert statuses and retain compoun
     let tree = render(component);
     const dropdown = elements(table(tree).props.extraControls, node => node.type === 'select' && node.props['aria-label'] === label)[0];
     assert.deepEqual(elements(dropdown, node => node.type === 'option').map(node => node.props.children),
-      ['All Statuses', 'Low Stock', 'Near Expiry', 'Expired', 'In Stock']);
-    for (const [status, ids] of [['Low Stock', [2, 4]], ['Near Expiry', [3, 4]], ['Expired', [5]], ['In Stock', [1]], ['All', [1, 2, 3, 4, 5]]]) {
+      ['All Statuses', 'Low Stock', 'Near Expiry', 'Expired']);
+    for (const [status, ids] of [['Low Stock', [2, 4]], ['Near Expiry', [3, 4]], ['Expired', [5]], ['All', [1, 2, 3, 4, 5]]]) {
       dropdown.props.onChange({ target: { value: status } });
       tree = render(component);
+      assert.ok(elements(tree, node => node.type === ui.ProductTable).length > 0);
       assert.deepEqual(table(tree).props.data.map(row => row.id).sort((a, b) => a - b), ids, `${key}: ${status}`);
     }
   }
@@ -749,4 +756,147 @@ test('five-row content tables paginate and attach a valid footer after searches 
   tree = render(ui.EnhancedTable, props);
   assert.equal(footer(tree, 'Page 1 of 1').length, 0);
   assert.ok(elements(tree, node => node.props.title === 'No records found').length > 0);
+});
+
+
+test('notification inbox prioritizes critical expiry and differentiates urgency without changing acknowledgements', () => {
+  render(ui.NotificationBell);
+  states[0] = true;
+  states[2] = [
+    { id: 'expiry-product-1', title: 'Near batch', body: 'Milk batch', time: 'Live', type: 'danger', unread: true, dismissed: false, expiry: { status: 'near_expiry', daysLeft: 5 } },
+    { id: 'expiry-ingredient-2', title: 'Critical batch', body: 'Ingredient batch', time: 'Live', type: 'danger', unread: false, dismissed: false, expiry: { status: 'critical', daysLeft: 0 } },
+    { id: 'low-stock-products', title: 'Low stock', body: 'Milk stock', time: 'Live', type: 'warning', unread: true, dismissed: false },
+  ];
+  states[3] = false;
+  const tree = render(ui.NotificationBell);
+  const cards = elements(tree, node => !!node.props['data-notification-id']);
+  assert.deepEqual(cards.map(card => card.props['data-notification-id']), ['expiry-ingredient-2', 'expiry-product-1', 'low-stock-products']);
+  assert.ok(cards[0].props.className.includes('border-l-red-500'));
+  assert.equal(cards[0].props.style.backgroundColor, undefined);
+  const badge = card => elements(card, node => node.type === 'span' && node.props.className?.includes('font-semibold') && node.props.className.includes('rounded-md'))[0];
+  assert.ok(badge(cards[0]).props.className.includes('bg-red-100'));
+  assert.equal(React.Children.toArray(badge(cards[0]).props.children).join(''), 'CRITICAL EXPIRY \u2022 0 days left');
+  assert.ok(badge(cards[1]).props.className.includes('bg-amber-100'));
+  assert.equal(React.Children.toArray(badge(cards[1]).props.children).join(''), 'Near Expiry \u2022 5 days left');
+  const urgent = elements(tree, node => node.type === 'p' && node.props.children === 'Urgent action required: Discount or prioritize batch for immediate dispatch via FEFO.');
+  assert.equal(urgent.length, 1);
+  assert.ok(elements(cards[0], node => node.type === 'span' && node.props.children === 'Read').length > 0);
+});
+
+
+test('expired notifications keep their styling and removal message without navigation', () => {
+  let navigated = 0;
+  const props = { onExpiredInventory: () => navigated++ };
+  render(ui.NotificationBell, props);
+  states[0] = true; states[3] = false;
+  states[2] = [
+    { id: 'expiry-product-1', title: 'Critical batch', body: 'Milk', type: 'danger', expiry: { status: 'critical', daysLeft: 1 } },
+    { id: 'expiry-ingredient-2', title: 'Expired batch', body: 'Cream', type: 'danger', expiry: { status: 'expired', daysLeft: -2 } },
+  ];
+  const tree = render(ui.NotificationBell, props);
+  const cards = elements(tree, node => !!node.props['data-notification-id']);
+  assert.equal(cards[0].props['data-notification-id'], 'expiry-ingredient-2');
+  const badge = elements(cards[0], node => node.type === 'span' && node.props.className?.includes('bg-red-600'))[0];
+  assert.ok(badge.props.className.includes('text-white font-bold px-2 py-0.5 text-xs rounded'));
+  assert.equal(elements(cards[0], node => node.props.children === 'EXPIRED \u2022 Action Required').length, 1);
+  assert.equal(React.Children.toArray(badge.props.children).join(''), 'EXPIRED');
+  assert.equal(elements(cards[0], node => node.props.children === 'Product has expired! Remove batch from active stock immediately.').length, 1);
+  assert.equal(elements(cards[0], node => node.props.children === 'Urgent action required: Discount or prioritize batch for immediate dispatch via FEFO.').length, 0);
+  assert.equal(elements(cards[0], node => node.type === 'button' && node.props['aria-label']?.startsWith('View expired inventory:')).length, 0);
+  assert.equal(navigated, 0); assert.equal(states[0], true);
+});
+
+test('layout notification headers do not expose inventory navigation callbacks', () => {
+  for (const layout of [ui.AdminLayout, ui.StaffLayout]) {
+    states = []; refs = []; effects = [];
+    const tree = render(layout, { onLogout() {} });
+    assert.equal(elements(tree, node => typeof node.props.onExpiredInventory === 'function').length, 0);
+  }
+});
+
+
+test('expired batch actions open details and a confirmation without writing stock on click', () => {
+  const batch = { id: 7, key: 'product-7', kind: 'product', name: 'Milk', category: 'Dairy', batch: 'EX-01',
+    quantity: 5, unit: 'liter', expiry: '2000-01-01', status: 'available', initialQuantity: 8, unitCost: '12.34' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:expired-batches:false`, [batch], ['inventory']);
+  let requests = 0;
+  ui.http.defaults.adapter = async () => { requests++; throw new Error('Unexpected write'); };
+  let tree = render(ui.ExpiredBatchTable, { extraControls: null });
+  const table = root => elements(root, node => Array.isArray(node.props.columns) && Array.isArray(node.props.data))[0];
+  const column = table(tree).props.columns.at(-1);
+  assert.equal(column.header, 'Actions'); assert.equal(column.align, 'center');
+  const buttons = elements(column.render(batch), node => !!node.props.label);
+  buttons[0].props.onClick();
+  tree = render(ui.ExpiredBatchTable, { extraControls: null });
+  assert.equal(elements(tree, node => node.props.title === 'Expired batch details')[0].props.open, true);
+  buttons[1].props.onClick();
+  tree = render(ui.ExpiredBatchTable, { extraControls: null });
+  const confirm = elements(tree, node => node.type === ui.ConfirmDialog)[0];
+  assert.equal(confirm.props.open, true);
+  assert.match(confirm.props.description, /all 5 liter.*EX-01.*remaining stock to 0/);
+  assert.equal(requests, 0);
+  const mobile = table(tree).props.renderMobileRow(batch);
+  assert.equal(elements(mobile, node => !!node.props.label).length, 2);
+  const blocked = elements(column.render({ ...batch, status: 'expired' }), node => !!node.props.label)[1];
+  assert.equal(blocked.props.disabled, true);
+  confirm.props.onClose();
+  tree = render(ui.ExpiredBatchTable, { extraControls: null });
+  assert.equal(elements(tree, node => node.type === ui.ConfirmDialog)[0].props.open, false);
+});
+
+test('expired batch confirmation blocks duplicate submissions and preserves failures for retry', async () => {
+  const batch = { id: 7, key: 'product-7', kind: 'product', name: 'Milk', category: 'Dairy', batch: 'EX-01',
+    quantity: 5, unit: 'liter', expiry: '2000-01-01', status: 'available' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:expired-batches:false`, [batch], ['inventory']);
+  let tree = render(ui.ExpiredBatchTable, { extraControls: null });
+  const table = elements(tree, node => Array.isArray(node.props.columns) && Array.isArray(node.props.data))[0];
+  elements(table.props.columns.at(-1).render(batch), node => !!node.props.label)[1].props.onClick();
+  tree = render(ui.ExpiredBatchTable, { extraControls: null });
+  let requests = 0, reject;
+  ui.http.defaults.adapter = () => { requests++; return new Promise((_, fail) => { reject = fail; }); };
+  const confirm = elements(tree, node => node.type === ui.ConfirmDialog)[0];
+  confirm.props.onConfirm(); confirm.props.onConfirm();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests, 1);
+  tree = render(ui.ExpiredBatchTable, { extraControls: null });
+  assert.equal(elements(tree, node => node.type === ui.ConfirmDialog)[0].props.loading, true);
+  reject(new Error('Simulated disposal outage'));
+  await new Promise(resolve => setImmediate(resolve));
+  tree = render(ui.ExpiredBatchTable, { extraControls: null });
+  const retry = elements(tree, node => node.type === ui.ConfirmDialog)[0];
+  assert.equal(retry.props.open, true); assert.equal(retry.props.loading, false);
+  assert.equal(toastErrors.length, 1);
+});
+
+
+test('shared ProductTable keeps batch edits scoped to batches and uses five-row catalog pagination', async () => {
+  const batch = { id: 7, itemId: 1, key: 'ingredient-7', kind: 'ingredient', name: 'Cream', batch: 'EX-7',
+    quantity: 5, unit: 'liter', expiry: '2000-01-01', status: 'available', unitCost: '10.00' };
+  const row = { id: 1, catalogKey: 'expired-ingredient-7', name: 'Cream', cat: 'Ingredients', price: 10, stock: 5,
+    expiry: batch.expiry, low: false, expiredBatch: batch };
+  const props = { data: [row], rowKey: item => item.id, columns: [
+    { key: 'name', header: 'Product' }, { key: 'cat', header: 'Category' }, { key: 'price', header: 'Price' },
+    { key: 'stock', header: 'Stock' }, { key: 'expiry', header: 'Expiry' }, { key: 'status', header: 'Status' },
+    { key: 'actions', header: 'Actions', render: () => null },
+  ] };
+  let tree = render(ui.ProductTable, props);
+  const table = elements(tree, node => Array.isArray(node.props.columns))[0];
+  assert.equal(table.props.pageSize, 5); assert.equal(table.props.rowHeight, 56);
+  assert.equal(table.props.rowKey(row), row.catalogKey);
+  const buttons = elements(table.props.columns.at(-1).render(row), node => !!node.props.label);
+  assert.equal(buttons.length, 3);
+  assert.ok(buttons.every(button => button.props.className.includes('border-slate-200')));
+  buttons[1].props.onClick();
+  tree = render(ui.ProductTable, props);
+  const edit = elements(tree, node => node.props.title === 'Edit batch')[0];
+  assert.equal(edit.props.open, true);
+  const input = elements(edit, node => node.type === 'input')[0];
+  input.props.onChange({ target: { value: '12.50' } });
+  tree = render(ui.ProductTable, props);
+  const requests = [];
+  ui.http.defaults.adapter = async config => { requests.push(config); return { status: 200, config, headers: {}, data: {} }; };
+  await elements(elements(tree, node => node.props.title === 'Edit batch')[0], node => node.type === 'button')[0].props.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests[0].url, '/inventory/ingredient-batches/7/');
+  assert.deepEqual(JSON.parse(requests[0].data), { unit_price: '12.50', notes: '' });
 });

@@ -229,10 +229,11 @@ export function AdminSettings() {
             <label htmlFor={key} className="mb-1.5 block text-xs font-semibold">{label}</label>
             <input id={key} type="number" min="0" step="1" required value={inventoryDraft[key]}
               disabled={!canManage || saving !== null} aria-invalid={!!fieldErrors[key]?.length}
-              aria-describedby={key === "critical_expiry_threshold" ? "critical-expiry-help" : undefined}
+              aria-describedby={key === "critical_expiry_threshold" ? "critical-expiry-urgency critical-expiry-help" : undefined}
               onChange={event => { setInventoryDraft(current => current ? { ...current, [key]: event.target.value } : current); setFieldErrors(current => ({ ...current, [key]: [] })); }}
               className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
             {!!fieldErrors[key]?.length && <p role="alert" className="mt-1 text-xs text-red-600">{fieldErrors[key].join(" ")}</p>}
+            {key === "critical_expiry_threshold" && <p id="critical-expiry-urgency" className="mt-2 text-xs leading-relaxed text-slate-500">Critical items (within this window) will trigger high-priority red alert badges and top-level notifications to ensure immediate FEFO dispatch.</p>}
           </div>)}
         </div>
         <p id="critical-expiry-help" className="mt-3 text-xs text-slate-500">Zero is valid. The critical window cannot exceed the expiration alert window; reduce both together when needed. Notification switches below control alert feeds separately.</p>

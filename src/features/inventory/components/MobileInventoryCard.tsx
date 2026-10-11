@@ -7,13 +7,14 @@ interface Props {
   product: InventoryItem;
   status?: string;
   busy?: boolean;
+  deleteDisabled?: boolean;
   onEdit: (product: InventoryItem) => void;
   onDelete: (product: InventoryItem) => void;
 }
 
-export function MobileInventoryCard({ product, busy, onEdit, onDelete }: Props) {
+export function MobileInventoryCard({ product, busy, deleteDisabled = false, onEdit, onDelete }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const detailsId = `inventory-product-${product.id}-details`;
+  const detailsId = `inventory-${product.catalogKey || `product-${product.id}`}-details`;
   const money = product.price.toLocaleString("en-PH", { maximumFractionDigits: 2 });
 
   return <article className="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -46,7 +47,7 @@ export function MobileInventoryCard({ product, busy, onEdit, onDelete }: Props) 
         </div>)}
         <div className="col-span-2 min-w-0">
           <dt className="text-xs text-slate-500">Nearest available batch (FEFO)</dt>
-          <dd className="mt-1 break-words font-medium text-gray-900">{product.nearestBatch
+          <dd className="mt-1 break-words font-medium text-gray-900">{product.expiredBatch ? `${product.expiredBatch.batch} · ${product.stock} expired units` : product.nearestBatch
             ? `${product.nearestBatch.number} · ${product.nearestBatch.quantity.toLocaleString("en-PH")} in stock`
             : "No available batch"}</dd>
         </div>
@@ -56,7 +57,7 @@ export function MobileInventoryCard({ product, busy, onEdit, onDelete }: Props) 
           className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-2 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50">
           <Edit size={15} className="shrink-0" aria-hidden="true" />Edit Product
         </button>
-        <button type="button" disabled={busy} onClick={() => onDelete(product)}
+        <button type="button" disabled={busy || deleteDisabled} onClick={() => onDelete(product)}
           className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-2 py-2 text-sm font-medium text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50">
           <Trash2 size={15} className="shrink-0" aria-hidden="true" />Delete Product
         </button>

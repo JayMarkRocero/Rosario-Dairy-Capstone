@@ -328,7 +328,7 @@ export function AdminUserManagement() {
   ];
 
   return (
-    <div className="records-page flex flex-1 flex-col h-auto overflow-visible gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page viewport-records-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
       <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>
           Manage administrator and staff accounts
@@ -338,17 +338,18 @@ export function AdminUserManagement() {
         </Btn>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 flex-shrink-0">
   {summary.map(s=>(
     <SummaryCard compact key={s.label} label={s.label} value={s.value} color={s.color} />
   ))}
 </div>
 
-      <TableCard>
+      <TableCard className="viewport-table-card">
         <EnhancedTable
           contentHeight
+          reserveTableHeight
           pageSize={5}
-          rowHeight={56}
+          rowHeight={52}
           columns={columns}
           data={filteredUsers}
           rowKey={r=>r.id}

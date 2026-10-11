@@ -88,7 +88,7 @@ export function TopBar({ title, userName, role, onLogout, onMenuClick }: TopBarP
           <span className="font-mono font-semibold tracking-wide">{time}</span>
         </div>
 
-        <NotificationBell />
+        <NotificationBell staff={role === 'Staff'} />
         <ProfileDropdown userName={userName} role={role} />
       </div>
     </header>

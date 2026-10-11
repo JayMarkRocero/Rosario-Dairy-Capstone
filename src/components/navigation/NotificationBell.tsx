@@ -10,7 +10,7 @@ import { notificationsService, type AppNotification, type NotificationAction } f
 const icons = { warning: AlertTriangle, danger: Package, info: ClipboardList, success: CheckCircle };
 type Filter = 'all' | 'unread' | 'dismissed';
 
-export function NotificationBell() {
+export function NotificationBell({ staff = false }: { staff?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -26,14 +26,14 @@ export function NotificationBell() {
     const request = ++generation.current;
     setLoading(true);
     try {
-      const data = await notificationsService.getAll();
+      const data = await notificationsService.getAllWithExpiry(staff);
       if (mounted.current && request === generation.current) { setNotifications(data); setFailed(false); }
     } catch (error) {
       if (mounted.current && request === generation.current) { setFailed(true); toastApiError(error, 'Unable to load notifications.'); }
     } finally {
       if (mounted.current && request === generation.current) setLoading(false);
     }
-  }, []);
+  }, [staff]);
 
   useEffect(() => {
     mounted.current = true;
@@ -75,7 +75,9 @@ export function NotificationBell() {
   };
 
   const unread = notifications.filter(n => n.unread && !n.dismissed);
-  const visible = notifications.filter(n => filter === 'dismissed' ? n.dismissed : !n.dismissed && (filter === 'all' || n.unread));
+  const visible = notifications.filter(n => filter === 'dismissed' ? n.dismissed : !n.dismissed && (filter === 'all' || n.unread))
+    .sort((a, b) => (b.expiry?.status === 'expired' ? 2 : b.expiry?.status === 'critical' ? 1 : 0)
+      - (a.expiry?.status === 'expired' ? 2 : a.expiry?.status === 'critical' ? 1 : 0));
   const actionClass = 'rounded-lg p-1.5 hover:bg-slate-100 disabled:opacity-40 transition-colors';
 
   return <div ref={ref} className="relative">
@@ -100,13 +102,25 @@ export function NotificationBell() {
         {failed && <div role="alert" className="px-4 py-2 text-xs" style={{ color: C.red }}>Could not refresh notifications. <button type="button" className="underline" onClick={() => void refresh()}>Retry</button></div>}
         <div className="max-h-[60vh] sm:max-h-96 overflow-y-auto" aria-busy={loading || saving}>
           {loading ? <EmptyState compact loading title="Checking notifications" /> : visible.length === 0 ? <EmptyState compact title={filter === 'dismissed' ? 'No dismissed notifications' : filter === 'unread' ? 'No unread notifications' : "You're all caught up"} /> : visible.map(n => {
-            const Icon = icons[n.type] ?? ClipboardList;
-            const color = ({ warning: C.orange, danger: C.red, info: C.blue, success: C.green })[n.type] ?? C.blue;
-            return <div key={n.id} data-notification-id={n.id} className="flex gap-3 px-4 py-3 transition-colors" style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: n.unread ? C.blue + '06' : undefined }}>
+            const isExpiry = n.id.startsWith('expiry-');
+            const expired = n.expiry?.status === 'expired';
+            const critical = n.expiry?.status === 'critical';
+            const Icon = isExpiry ? AlertTriangle : icons[n.type] ?? ClipboardList;
+            const color = isExpiry ? expired || critical ? C.red : C.orange : ({ warning: C.orange, danger: C.red, info: C.blue, success: C.green })[n.type] ?? C.blue;
+            const daysLabel = !expired && n.expiry?.daysLeft != null ? ` • ${n.expiry.daysLeft} ${n.expiry.daysLeft === 1 ? 'day' : 'days'} left` : '';
+            const notificationContent = <>
+                <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold" style={{ color: C.text }}>{expired ? 'EXPIRED • Action Required' : n.title}</span><span className="text-xs flex-shrink-0" style={{ color: C.muted }}>{n.time}</span></div>
+                {isExpiry && <span className={`mt-2 inline-flex ${expired ? 'bg-red-600 text-white font-bold px-2 py-0.5 text-xs rounded' : `rounded-md px-2 py-1 text-[11px] font-semibold ${critical ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}`}>
+                  {expired ? 'EXPIRED' : critical ? 'CRITICAL EXPIRY' : n.expiry ? 'Near Expiry' : 'Expiry warning'}{daysLabel}
+                </span>}
+                <p className="text-xs mt-1 leading-relaxed" style={{ color: C.muted }}>{n.body}</p>
+                {expired && <p className="mt-2 text-xs font-bold leading-relaxed text-red-700">Product has expired! Remove batch from active stock immediately.</p>}
+                {critical && <p className="mt-2 text-xs font-medium leading-relaxed text-red-700">Urgent action required: Discount or prioritize batch for immediate dispatch via FEFO.</p>}
+            </>;
+            return <div key={n.id} data-notification-id={n.id} className={`flex gap-3 px-4 py-3 transition-colors ${expired || critical ? 'bg-red-50 border-l-4 border-l-red-500' : ''}`} style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: expired || critical ? undefined : n.unread ? C.blue + '06' : undefined }}>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: color + '15', color }}><Icon size={14} /></div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold" style={{ color: C.text }}>{n.title}</span><span className="text-xs flex-shrink-0" style={{ color: C.muted }}>{n.time}</span></div>
-                <p className="text-xs mt-1 leading-relaxed" style={{ color: C.muted }}>{n.body}</p>
+                {notificationContent}
                 <div className="flex items-center justify-between mt-2 gap-2">
                   <span className="text-xs" style={{ color: n.unread ? C.blue : C.muted }}>{n.dismissed ? 'Dismissed' : n.unread ? 'Unread' : 'Read'}</span>
                   <div className="flex items-center gap-1" style={{ color: C.muted }}>
