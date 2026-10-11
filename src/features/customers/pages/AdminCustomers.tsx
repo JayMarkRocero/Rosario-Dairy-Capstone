@@ -1,4 +1,5 @@
 import { TableCard } from "@/components/data-display/TableCard";
+import { MobileCustomerCard } from "@/features/customers/components/MobileCustomerCard";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
@@ -166,15 +167,15 @@ export function AdminCustomers() {
   ];
 
   return (
-    <div className="records-page viewport-records-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-      <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
+    <div className="records-page viewport-records-page customers-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
+      <div className="flex flex-wrap shrink-0 min-h-10 justify-between items-center gap-2">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Customer profiles and purchase activity</h2>
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Customer
         </Btn>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 flex-shrink-0">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-shrink-0">
         {[
           {label:"Customers", value:list.filter(c=>c.isActive).length, color:C.blue},
           {label:"Repeat", value:list.filter(c=>c.isActive && c.orders >= 2).length, color:C.green},
@@ -189,7 +190,8 @@ export function AdminCustomers() {
           contentHeight
           reserveTableHeight
           pageSize={5}
-          mobileTable
+          renderMobileRow={customer => <MobileCustomerCard customer={customer} onView={openView} onEdit={openEdit}
+            onDelete={value => { setSelected(value); setDeleteOpen(true); }} onReactivate={handleReactivate} busy={loading} />}
           rowHeight={52}
           columns={columns}
           data={filteredList}

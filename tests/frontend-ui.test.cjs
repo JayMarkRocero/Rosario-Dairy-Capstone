@@ -35,6 +35,7 @@ const compiled = buildSync({
     export { AdminReports } from './src/features/reports/pages/AdminReports';
     export { CreateOrderModal } from './src/features/orders/components/CreateOrderModal';
     export { MobileOrderCard } from './src/features/orders/components/MobileOrderCard';
+    export { MobileCustomerCard } from './src/features/customers/components/MobileCustomerCard';
     export { AdminOrders } from './src/features/orders/pages/AdminOrders';
     export { StaffOrders } from './src/features/orders/pages/StaffOrders';
     export { StaffPOS } from './src/features/pos/pages/StaffPOS';
@@ -118,6 +119,40 @@ test('admin and staff Orders use five mobile cards without the default sort sele
     assert.equal(elements(tree, node => node.props['aria-label'] === 'Sort records').length, 0);
     assert.ok(elements(tree, node => node.props.children === 'Page 1 of 2').length > 0);
   }
+});
+
+test('mobile customer cards preserve record details and active/inactive actions', () => {
+  const customer = { id: 9, name: 'Customer with a long name', email: 'long.email@example.com', phone: '09171234567', orders: 2, last: '2026-10-11', isActive: true };
+  const actions = [];
+  const props = { customer, onView: value => actions.push(['view', value]), onEdit: value => actions.push(['edit', value]),
+    onDelete: value => actions.push(['delete', value]), onReactivate: value => actions.push(['reactivate', value]) };
+  let tree = render(ui.MobileCustomerCard, props);
+  assert.deepEqual(elements(tree, node => node.type === 'dd').map(node => node.props.children), [customer.email, customer.phone, '2', customer.last]);
+  const buttons = elements(tree, node => node.type === 'button');
+  assert.deepEqual(buttons.map(node => node.props['aria-label']), ['View details', 'Edit', 'Delete']);
+  buttons.forEach(node => node.props.onClick());
+  assert.deepEqual(actions, [['view', customer], ['edit', customer], ['delete', customer]]);
+  const inactive = { ...customer, isActive: false };
+  tree = render(ui.MobileCustomerCard, { ...props, customer: inactive, busy: true });
+  assert.deepEqual(elements(tree, node => node.type === 'button').map(node => node.props['aria-label']), ['View details', 'Reactivate customer']);
+  assert.equal(elements(tree, node => node.props['aria-label'] === 'Reactivate customer')[0].props.disabled, true);
+  tree = render(ui.MobileCustomerCard, { ...props, customer: inactive });
+  elements(tree, node => node.props['aria-label'] === 'Reactivate customer')[0].props.onClick();
+  assert.deepEqual(actions.at(-1), ['reactivate', inactive]);
+});
+
+test('Customers shares five-record pagination between mobile cards and the desktop table', () => {
+  const customers = Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: `Customer ${index + 1}`, isActive: true, email: '', phone: '', address: '', orders: 1, last: '', createdAt: '' }));
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:customers:list:all`, customers, ['customers']);
+  const table = elements(render(ui.AdminCustomers), node => node.type === ui.EnhancedTable)[0];
+  assert.equal(table.props.pageSize, 5);
+  assert.equal(table.props.reserveTableHeight, true);
+  assert.equal(table.props.renderMobileRow(customers[0]).type, ui.MobileCustomerCard);
+  states = []; refs = [];
+  const tree = render(ui.EnhancedTable, table.props);
+  assert.equal(elements(tree, node => node.type === ui.MobileCustomerCard).length, 5);
+  assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 5);
+  assert.ok(elements(tree, node => node.props.children === 'Page 1 of 2').length > 0);
 });
 
 test('mobile inventory cards toggle metadata and preserve edit and delete actions', () => {

@@ -210,22 +210,26 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
   }
 }
 
-/* Five mobile order cards flow naturally; desktop keeps viewport containment. */
+/* Mobile record cards flow naturally; desktop keeps viewport containment. */
 @media (max-width: 767px) {
-  .records-page.viewport-records-page.orders-page {
+  .records-page.viewport-records-page.orders-page,
+  .records-page.viewport-records-page.customers-page {
     height: auto;
     min-height: 100%;
     overflow: visible;
   }
 
-  .orders-page > .viewport-table-card {
+  .orders-page > .viewport-table-card,
+  .customers-page > .viewport-table-card {
     flex: 0 0 auto;
     padding: 0.875rem;
     overflow: visible;
   }
 
   .orders-page .enhanced-table,
-  .orders-page [data-table-surface] {
+  .orders-page [data-table-surface],
+  .customers-page .enhanced-table,
+  .customers-page [data-table-surface] {
     flex: 0 0 auto;
     height: auto;
     overflow: visible;
