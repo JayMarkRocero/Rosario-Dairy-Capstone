@@ -1,4 +1,4 @@
-import { TableCard } from "@/components/data-display/TableCard";
+import { CustomerTable } from "@/features/customers/components/CustomerTable";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { MobileCustomerCard } from "@/features/customers/components/MobileCustomerCard";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
@@ -13,7 +13,7 @@ import { Btn } from "@/components/buttons/Btn";
 import { Modal } from "@/components/overlays/Modal";
 import { Drawer } from "@/components/overlays/Drawer";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
-import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
+import { type Column } from "@/components/data-display/EnhancedTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { C } from "@/styles/tokens/colors";
 import { customersService } from "@/features/customers/api/customers.service";
@@ -186,10 +186,9 @@ export function AdminCustomers() {
         ))}
       </div>
 
-      <TableCard className="viewport-table-card">
-        {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <EnhancedTable
+      <CustomerTable
+          errorContent={query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : undefined}
           contentHeight
-          reserveTableHeight
           pageSize={5}
           renderMobileRow={customer => <MobileCustomerCard customer={customer} onView={openView} onEdit={openEdit}
             onDelete={value => { setSelected(value); setDeleteOpen(true); }} onReactivate={handleReactivate} busy={loading} />}
@@ -215,8 +214,7 @@ export function AdminCustomers() {
               {SEGMENTS.map(s => <option key={s} value={s}>{s === "All" ? "Active Customers" : s}</option>)}
             </select>
           }
-        />}
-      </TableCard>
+      />
 
       <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="Add Customer" size="sm"
         footer={<><Btn variant="secondary" onClick={()=>setAddOpen(false)}>Cancel</Btn>

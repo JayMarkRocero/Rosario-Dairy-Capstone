@@ -1,12 +1,12 @@
 import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";
-import { TableCard } from "@/components/data-display/TableCard";
+import { OrdersTable } from "@/features/orders/components/OrdersTable";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useMemo, useState } from "react";
 import { Plus, Eye } from "lucide-react";
 import { Btn } from "@/components/buttons/Btn";
-import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
+import { type Column } from "@/components/data-display/EnhancedTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { Drawer } from "@/components/overlays/Drawer";
 import { ordersService } from "@/features/orders/api/orders.service";
@@ -43,9 +43,7 @@ export function StaffOrders() {
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green], ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-    <TableCard className="viewport-table-card">
-      <EnhancedTable contentHeight reserveTableHeight pageSize={5} rowHeight={52} columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} />} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
-    </TableCard>
+    <OrdersTable contentHeight pageSize={5} rowHeight={52} columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} />} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md">
       {selected&&<div className="space-y-5">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>

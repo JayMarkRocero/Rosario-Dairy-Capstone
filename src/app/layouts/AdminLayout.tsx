@@ -54,7 +54,7 @@ export function AdminLayout({ onLogout }: Props) {
             onMenuClick={() => setSidebarOpen(true)}
           />
         </div>
-        <main className={`flex-1 min-h-0 ${page === "reports" ? "overflow-y-auto lg:overflow-hidden" : page === "orders" || page === "customers" || page === "sales" || page === "users" || page === "inventory" ? "flex overflow-y-auto md:overflow-hidden" : page === "categories" ? "flex items-start overflow-y-auto" : "overflow-y-auto"}`}>
+        <main className={`flex-1 min-h-0 overflow-y-auto [&>.orders-page]:!overflow-visible [&>.customers-page]:!overflow-visible ${page === "orders" || page === "customers" || page === "sales" || page === "users" || page === "inventory" ? "flex" : page === "categories" ? "flex items-start" : ""}`}>
           {page === "dashboard"  && <AdminDashboard />}
           {page === "inventory"  && <AdminInventory />}
           {page === "categories" && <AdminCategories />}

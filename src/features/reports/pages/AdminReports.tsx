@@ -69,7 +69,7 @@ export function AdminReports() {
     }
   };
 
-  return <div className="w-full h-auto lg:h-full min-h-0 flex flex-col gap-4 px-4 pt-3 pb-6 lg:pb-8 sm:px-6 overflow-y-auto max-h-[calc(100vh-120px)]">
+  return <div className="w-full h-auto lg:h-[calc(100vh-80px)] min-h-0 flex flex-col justify-between gap-3 p-4 sm:p-6 lg:overflow-hidden">
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
       <div className="min-w-0 flex-1">
         <h2 className="text-lg font-semibold text-gray-700">Reports</h2>
@@ -77,17 +77,19 @@ export function AdminReports() {
       </div>
       <Btn variant="primary" size="sm" fullWidth icon={refreshing?<LoaderCircle size={13} className="animate-spin"/>:<RefreshCw size={13}/>} onClick={refresh} disabled={refreshing || exporting !== null}>{refreshing?"Refreshing…":"Refresh Data"}</Btn>
     </div>
-    <div className="w-full min-w-0 lg:flex-1 lg:min-h-0 flex flex-col lg:justify-center">
-    <Card className="w-full min-w-0 lg:h-full lg:min-h-0 flex flex-col p-4 sm:p-5">
-    <div className="grid lg:flex-1 lg:min-h-0 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr lg:grid-rows-2 gap-4">
+    <div className="w-full min-w-0 lg:flex-1 lg:min-h-0 flex flex-col">
+    <Card className="w-full min-w-0 lg:h-full lg:min-h-0 flex flex-col p-4">
+    <div className="grid h-full lg:flex-1 lg:min-h-0 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr lg:grid-rows-2 gap-4">
       {reports.map(report=>{
         const downloading=exporting===report.id;
-        return <Card key={report.id} className="p-4 sm:p-5 min-w-0 lg:min-h-0 flex flex-col gap-4">
+        return <Card key={report.id} className="h-full min-w-0 lg:min-h-0 flex flex-col justify-between bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex-1 min-w-0 flex flex-col justify-start space-y-1.5">
           <div className="flex shrink-0 items-start gap-3">
             <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center" style={{backgroundColor:report.color+"15",color:report.color}}>{report.icon}</div>
             <div className="min-w-0"><h3 className="text-base font-semibold leading-snug text-gray-900 [overflow-wrap:anywhere]">{report.title}</h3><p className="text-sm mt-1 leading-relaxed text-gray-600 [overflow-wrap:anywhere]">{report.desc}</p></div>
           </div>
           <ReportSummary type={report.id}/>
+          </div>
           <div className="mt-auto shrink-0 pt-3 border-t border-slate-100">
             <button type="button" onClick={()=>download(report)} disabled={exporting !== null || refreshing} className="w-full min-h-10 py-2.5 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
               {downloading ? <LoaderCircle size={16} className="animate-spin" aria-hidden="true"/> : <Download size={16} aria-hidden="true"/>}

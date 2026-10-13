@@ -1,5 +1,6 @@
 import { ProductTable } from "@/features/inventory/components/ProductTable";
 import { TableCard } from "@/components/data-display/TableCard";
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { daysUntilExpiry as calendarDaysUntilExpiry } from "@/features/inventory/utils/expiry";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
@@ -444,7 +445,7 @@ export function AdminInventory() {
           { label:"Total Value",     value:`₱${stats.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, color:C.green  },
         ].map(s => (
           <div key={s.label} className={s.label === "Total Value" ? "min-w-0 col-span-2 sm:col-span-1" : "min-w-0"}>
-            <SummaryCard compact mobileCompact label={s.label} value={s.value} color={s.color} />
+            <SummaryCard compact mobileCompact label={s.label} value={query.error ? "Unavailable" : s.value} color={s.color} />
           </div>
         ))}
       </div>
@@ -452,7 +453,7 @@ export function AdminInventory() {
       {/* Table */}
       <TableCard className="inventory-table-card">
         <div className="flex h-auto min-w-0 flex-col justify-start">
-          <ProductTable
+          {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <ProductTable
             contentHeight
             pageSize={5}
             renderMobileRow={product => <MobileInventoryCard product={product} status={getStatus(product)} busy={loading} onEdit={openEdit} onDelete={openDelete} />}
@@ -470,7 +471,7 @@ export function AdminInventory() {
             emptyDesc="Add your first product to get started."
             showExport={false}
             extraControls={filterControls}
-          />
+          />}
         </div>
       </TableCard>
 

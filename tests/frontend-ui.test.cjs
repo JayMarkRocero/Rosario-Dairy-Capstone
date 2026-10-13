@@ -45,6 +45,8 @@ const compiled = buildSync({
     export { AdminSalesHistory } from './src/features/sales/pages/AdminSalesHistory';
     export { StaffSalesHistory } from './src/features/sales/pages/StaffSalesHistory';
     export { AdminOrders } from './src/features/orders/pages/AdminOrders';
+    export { OrdersTable } from './src/features/orders/components/OrdersTable';
+    export { CustomerTable } from './src/features/customers/components/CustomerTable';
     export { StaffOrders } from './src/features/orders/pages/StaffOrders';
     export { StaffPOS } from './src/features/pos/pages/StaffPOS';
     export { StaffKPICards } from './src/features/dashboard/components/staff/StaffKPICards';
@@ -81,6 +83,9 @@ const render = (component, props = {}) => { stateIndex = refIndex = 0; return co
 function elements(tree, predicate) {
   if (Array.isArray(tree)) return tree.flatMap(child => elements(child, predicate));
   if (!tree || typeof tree !== 'object' || !tree.props) return [];
+  if (tree.type === ui.CustomerTable || tree.type === ui.OrdersTable) {
+    return [...(predicate(tree) ? [tree] : []), ...elements(tree.type(tree.props), predicate)];
+  }
   return [...(predicate(tree) ? [tree] : []), ...elements(tree.props.children, predicate)];
 }
 beforeEach(() => {
@@ -154,7 +159,7 @@ test('Customers shares five-record pagination between mobile cards and the deskt
   ui.writeDataCache(`${ui.dataCacheEpoch()}:customers:list:all`, customers, ['customers']);
   const table = elements(render(ui.AdminCustomers), node => node.type === ui.EnhancedTable)[0];
   assert.equal(table.props.pageSize, 5);
-  assert.equal(table.props.reserveTableHeight, true);
+  assert.equal(table.props.reserveTableHeight, false);
   assert.equal(table.props.renderMobileRow(customers[0]).type, ui.MobileCustomerCard);
   states = []; refs = [];
   const tree = render(ui.EnhancedTable, table.props);
@@ -1120,12 +1125,15 @@ test('FEFO monitor displays five items while summary totals cover the whole feed
   assert.ok(elements(tree, node => node.props.children === '7').length > 0);
 });
 
-test('Customers, Users and FEFO show retry errors rather than empty data after initial failure', async () => {
+test('admin data views show retry errors rather than empty data after initial failure', async () => {
   authState = { user: { username: 'audit', email: 'audit@example.com' }, loading: false };
   for (const [Page, key, groups] of [
     [ui.AdminCustomers, 'customers:list:all', ['customers']],
     [ui.AdminUserManagement, 'users:list', ['users']],
     [ui.FEFOMonitor, 'dashboard:fefo-monitor', ['dashboard', 'inventory']],
+    [ui.AdminOrders, 'orders:list', ['orders']],
+    [ui.AdminSalesHistory, 'sales:history:', ['sales']],
+    [ui.AdminInventory, 'inventory:admin', ['inventory']],
   ]) {
     states = []; refs = []; effects = [];
     await assert.rejects(ui.fetchDataCache(`${ui.dataCacheEpoch()}:${key}`, async () => { throw new Error('Service unavailable'); }, groups));
@@ -1138,6 +1146,49 @@ test('Customers, Users and FEFO show retry errors rather than empty data after i
     assert.equal(message.props.role, 'alert');
     assert.equal(elements(message, node => node.type === 'button')[0].props.children, 'Retry');
   }
+});
+
+test('Orders, Sales and Inventory retries recover into a valid empty state only after a successful response', async () => {
+  const requests = [];
+  ui.http.defaults.adapter = async config => {
+    requests.push(config.url);
+    return { config, status: 200, headers: {}, data: config.url === '/settings/inventory/'
+      ? { low_stock_threshold: 20, near_expiry_threshold: 7, critical_expiry_threshold: 3 } : [] };
+  };
+  for (const [Page, key, group] of [
+    [ui.AdminOrders, 'orders:list', 'orders'],
+    [ui.AdminSalesHistory, 'sales:history:', 'sales'],
+    [ui.AdminInventory, 'inventory:admin', 'inventory'],
+  ]) {
+    states = []; refs = []; effects = [];
+    const cacheKey = `${ui.dataCacheEpoch()}:${key}`;
+    await assert.rejects(ui.fetchDataCache(cacheKey, async () => { throw new Error('Service unavailable'); }, [group]));
+    const failed = render(Page);
+    const error = elements(failed, node => node.type === ui.QueryErrorMessage)[0];
+    assert.ok(error);
+    error.props.onRetry();
+    await settle();
+    assert.deepEqual(ui.readDataCache(cacheKey).data, []);
+    assert.equal(ui.readDataCache(cacheKey).error, undefined);
+    states = []; refs = []; effects = [];
+    assert.equal(elements(render(Page), node => node.type === ui.QueryErrorMessage).length, 0);
+  }
+  assert.ok(requests.includes('/sales/orders/'));
+  assert.ok(requests.includes('/sales/transactions/'));
+  assert.ok(requests.includes('/inventory/products/'));
+});
+
+test('admin content permits vertical scrolling and email titles use the actual email field', () => {
+  authState = { user: { username: 'audit', email: 'audit@example.com' }, loading: false };
+  const main = elements(render(ui.AdminLayout, { onLogout() {} }), node => node.type === 'main')[0];
+  assert.ok(main.props.className.includes('overflow-y-auto'));
+  assert.ok(!main.props.className.includes('overflow-hidden'));
+  const user = { name: 'Staff', email: 'a.long.email@example.com', role: 'Staff', status: 'Active', last: 'Never' };
+  const card = render(ui.MobileUserCard, { user, actions: null });
+  const email = elements(card, node => node.type === 'p')[0];
+  assert.equal(email.props.title, user.email);
+  assert.equal(email.props.children, user.email);
+  assert.equal(email.props.className, 'w-full truncate max-w-[180px] sm:max-w-none text-xs text-slate-500');
 });
 
 test('expired mobile batch cards label batch operations while normal products retain their labels', () => {

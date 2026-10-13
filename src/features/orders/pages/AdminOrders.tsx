@@ -1,5 +1,6 @@
 import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";
-import { TableCard } from "@/components/data-display/TableCard";
+import { OrdersTable } from "@/features/orders/components/OrdersTable";
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { toastApiError } from "@/lib/errorHandling";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
@@ -8,7 +9,7 @@ import { useMemo, useState, useRef } from "react";
 import { Plus, Eye, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Btn } from "@/components/buttons/Btn";
-import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
+import { type Column } from "@/components/data-display/EnhancedTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { Drawer } from "@/components/overlays/Drawer";
@@ -21,7 +22,8 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 const STATUSES = ["Fulfilled", "Cancelled"];
 
 export function AdminOrders() {
-  const { data: cachedOrders, loading: loadingList, refresh: load } = useCachedQuery("orders:list", ordersService.getAll, ["orders"]);
+  const query = useCachedQuery("orders:list", ordersService.getAll, ["orders"]);
+  const { data: cachedOrders, loading: loadingList, refresh: load } = query;
   const orders = cachedOrders ?? [];
   const [status, setStatus] = useState("All");
   const [selected, setSelected] = useState<OrderListItem | null>(null);
@@ -65,11 +67,11 @@ export function AdminOrders() {
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 flex-shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green],
       ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red], ["Warnings", orders.filter(o=>o.warning).length, C.orange],
-    ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-    <TableCard className="viewport-table-card"><EnhancedTable contentHeight reserveTableHeight pageSize={5} rowHeight={52} columns={columns} data={data} rowKey={o=>o.id} searchable
+    ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={query.error ? "Unavailable" : value} color={String(color)} />)}</div>
+    <OrdersTable errorContent={query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : undefined} contentHeight pageSize={5} rowHeight={52} columns={columns} data={data} rowKey={o=>o.id} searchable
       searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} onCancel={openCancel} busy={loading} />} onRowClick={view} showExport={false}
       loading={loadingList} emptyTitle="No orders found" emptyDesc="No orders match your filters."
-      extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/></TableCard>
+      extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md"
       footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn>{selected?.status==="Fulfilled"&&!selected.isHistorical&&<Btn variant="secondary" onClick={()=>setCancelOpen(true)}>Cancel Order</Btn>}</>}>
       {selected&&<div className="space-y-5">

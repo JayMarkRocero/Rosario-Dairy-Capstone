@@ -1,5 +1,6 @@
 import { MobileSaleCard } from "@/features/sales/components/MobileSaleCard";
 import { TableCard } from "@/components/data-display/TableCard";
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { useState, useMemo } from "react";
 import { Eye } from "lucide-react";
 import { TransactionDetails } from "@/features/sales/components/TransactionDetails";
@@ -16,8 +17,9 @@ export function AdminSalesHistory() {
   const [dateFilter, setDateFilter] = useState("");
   const [selected, setSelected] = useState<Sale | null>(null);
 
-  const { data: cachedRecords, loading: recordsLoading } = useCachedQuery(`sales:history:${dateFilter}`,
+  const query = useCachedQuery(`sales:history:${dateFilter}`,
     () => salesService.getAll({ startDate: dateFilter || undefined, endDate: dateFilter || undefined }), ["sales"]);
+  const { data: cachedRecords, loading: recordsLoading } = query;
   const records = cachedRecords ?? [];
 
   const filteredRecords = useMemo(() => {
@@ -72,14 +74,14 @@ export function AdminSalesHistory() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 flex-shrink-0">
         <Card className="px-3.5 py-3 min-w-0">
           <div className="font-bold text-xl truncate" style={{ color: C.blue, fontFamily: "Poppins, sans-serif" }}>
-            ₱{summary.total.toLocaleString()}
+            {query.error ? "Unavailable" : `₱${summary.total.toLocaleString()}`}
           </div>
           <div className="font-medium text-sm mt-1" style={{ color: C.text }}>Total Revenue</div>
-          <div className="text-xs mt-0.5" style={{ color: C.muted }}>{summary.count} transactions</div>
+          <div className="text-xs mt-0.5" style={{ color: C.muted }}>{query.error ? "" : `${summary.count} transactions`}</div>
         </Card>
         <Card className="px-3.5 py-3 min-w-0">
           <div className="font-bold text-xl truncate" style={{ color: C.green, fontFamily: "Poppins, sans-serif" }}>
-            {summary.count}
+            {query.error ? "Unavailable" : summary.count}
           </div>
           <div className="font-medium text-sm mt-1" style={{ color: C.text }}>Total Transactions</div>
           <div className="text-xs mt-0.5" style={{ color: C.muted }}>
@@ -90,7 +92,7 @@ export function AdminSalesHistory() {
 
       <TableCard className="viewport-table-card">
         <div className="h-auto flex flex-col">
-          <EnhancedTable
+          {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <EnhancedTable
             contentHeight
             reserveTableHeight
             pageSize={5}
@@ -138,7 +140,7 @@ export function AdminSalesHistory() {
                 )}
               </div>
             }
-          />
+          />}
         </div>
       </TableCard>
       <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>
