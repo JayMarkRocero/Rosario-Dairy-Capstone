@@ -21,8 +21,9 @@ type PayMethod  = "Cash" | "GCash";
 type DiscountType = "none" | "percent" | "fixed";
 interface CartItem { id:number; name:string; price:number; qty:number; stock:number }
 
+const roundMoney = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
 const money = (n: number) =>
-  n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  roundMoney(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // ─── Receipt Modal ─────────────────────────────────────────────────────────────
 function ReceiptModal({ cart, total, subtotal, payment, change, onClose, onConfirm, loading }:{
@@ -345,15 +346,15 @@ export function StaffPOS() {
     item.id === id ? { ...item, qty: Math.max(0.01, Math.min(Number.isFinite(quantity) ? Math.round(quantity * 100) / 100 : 1, item.stock)) } : item
   ));
 
-  const subtotal = cart.reduce((s,i)=>s + i.price * i.qty, 0);
+  const subtotal = roundMoney(cart.reduce((s,i)=>s + roundMoney(i.price * i.qty), 0));
   const parsedDiscount = Number(discountValue) || 0;
-  const discountAmount = discountType === "percent"
+  const discountAmount = roundMoney(discountType === "percent"
     ? subtotal * parsedDiscount / 100
-    : discountType === "fixed" ? parsedDiscount : 0;
-  const total = Math.max(0, subtotal - discountAmount);
-  const cashValue = parseFloat(cashReceived);
+    : discountType === "fixed" ? parsedDiscount : 0);
+  const total = roundMoney(Math.max(0, subtotal - discountAmount));
+  const cashValue = roundMoney(parseFloat(cashReceived));
   const change   = payMethod==="Cash" && cashReceived && !isNaN(cashValue)
-    ? Math.max(0, cashValue - total)
+    ? roundMoney(Math.max(0, cashValue - total))
     : 0;
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
 

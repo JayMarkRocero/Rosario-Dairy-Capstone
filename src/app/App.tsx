@@ -7,13 +7,14 @@ import { AdminLayout } from "@/app/layouts/AdminLayout";
 import { StaffLayout } from "@/app/layouts/StaffLayout";
 import { AuthProvider, useAuth } from "@/features/auth/context/AuthContext";
 import { ThemeProvider, useTheme } from "@/styles/ThemeProvider";
-import { Skeleton } from "@/components/EmptyState";
+import { EmptyState, Skeleton } from "@/components/EmptyState";
+import { Btn } from "@/components/buttons/Btn";
 
 type View = "landing" | "Login";
 
-function AppShell() {
+export function AppShell() {
   const { theme } = useTheme();
-  const { user, loading, sessionExpired, logout, clearSessionExpiredFlag } = useAuth();
+  const { user, loading, authError, retrySession, sessionExpired, logout, clearSessionExpiredFlag } = useAuth();
   const [view, setView] = useState<View>("landing");
 
   useEffect(() => {
@@ -41,6 +42,17 @@ function AppShell() {
             {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-28 rounded-2xl" />)}
           </div>
           <Skeleton className="h-64 w-full rounded-2xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div role="alert" className="min-h-dvh p-4 sm:p-8" style={{ backgroundColor: "var(--background)" }}>
+        <div className="mx-auto max-w-6xl space-y-6">
+          <EmptyState title="Unable to verify your session" description={authError}
+            action={<Btn onClick={retrySession}>Retry connection</Btn>} />
         </div>
       </div>
     );

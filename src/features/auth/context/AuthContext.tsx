@@ -1,12 +1,14 @@
 // src/contexts/AuthContext.tsx
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { ApiError, getApiErrorMessage, getRefreshToken, setRefreshToken, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
 import { toast } from "sonner";
 import { authService } from "@/features/auth/api/auth.service";
 
 interface AuthState {
   user: CurrentUser | null;
-  loading: boolean;          // true only during initial session check
+  loading: boolean;          // true during session initialization or retry
+  authError: string | null;
+  retrySession: () => void;
   sessionExpired: boolean;   // true right after a 401-triggered logout
   login: (username: string, password: string) => Promise<CurrentUser>;
   setCurrentUser: (user: CurrentUser) => void;
@@ -20,33 +22,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [sessionAttempt, setSessionAttempt] = useState(0);
+  const sessionCheck = useRef(0);
 
   const clearSession = useCallback((expired = false) => {
+    sessionCheck.current += 1;
     setAccessToken(null);
     setRefreshToken(null);
     setUser(null);
     setSessionExpired(expired);
+    setAuthError(null);
+    setLoading(false);
   }, []);
 
-  // Initial session check — runs once, keeps `loading` true until resolved
-  // so the app never briefly renders the wrong screen.
+  // Keep initialization and retries pending until the session check resolves.
   useEffect(() => {
+    const check = ++sessionCheck.current;
+    let active = true;
+    const isCurrent = () => active && check === sessionCheck.current;
     const token = getAccessToken();
+    setAuthError(null);
     if (!token) {
       setRefreshToken(null);
       setLoading(false);
       return;
     }
+    setLoading(true);
     authService.getCurrentUser()
-      .then(setUser)
+      .then(currentUser => { if (isCurrent()) setUser(currentUser); })
       .catch((error: unknown) => {
+        if (!isCurrent()) return;
         if (error instanceof ApiError && error.status === 401) {
-          setAccessToken(null);
-          setRefreshToken(null);
+          clearSession();
+        } else {
+          setAuthError(getApiErrorMessage(error, "Unable to connect to the server. Please try again."));
         }
       })
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => { if (isCurrent()) setLoading(false); });
+    return () => { active = false; };
+  }, [sessionAttempt, clearSession]);
+
+  const retrySession = useCallback(() => {
+    if (loading) return;
+    setAuthError(null);
+    setLoading(true);
+    setSessionAttempt(attempt => attempt + 1);
+  }, [loading]);
 
   // Any 401 from any API call anywhere in the app routes here.
   useEffect(() => {
@@ -54,6 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [clearSession]);
 
   const login = useCallback(async (username: string, password: string) => {
+    sessionCheck.current += 1;
+    setAuthError(null);
     const tokens = await authService.login({ username, password });
     setAccessToken(tokens.access);
     setRefreshToken(tokens.refresh);
@@ -72,6 +96,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthState = {
     user,
     loading,
+    authError,
+    retrySession,
     sessionExpired,
     login,
     setCurrentUser: setUser,

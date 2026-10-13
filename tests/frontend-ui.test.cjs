@@ -26,6 +26,9 @@ const root = path.resolve(__dirname, '..');
 const compiled = buildSync({
   stdin: { contents: `
     export { default as http } from './src/lib/api';
+    export { AuthProvider } from './src/features/auth/context/AuthContext';
+    export { AppShell } from './src/app/App';
+    export { EmptyState } from './src/components/EmptyState';
     export { ProductTable } from './src/features/inventory/components/ProductTable';
     export { Card } from './src/components/data-display/Card';
     export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
@@ -334,6 +337,95 @@ test('stretched desktop inventory rows fill both full and partial pages', () => 
 
 const staffCards = tree => elements(tree, node => typeof node.props.trendLabel === 'string');
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+for (const [label, failure, expected] of [
+  ['network failure', config => new AxiosError('Network Error', AxiosError.ERR_NETWORK, config), 'Unable to connect to the server'],
+  ['server failure', config => new AxiosError('Server error', undefined, config, undefined, { status: 500, data: { detail: 'Server temporarily unavailable.' }, config }), 'Server temporarily unavailable.'],
+  ['timeout', config => new AxiosError('timeout', AxiosError.ECONNABORTED, config), 'The request timed out'],
+]) {
+  test(`session initialization exposes ${label} and recovers on retry without discarding credentials`, async () => {
+    const storage = new Map([['rosario_access_token', 'session-access'], ['rosario_refresh_token', 'session-refresh']]);
+    global.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+    let requests = 0;
+    const currentUser = { id: 7, username: 'staff', role: 'staff', email: 'staff@example.com' };
+    ui.http.defaults.adapter = async config => {
+      requests++;
+      if (requests === 1) throw failure(config);
+      return { status: 200, config, headers: {}, data: currentUser };
+    };
+    assert.equal(render(ui.AuthProvider).props.value.loading, true);
+    const cleanup = effects[0](); effects[1]();
+    await settle();
+    const failed = render(ui.AuthProvider).props.value;
+    assert.equal(failed.loading, false);
+    assert.equal(failed.user, null);
+    assert.ok(failed.authError.includes(expected));
+    assert.equal(storage.get('rosario_access_token'), 'session-access');
+    assert.equal(storage.get('rosario_refresh_token'), 'session-refresh');
+    cleanup();
+    failed.retrySession();
+    const retrying = render(ui.AuthProvider).props.value;
+    assert.equal(retrying.loading, true);
+    assert.equal(retrying.authError, null);
+    retrying.retrySession();
+    assert.equal(states[4], 1, 'A pending retry cannot queue another check');
+    effects.at(-2)();
+    await settle();
+    const recovered = render(ui.AuthProvider).props.value;
+    assert.deepEqual(recovered.user, currentUser);
+    assert.equal(recovered.loading, false);
+    assert.equal(recovered.authError, null);
+    assert.equal(requests, 2);
+  });
+}
+
+test('initial session 401 still signs out rather than showing a connection retry', async () => {
+  const storage = new Map([['rosario_access_token', 'expired']]);
+  global.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+  ui.http.defaults.adapter = async config => { throw new AxiosError('Unauthorized', undefined, config, undefined, { status: 401, data: {}, config }); };
+  render(ui.AuthProvider); effects[0](); effects[1]();
+  await settle();
+  const result = render(ui.AuthProvider).props.value;
+  assert.equal(result.loading, false);
+  assert.equal(result.user, null);
+  assert.equal(result.authError, null);
+  assert.equal(result.sessionExpired, true);
+  assert.equal(storage.size, 0);
+});
+
+for (const action of ['logout', 'unmount']) {
+  test(`a delayed session check cannot update auth after ${action}`, async () => {
+    const storage = new Map([['rosario_access_token', 'session-access']]);
+    global.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+    let resolve;
+    ui.http.defaults.adapter = config => new Promise(done => { resolve = () => done({ status: 200, config, headers: {}, data: { id: 7, username: 'staff' } }); });
+    const initial = render(ui.AuthProvider).props.value;
+    const cleanup = effects[0]();
+    await settle();
+    if (action === 'logout') initial.logout();
+    else cleanup();
+    const before = [...states];
+    resolve(); await settle();
+    assert.deepEqual(states, before);
+    assert.equal(render(ui.AuthProvider).props.value.user, null);
+  });
+}
+
+test('session connection failures present an accessible Retry connection action', () => {
+  let retried = 0;
+  authState = { user: null, loading: false, authError: 'Server temporarily unavailable.', retrySession: () => { retried++; } };
+  const tree = render(ui.AppShell);
+  assert.equal(tree.props.role, 'alert');
+  const error = elements(tree, node => node.type === ui.EmptyState)[0];
+  assert.equal(error.props.description, authState.authError);
+  assert.equal(error.props.action.props.children, 'Retry connection');
+  error.props.action.props.onClick();
+  assert.equal(retried, 1);
+  authState.loading = true;
+  const pending = render(ui.AppShell);
+  assert.equal(pending.props['aria-busy'], 'true');
+  assert.equal(elements(pending, node => node.type === ui.EmptyState).length, 0);
+});
 
 const settingsFixture = () => ({
   system: { system_name: 'Rosario Dairy', business_name: 'Saved name', business_type: '', business_address: '', business_contact: '', business_email: '', tin: '' },
@@ -687,6 +779,59 @@ test('order form blocks excessive discounts and duplicate submissions', async ()
   await submit(tree).props.onClick();
   assert.equal(requests, 1);
   reject(new Error('Simulated order outage')); await first;
+  assert.equal(refs[0].current, false);
+});
+
+test('POS rounds line totals, discounts and change before validating exact cash payments', () => {
+  for (const [cart, discountType, discountValue, cash, subtotal, total, change] of [
+    [[{ price: 0.1, qty: 3 }], 'none', '0', '0.30', 0.3, 0.3, 0],
+    [[{ price: 0.1, qty: 1 }, { price: 0.2, qty: 1 }], 'fixed', '0.1', '0.20', 0.3, 0.2, 0],
+    [[{ price: 2.99, qty: 3 }], 'percent', '12.5', '7.85', 8.97, 7.85, 0],
+    [[{ price: 0.1, qty: 3 }], 'none', '0', '0.31', 0.3, 0.3, 0.01],
+    [[{ price: 1.99, qty: 0.33 }, { price: 1.99, qty: 0.33 }], 'none', '0', '1.32', 1.32, 1.32, 0],
+  ]) {
+    states = []; refs = []; effects = [];
+    render(ui.StaffPOS);
+    states[3] = cart.map((item, index) => ({ id: index + 1, name: 'Milk', stock: 20, ...item }));
+    states[7] = cash; states[9] = discountType; states[10] = discountValue;
+    const tree = render(ui.StaffPOS);
+    const summary = elements(tree, node => typeof node.props.onComplete === 'function')[0];
+    assert.equal(summary.props.subtotal, subtotal);
+    assert.equal(summary.props.total, total);
+    assert.equal(summary.props.change, change);
+    summary.props.onComplete();
+    assert.equal(states[12], true, 'Cash equal to the rounded total opens the receipt');
+    const preview = elements(render(ui.StaffPOS), node => typeof node.props.onConfirm === 'function')[0];
+    assert.equal(preview.props.total, total);
+    assert.equal(preview.props.change, change);
+  }
+  assert.equal(toastErrors.length, 0);
+});
+
+test('POS rejects one-cent underpayment and invalid cash even after rounding', () => {
+  render(ui.StaffPOS);
+  states[3] = [{ id: 1, name: 'Milk', stock: 20, price: 0.1, qty: 3 }];
+  for (const cash of ['0.29', '', 'NaN', 'Infinity']) {
+    states[7] = cash;
+    const summary = elements(render(ui.StaffPOS), node => typeof node.props.onComplete === 'function')[0];
+    summary.props.onComplete();
+    assert.equal(states[12], false);
+    assert.equal(toastErrors.at(-1)[0], 'Cash received must be at least the total amount.');
+  }
+});
+
+test('POS sends the rounded cash amount in the checkout payload', async () => {
+  render(ui.StaffPOS);
+  states[0] = [{ id: 1, name: 'Milk', stock: 20, price: 0.1, expiry: '2099-01-01', cat: 'Dairy' }];
+  states[3] = [{ id: 1, name: 'Milk', stock: 20, price: 0.1, qty: 3 }];
+  states[7] = '0.30000000000000004';
+  elements(render(ui.StaffPOS), node => typeof node.props.onComplete === 'function')[0].props.onComplete();
+  let payload;
+  ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); throw new AxiosError('Simulated outage'); };
+  elements(render(ui.StaffPOS), node => typeof node.props.onConfirm === 'function')[0].props.onConfirm();
+  await settle();
+  assert.equal(payload.amount_tendered, '0.3');
+  assert.deepEqual(payload.items, [{ product_id: 1, quantity: '3' }]);
   assert.equal(refs[0].current, false);
 });
 

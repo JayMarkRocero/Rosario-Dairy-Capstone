@@ -7,6 +7,7 @@ const ACCESS_TOKEN_KEY = "rosario_access_token";
 
 const axiosInstance = axios.create({
   baseURL: import.meta.env?.VITE_API_BASE_URL || "/backend",
+  timeout: 15_000,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -118,6 +119,9 @@ function extractErrorMessage(data: unknown, fallback: string): string {
 
 export function getApiErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
   if (axios.isAxiosError(error)) {
+    if (error.code === AxiosError.ECONNABORTED || error.code === AxiosError.ETIMEDOUT) {
+      return "The request timed out. Please check your connection and try again.";
+    }
     return extractErrorMessage(error.response?.data, fallback);
   }
   return error instanceof Error && error.message ? error.message : fallback;

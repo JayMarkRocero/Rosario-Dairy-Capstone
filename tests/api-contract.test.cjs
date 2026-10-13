@@ -60,6 +60,59 @@ beforeEach(() => {
   };
 });
 
+test('the shared client defaults to a 15-second timeout while preserving request overrides and cancellation', async () => {
+  await api.authService.getCurrentUser();
+  assert.equal(calls[0].timeout, 15_000);
+  const controller = new AbortController();
+  await api.http.get('/accounts/user/', { timeout: 30_000, signal: controller.signal });
+  assert.equal(calls[1].timeout, 30_000);
+  assert.equal(calls[1].signal, controller.signal);
+  assert.equal(controller.signal.aborted, false);
+});
+
+test('the native timeout aborts an unresponsive request without expiring the session', async () => {
+  const { createServer } = require('node:http');
+  const { getAdapter } = require('axios');
+  const server = createServer(() => {});
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  api.setAccessToken('access'); api.setRefreshToken('refresh');
+  let expired = false;
+  const remove = api.onUnauthorized(() => { expired = true; });
+  try {
+    await assert.rejects(api.http.get(`http://127.0.0.1:${server.address().port}/slow/`, {
+      adapter: getAdapter('http'), timeout: 50, proxy: false,
+    }), error => {
+      assert.ok(['ECONNABORTED', 'ETIMEDOUT'].includes(error.code));
+      assert.match(api.getApiErrorMessage(error), /request timed out/);
+      return true;
+    });
+    assert.equal(api.getAccessToken(), 'access');
+    assert.equal(api.getRefreshToken(), 'refresh');
+    assert.equal(expired, false);
+  } finally {
+    remove();
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('a token refresh timeout preserves credentials and exposes a retryable error', async () => {
+  api.setAccessToken('old'); api.setRefreshToken('refresh');
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    if (config.url === '/accounts/refresh/') throw new AxiosError('timeout', AxiosError.ETIMEDOUT, config);
+    throw new AxiosError('Expired', undefined, config, undefined, { status: 401, data: {}, config });
+  };
+  await assert.rejects(api.authService.getCurrentUser(), error => {
+    assert.match(api.getApiErrorMessage(error), /request timed out/);
+    return true;
+  });
+  assert.deepEqual(calls.map(call => call.url), ['/accounts/user/', '/accounts/refresh/']);
+  assert.ok(calls.every(call => call.timeout === 15_000));
+  assert.equal(api.getAccessToken(), 'old');
+  assert.equal(api.getRefreshToken(), 'refresh');
+});
+
 test('sales dates use the Manila business day across UTC midnight and timestamp offsets', () => {
   const transaction = { id: 1, handled_by: { id: 7, username: 'staff' }, payment_method: 'cash', total_amount: '120' };
   for (const [created_at, expected] of [
