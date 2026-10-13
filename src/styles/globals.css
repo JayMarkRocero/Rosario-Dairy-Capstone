@@ -212,6 +212,7 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
 
 /* Mobile record cards flow naturally; desktop keeps viewport containment. */
 @media (max-width: 767px) {
+  .records-page.inventory-page,
   .records-page.viewport-records-page.orders-page,
   .records-page.viewport-records-page.customers-page,
   .records-page.viewport-records-page.sales-history-page,
@@ -221,6 +222,7 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
     overflow: visible;
   }
 
+  .inventory-page > .inventory-table-card,
   .orders-page > .viewport-table-card,
   .customers-page > .viewport-table-card,
   .sales-history-page > .viewport-table-card,
@@ -230,6 +232,9 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
     overflow: visible;
   }
 
+  .inventory-table-card > div,
+  .inventory-page .enhanced-table,
+  .inventory-page [data-table-surface],
   .orders-page .enhanced-table,
   .orders-page [data-table-surface],
   .customers-page .enhanced-table,

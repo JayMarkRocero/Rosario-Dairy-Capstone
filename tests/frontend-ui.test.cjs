@@ -995,6 +995,23 @@ test('expired batch confirmation blocks duplicate submissions and preserves fail
 });
 
 
+test('mobile ProductTable keeps five products per page despite a legacy one-row capacity', () => {
+  const products = Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: `Product ${index + 1}`, cat: 'Dairy', price: 120, stock: 30, expiry: '', low: false }));
+  const tree = render(ui.ProductTable, {
+    data: products, columns: [{ key: 'name', header: 'Product' }], rowKey: item => item.id,
+    pageSize: 1, autoPageSize: true, pageCapacity: { pageSize: 1 },
+    renderMobileRow: product => React.createElement(ui.MobileInventoryCard, { product, onEdit() {}, onDelete() {} }),
+  });
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  assert.equal(table.props.pageSize, 5);
+  assert.equal(table.props.autoPageSize, false);
+  assert.equal(table.props.pageCapacity, undefined);
+  states = []; refs = [];
+  const page = render(ui.EnhancedTable, table.props);
+  assert.equal(elements(page, node => node.type === ui.MobileInventoryCard).length, 5);
+  assert.ok(elements(page, node => node.props.children === 'Page 1 of 2').length > 0);
+});
+
 test('shared ProductTable keeps batch edits scoped to batches and uses five-row catalog pagination', async () => {
   const batch = { id: 7, itemId: 1, key: 'ingredient-7', kind: 'ingredient', name: 'Cream', batch: 'EX-7',
     quantity: 5, unit: 'liter', expiry: '2000-01-01', status: 'available', unitCost: '10.00' };

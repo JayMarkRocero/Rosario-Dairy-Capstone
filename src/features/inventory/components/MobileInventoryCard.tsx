@@ -17,11 +17,11 @@ export function MobileInventoryCard({ product, busy, deleteDisabled = false, onE
   const detailsId = `inventory-${product.catalogKey || `product-${product.id}`}-details`;
   const money = product.price.toLocaleString("en-PH", { maximumFractionDigits: 2 });
 
-  return <article className="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm">
+  return <article className="w-full min-w-0 p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-sm">
     <button type="button" aria-expanded={expanded} aria-controls={expanded ? detailsId : undefined}
       aria-label={`${expanded ? "Collapse" : "Expand"} ${product.name}`}
       onClick={() => setExpanded(value => !value)}
-      className="flex min-h-16 w-full items-start justify-between gap-3 rounded-xl p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+      className="flex min-h-16 w-full items-start justify-between gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
       <span className="min-w-0 flex-1">
         <span className="block break-words font-semibold text-gray-900">{product.name}</span>
         <span className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -34,7 +34,7 @@ export function MobileInventoryCard({ product, busy, deleteDisabled = false, onE
         {expanded ? <ChevronUp size={18} className="shrink-0 text-slate-500" aria-hidden="true" /> : <ChevronDown size={18} className="shrink-0 text-slate-500" aria-hidden="true" />}
       </span>
     </button>
-    {expanded && <div id={detailsId} className="border-t border-slate-100 p-3">
+    {expanded && <div id={detailsId} className="mt-3 border-t border-slate-100 pt-3">
       <dl className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-3 text-sm">
         {[
           ["Stock level", <InventoryStockValue product={product} />],

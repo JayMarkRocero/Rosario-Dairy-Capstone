@@ -66,7 +66,7 @@ export function ProductTable(props: Props) {
     ...column, render: (item, index) => item.expiredBatch ? actions(item.expiredBatch) : <div className="[&_button]:border [&_button]:border-slate-200">{column.render?.(item, index)}</div>,
   } : column);
   if (!columns.some(column => column.key === 'actions')) columns.push({ key: 'actions', header: 'Actions', align: 'center', render: item => item.expiredBatch ? actions(item.expiredBatch) : <ActionButton label="View details" onClick={() => view(item)} className="border border-slate-200"><Eye size={13} /></ActionButton> });
-  return <><EnhancedTable {...props} contentHeight reserveTableHeight pageSize={5} rowHeight={props.rowHeight ?? 56} columns={columns}
+  return <><EnhancedTable {...props} contentHeight reserveTableHeight pageSize={5} autoPageSize={false} pageCapacity={undefined} rowHeight={props.rowHeight ?? 56} columns={columns}
     rowKey={item => item.catalogKey || `product-${item.id}`} onRowClick={view}
     renderMobileRow={props.renderMobileRow ? (item, index) => item.expiredBatch ? <MobileInventoryCard product={item} busy={saving} deleteDisabled={item.expiredBatch.status !== 'available'}
       onEdit={() => openBatchEdit(item.expiredBatch!)} onDelete={() => setDisposal(item.expiredBatch!)} /> : props.renderMobileRow!(item, index) : undefined} />
