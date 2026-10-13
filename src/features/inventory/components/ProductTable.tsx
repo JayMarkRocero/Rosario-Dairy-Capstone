@@ -1,3 +1,4 @@
+import { BatchDetailsFields } from "./BatchDetailsFields";
 import { EnhancedTable, type Column } from '@/components/data-display/EnhancedTable';
 import { inventoryService, type ExpiredInventoryBatch } from '@/features/inventory/api/inventory.service';
 import { useRef, useState, type ComponentProps } from 'react';
@@ -9,8 +10,9 @@ import { toast } from 'sonner';
 import { toastApiError } from '@/lib/errorHandling';
 import type { InventoryItem } from '@/features/inventory/types/inventory';
 import { MobileInventoryCard } from './MobileInventoryCard';
+import { StaffInventoryCard } from './StaffInventoryCard';
 
-type Props = ComponentProps<typeof EnhancedTable<InventoryItem>>;
+type Props = ComponentProps<typeof EnhancedTable<InventoryItem>> & { readOnly?: boolean };
 
 export function ProductTable(props: Props) {
   const [productDetails, setProductDetails] = useState<InventoryItem | null>(null);
@@ -63,12 +65,12 @@ export function ProductTable(props: Props) {
   };
   const view = (item: InventoryItem) => item.expiredBatch ? setDetails(item.expiredBatch) : props.onRowClick ? props.onRowClick(item) : setProductDetails(item);
   const columns: Column<InventoryItem>[] = props.columns.map(column => column.key === 'actions' ? {
-    ...column, render: (item, index) => item.expiredBatch ? actions(item.expiredBatch) : <div className="[&_button]:border [&_button]:border-slate-200">{column.render?.(item, index)}</div>,
+    ...column, render: (item, index) => props.readOnly ? <ActionButton label="View details" onClick={() => view(item)} className="border border-slate-200"><Eye size={13} /></ActionButton> : item.expiredBatch ? actions(item.expiredBatch) : <div className="[&_button]:border [&_button]:border-slate-200">{column.render?.(item, index)}</div>,
   } : column);
-  if (!columns.some(column => column.key === 'actions')) columns.push({ key: 'actions', header: 'Actions', align: 'center', render: item => item.expiredBatch ? actions(item.expiredBatch) : <ActionButton label="View details" onClick={() => view(item)} className="border border-slate-200"><Eye size={13} /></ActionButton> });
+  if (!columns.some(column => column.key === 'actions')) columns.push({ key: 'actions', header: 'Actions', align: 'center', width: '12%', render: item => item.expiredBatch && !props.readOnly ? actions(item.expiredBatch) : <ActionButton label="View details" onClick={() => view(item)} className="border border-slate-200"><Eye size={13} /></ActionButton> });
   return <><EnhancedTable {...props} contentHeight reserveTableHeight pageSize={5} autoPageSize={false} pageCapacity={undefined} rowHeight={props.rowHeight ?? 56} columns={columns}
     rowKey={item => item.catalogKey || `product-${item.id}`} onRowClick={view}
-    renderMobileRow={props.renderMobileRow ? (item, index) => item.expiredBatch ? <MobileInventoryCard product={item} busy={saving} deleteDisabled={item.expiredBatch.status !== 'available'}
+    renderMobileRow={props.readOnly ? item => <StaffInventoryCard product={item} onView={view} /> : props.renderMobileRow ? (item, index) => item.expiredBatch ? <MobileInventoryCard product={item} busy={saving} deleteDisabled={item.expiredBatch.status !== 'available'}
       onEdit={() => openBatchEdit(item.expiredBatch!)} onDelete={() => setDisposal(item.expiredBatch!)} /> : props.renderMobileRow!(item, index) : undefined} />
     <Modal open={!!productDetails} onClose={() => setProductDetails(null)} title="Product details" size="sm">
       {productDetails && <div className="space-y-3 text-sm"><p className="font-semibold">{productDetails.name}</p><p>{productDetails.cat}</p><p>Stock: {productDetails.stock} {productDetails.unit}</p><p>Expiry: {productDetails.expiry || 'Not available'}</p></div>}
@@ -81,15 +83,7 @@ export function ProductTable(props: Props) {
       </div>
     </Modal>
     <Modal open={!!details} onClose={() => setDetails(null)} title="Expired batch details" size="sm">
-      {details && <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-        {[
-          ['Item', details.name], ['Type', details.kind === 'product' ? 'Product' : 'Ingredient'],
-          ['Batch', details.batch], ['Category', details.category], ['Expiry date', details.expiry],
-          ['Remaining stock', `${details.quantity} ${details.unit}`], ['Initial stock', `${details.initialQuantity} ${details.unit}`],
-          ['Unit cost', details.unitCost], ['Received', details.dateReceived], ['Grade', details.grade || 'Not specified'],
-          ['Batch status', details.status], ['Notes', details.notes || 'None'],
-        ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-xs text-slate-500">{label}</dt><dd className="break-words font-medium text-gray-900 mt-1">{value}</dd></div>)}
-      </dl>}
+      {details && <BatchDetailsFields batch={details} />}
     </Modal>
     <ConfirmDialog open={!!disposal} onClose={() => { if (!submissionLock.current) setDisposal(null); }}
       onConfirm={() => void dispose()} title="Dispose expired batch?" confirmLabel="Dispose / Write Off" loading={saving}

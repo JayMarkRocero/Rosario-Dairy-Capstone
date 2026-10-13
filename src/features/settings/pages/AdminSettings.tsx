@@ -182,7 +182,7 @@ export function AdminSettings() {
     } finally { setSaving(null); }
   };
 
-  return <div className="w-full flex flex-col gap-4 px-4 pt-3 pb-4 sm:px-6 text-slate-900 dark:text-slate-100">
+  return <div className="w-full flex flex-col gap-4 px-4 pt-4 sm:pt-6 pb-12 sm:pb-8 sm:px-6 text-slate-900 dark:text-slate-100">
     <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
       <div className="min-w-0 flex-1">
       <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>System settings</h2>
@@ -207,7 +207,7 @@ export function AdminSettings() {
               disabled={!canManage || saving !== null} placeholder={placeholder} value={draftSystem[key]}
               onChange={event => { setDraft({ ...draft, system: { ...draftSystem, [key]: event.target.value } }); setFieldErrors(current => ({ ...current, [key]: [] })); }}
               aria-invalid={!!fieldErrors[key]?.length}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
+              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
             {key === "business_name" && <p className="mt-1 text-xs text-slate-500">Leave blank to use “{fallbackName}”.</p>}
             {!!fieldErrors[key]?.length && <p role="alert" className="mt-1 text-xs text-red-600">{fieldErrors[key].join(" ")}</p>}
           </div>)}
@@ -231,7 +231,7 @@ export function AdminSettings() {
               disabled={!canManage || saving !== null} aria-invalid={!!fieldErrors[key]?.length}
               aria-describedby={key === "critical_expiry_threshold" ? "critical-expiry-urgency critical-expiry-help" : undefined}
               onChange={event => { setInventoryDraft(current => current ? { ...current, [key]: event.target.value } : current); setFieldErrors(current => ({ ...current, [key]: [] })); }}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
+              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
             {!!fieldErrors[key]?.length && <p role="alert" className="mt-1 text-xs text-red-600">{fieldErrors[key].join(" ")}</p>}
             {key === "critical_expiry_threshold" && <p id="critical-expiry-urgency" className="mt-2 text-xs leading-relaxed text-slate-500">Critical items (within this window) will trigger high-priority red alert badges and top-level notifications to ensure immediate FEFO dispatch.</p>}
           </div>)}

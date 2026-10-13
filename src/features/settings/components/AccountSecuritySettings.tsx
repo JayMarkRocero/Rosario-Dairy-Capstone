@@ -4,7 +4,7 @@ import { Card } from "@/components/data-display/Card";
 import { authService } from "@/features/auth/api/auth.service";
 import { setAccessToken, setRefreshToken } from "@/lib/api";
 
-export function AccountSecuritySettings() {
+export function AccountSecuritySettings({ compact = false }: { compact?: boolean } = {}) {
   const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
   const [passwordError, setPasswordError] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
@@ -26,8 +26,8 @@ export function AccountSecuritySettings() {
     }
   };
 
-  return <Card className="overflow-hidden">
-    <form onSubmit={changePassword} className="p-4 sm:p-5">
+  return <Card className="border-slate-200/80 overflow-hidden">
+    <form onSubmit={changePassword} className="p-4">
       <div className="flex items-start gap-3">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"><ShieldCheck size={18} aria-hidden="true" /></div>
         <div>
@@ -35,7 +35,7 @@ export function AccountSecuritySettings() {
           <p className="mt-0.5 text-xs text-slate-500">Change your own password. You’ll sign in again after it is updated.</p>
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className={compact ? "mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2" : "mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"}>
         {([
           { key: "current", label: "Current password", autoComplete: "current-password" },
           { key: "next", label: "New password", autoComplete: "new-password" },
@@ -44,13 +44,13 @@ export function AccountSecuritySettings() {
           <label htmlFor={`password-${key}`} className="mb-1.5 block text-xs font-semibold">{label}</label>
           <input id={`password-${key}`} type="password" autoComplete={autoComplete} required minLength={key === "current" ? undefined : 8}
             value={passwords[key]} onChange={event => { setPasswords(current => ({ ...current, [key]: event.target.value })); setPasswordError(""); }}
-            disabled={changingPassword} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
+            disabled={changingPassword} className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70`} />
         </div>)}
       </div>
       {passwordError && <p role="alert" className="mt-3 text-xs text-red-600">{passwordError}</p>}
-      <div className="mt-4 flex justify-end border-t border-slate-100 pt-4 dark:border-slate-700">
+      <div className={`${compact ? "mt-3 pt-3" : "mt-4 pt-4"} flex justify-end border-t border-slate-100 dark:border-slate-700`}>
         <button type="submit" disabled={changingPassword || !passwords.current || !passwords.next || !passwords.confirm}
-          className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{changingPassword ? "Updating…" : "Change password"}</button>
+          className="w-full sm:w-auto min-h-11 py-2.5 sm:min-h-9 sm:py-2 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{changingPassword ? "Updating…" : "Change password"}</button>
       </div>
     </form>
   </Card>;

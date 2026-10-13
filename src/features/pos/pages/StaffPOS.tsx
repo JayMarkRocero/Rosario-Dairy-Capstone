@@ -406,9 +406,9 @@ export function StaffPOS() {
   };
 
   return (
-    <div className="flex flex-col xl:flex-row h-full w-full overflow-hidden relative" style={{ backgroundColor: C.bg }}>
+    <div className="flex flex-col xl:flex-row h-auto xl:h-full w-full overflow-visible xl:overflow-hidden relative pb-24 xl:pb-0" style={{ backgroundColor: C.bg }}>
       {/* ── Products (full width on mobile, flex-1 on desktop) ── */}
-      <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-6 gap-3 sm:gap-4 min-w-0">
+      <div className="xl:flex-1 flex flex-col overflow-visible xl:overflow-hidden p-3 sm:p-6 gap-3 sm:gap-4 min-w-0">
         <div
           className="flex items-center gap-3 bg-white rounded-full px-4 sm:px-5 py-3 sm:py-3.5 border transition-all duration-200"
           style={{
@@ -439,7 +439,7 @@ export function StaffPOS() {
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto -mx-1 px-1 py-1 pb-20 xl:pb-1">
+        <div className="xl:flex-1 overflow-visible xl:overflow-y-auto -mx-1 px-1 py-1">
           {productsLoading ? (
             <div role="status" aria-label="Loading products" aria-busy="true" className="grid gap-3 sm:gap-5"
               style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 155px), 1fr))" }}>
@@ -471,6 +471,15 @@ export function StaffPOS() {
         </div>
       </div>
 
+      <section aria-label="Mobile order summary" className="xl:hidden mx-3 sm:mx-6 rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-900">Current Order</h3>
+          <span className="text-xs text-slate-500">{cartCount} items</span>
+        </div>
+        <div className="flex justify-between gap-2 text-sm font-semibold"><span>Total</span><span className="min-w-0 break-all">₱{money(total)}</span></div>
+        <button type="button" disabled={!cart.length} onClick={() => setMobileCartOpen(true)} className="w-full min-h-11 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Review cart and checkout</button>
+      </section>
+
       {/* ── Desktop cart panel (hidden on mobile) ── */}
       <div className="hidden xl:flex h-full min-h-0 flex-col justify-between bg-white rounded-xl border border-slate-200/80 p-4 flex-shrink-0 overflow-hidden"
         style={{width:360}}>
@@ -493,13 +502,15 @@ export function StaffPOS() {
       {/* ── Mobile floating "View Cart" button ── */}
       {cart.length > 0 && !mobileCartOpen && (
         <button
+          aria-label="View cart and checkout"
+          aria-expanded={mobileCartOpen}
           onClick={() => setMobileCartOpen(true)}
-          className="xl:hidden fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 z-40 flex items-center justify-between px-5 py-4 rounded-2xl text-white font-bold shadow-2xl"
+          className="xl:hidden fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 z-40 flex items-center justify-between gap-2 px-4 py-3.5 rounded-2xl text-white font-bold shadow-2xl"
           style={{ backgroundColor: C.action }}
         >
           <span className="flex items-center gap-2 text-sm">
             <ShoppingCart size={18}/>
-            {cartCount} item{cartCount !== 1 ? "s" : ""}
+            View cart ({cartCount})
           </span>
           <span className="text-sm">₱{money(total)}</span>
         </button>

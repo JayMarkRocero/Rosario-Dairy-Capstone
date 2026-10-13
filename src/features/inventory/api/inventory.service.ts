@@ -26,6 +26,8 @@ import { settingsService, type InventorySettings } from "@/features/settings/api
 export interface CategoryIconOption { value: CategoryIconKey; label: string }
 
 export interface ExpiredInventoryBatch {
+  /** Original serializer response for null-safe batch details, without catalog fallbacks. */
+  source?: DjangoProductBatch | DjangoIngredientBatch;
   itemId: number;
   id: number; status: string; unitCost: string; initialQuantity: number;
   dateReceived: string; grade: string | null; notes: string | null;
@@ -67,12 +69,12 @@ export const inventoryService = {
     return [
       ...products.data.filter(batch => hasExpiredStock(batch) && (!staffVisibleOnly ||
         batch.product.is_active && batch.product.category.is_active && batch.product.category.is_visible_to_staff))
-        .map(batch => ({ key: `product-${batch.id}`, kind: 'product' as const,
+        .map(batch => ({ source: batch, key: `product-${batch.id}`, kind: 'product' as const,
           name: [batch.product.name, batch.product.variant].filter(Boolean).join(' '), category: batch.product.category.name,
           id: batch.id, itemId: batch.product.id, status: batch.status, unitCost: batch.unit_price ?? batch.product.unit_price,
           initialQuantity: Number(batch.initial_quantity), dateReceived: batch.date_received, grade: batch.grade, notes: batch.notes,
           batch: batch.batch_number, quantity: Number(batch.remaining_quantity), unit: batch.product.unit, expiry: batch.expiration_date })),
-      ...ingredients.data.filter(hasExpiredStock).map(batch => ({ key: `ingredient-${batch.id}`, kind: 'ingredient' as const,
+      ...ingredients.data.filter(hasExpiredStock).map(batch => ({ source: batch, key: `ingredient-${batch.id}`, kind: 'ingredient' as const,
         name: batch.ingredient.name, category: 'Ingredients', batch: batch.batch_number,
         id: batch.id, itemId: batch.ingredient.id, status: batch.status, unitCost: batch.unit_price ?? batch.ingredient.unit_price,
         initialQuantity: Number(batch.initial_quantity), dateReceived: batch.date_received, grade: batch.grade, notes: batch.notes,

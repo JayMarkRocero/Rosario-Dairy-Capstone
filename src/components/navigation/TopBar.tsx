@@ -60,8 +60,8 @@ export function TopBar({ title, userName, role, onLogout, onMenuClick }: TopBarP
 
   return (
     <header
-      className="flex items-center justify-between px-4 md:px-6 bg-white flex-shrink-0"
-      style={{ borderBottom: `1px solid ${C.border}`, height: 64 }}
+      className={`flex items-center justify-between px-4 md:px-6 bg-white border-b border-slate-200 flex-shrink-0 ${title === "Settings" ? "sticky top-0 z-30 min-h-16 py-3 sm:h-16 sm:py-0" : ""}`}
+      style={{ borderBottom: `1px solid ${C.border}`, height: title === "Settings" ? undefined : 64 }}
     >
       <div className="flex items-center gap-3 min-w-0">
         <button

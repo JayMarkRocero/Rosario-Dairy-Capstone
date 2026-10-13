@@ -51,33 +51,34 @@ export function StaffInventory() {
 }, [items, category, status]);
 
   const columns: Column<InventoryItem>[] = [
-    { key:"name", header:"Product", align:"left", width:"26%",
-      render: p => <div className="flex items-center gap-3"><span className="bg-blue-50 text-blue-500 p-2 rounded-lg shrink-0"><Box size={16} /></span><span className="font-medium text-sm" style={{ color: C.text }}>{p.name}</span></div> },
-    { key:"cat", header:"Category", align:"center", width:"15%",
+    { key:"name", header:"Product", align:"left", width:"23%",
+      render: p => <div className="flex min-w-0 items-center gap-2"><span className="bg-blue-50 text-blue-500 p-2 rounded-lg shrink-0"><Box size={16} /></span><span title={p.name} className="min-w-0 truncate font-medium text-xs" style={{ color: C.text }}>{p.name}</span></div> },
+    { key:"cat", header:"Category", align:"center", width:"12%",
       render: p => (
         <div className="flex items-center justify-center gap-2">
-          <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1" >
+          <span className="max-w-full whitespace-normal break-words bg-blue-50 text-blue-600 px-2 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1" >
             {p.cat}
           </span>
         </div>
       ) },
-    { key:"price", header:"Price", align:"center", width:"14%",
+    { key:"price", header:"Price", align:"center", width:"13%",
       sortKey: p => p.price,
-      render: p => <span className="font-medium text-sm tabular-nums" style={{ color: C.text }}>₱{p.price.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> },
-    { key:"stock", header:"Stock", align:"center", width:"15%",
+      render: p => <span className="font-medium text-xs tabular-nums whitespace-normal break-all" style={{ color: C.text }}>₱{p.price.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> },
+    { key:"stock", header:"Stock", align:"center", width:"12%",
       render: p => <InventoryStockValue product={p} /> },
-    { key:"expiry", header:"Expiry", align:"center", width:"16%",
+    { key:"expiry", header:"Expiry", align:"center", width:"15%",
       render: p => <span className="text-xs"><InventoryExpiryValue product={p} /></span> },
-    { key:"status", header:"Status", align:"center", width:"14%",
+    { key:"status", header:"Status", align:"center", width:"13%",
       render: p => <InventoryStatusBadge product={p} /> },
+    { key:"actions", header:"Actions", align:"center", width:"12%" },
   ];
 
   const filterControls = (
-    <><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className={filterSelectClass}>{categories.map(cat=><option key={cat} value={cat}>{cat === "All" ? "All categories" : cat}</option>)}</select><select aria-label="Status" value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}>{STATUSES.map(s=><option key={s} value={s}>{s === "All" ? "All Statuses" : s}</option>)}</select></>
+    <div className="grid grid-cols-2 gap-2 md:flex"><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className={filterSelectClass}>{categories.map(cat=><option key={cat} value={cat}>{cat === "All" ? "All categories" : cat}</option>)}</select><select aria-label="Status" value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}>{STATUSES.map(s=><option key={s} value={s}>{s === "All" ? "All Statuses" : s}</option>)}</select></div>
   );
 
   return (
-    <div className="records-page px-4 sm:px-6 py-2 flex flex-1 flex-col h-auto gap-3 overflow-visible max-w-[1400px] mx-auto w-full">
+    <div className="records-page inventory-page staff-inventory-page px-4 sm:px-6 pt-2 flex flex-1 flex-col gap-3 max-w-[1400px] mx-auto w-full">
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Products and stock levels</h2>
         <span className="text-xs" style={{color:C.muted}}>Product catalog and batch details</span>
@@ -86,9 +87,11 @@ export function StaffInventory() {
         ["Products", items.length, C.blue], ["Low stock", items.filter(p=>getInventoryWarnings(p).lowStock).length, C.orange],
         ["Near expiry", items.filter(p=>getInventoryWarnings(p).nearExpiry).length, C.orange], ["Expired", items.filter(p=>getInventoryWarnings(p).expired).length, C.red],
       ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-      <TableCard>
-        <ProductTable contentHeight pageSize={5} rowHeight={56} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
+      <TableCard className="inventory-table-card">
+        <div className="flex h-auto min-w-0 flex-col justify-start">
+        <ProductTable readOnly contentHeight pageSize={5} rowHeight={52} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
           extraControls={filterControls}/>
+        </div>
       </TableCard>
     </div>
   );

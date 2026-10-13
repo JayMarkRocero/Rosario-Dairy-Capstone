@@ -39,7 +39,7 @@ export function StaffOrders() {
   ];
 
   return <div className="records-page viewport-records-page orders-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-    <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Manage and track customer orders</h2><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
+    <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="min-w-0 break-words text-lg font-semibold" style={{color:C.muted}}>Manage and track customer orders</h2><Btn variant="primary" fullWidth icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green], ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>

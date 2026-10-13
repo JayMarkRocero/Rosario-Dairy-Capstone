@@ -249,3 +249,9 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
     overflow: visible;
   }
 }
+
+/* Staff catalog columns fit their proportional widths without horizontal scrolling. */
+.staff-inventory-page table { min-width: 0; }
+.staff-inventory-page th, .staff-inventory-page td { padding-left: 0.5rem; padding-right: 0.5rem; }
+.staff-inventory-page td { white-space: normal; overflow-wrap: anywhere; }
+.staff-inventory-page td > span { max-width: 100%; flex-wrap: wrap; }

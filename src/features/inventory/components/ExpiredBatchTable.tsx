@@ -1,3 +1,4 @@
+import { BatchDetailsFields } from "./BatchDetailsFields";
 import { EnhancedTable, type Column } from '@/components/data-display/EnhancedTable';
 import { useCachedQuery } from '@/hooks/useCachedQuery';
 import { inventoryService, type ExpiredInventoryBatch } from '@/features/inventory/api/inventory.service';
@@ -75,15 +76,7 @@ export function ExpiredBatchTable({ staff = false, category = 'All', extraContro
       {actions(item, true)}
     </div>} />
     <Modal open={!!details} onClose={() => setDetails(null)} title="Expired batch details" size="sm">
-      {details && <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-        {[
-          ['Item', details.name], ['Type', details.kind === 'product' ? 'Product' : 'Ingredient'],
-          ['Batch', details.batch], ['Category', details.category], ['Expiry date', details.expiry],
-          ['Remaining stock', `${details.quantity} ${details.unit}`], ['Initial stock', `${details.initialQuantity} ${details.unit}`],
-          ['Unit cost', details.unitCost], ['Received', details.dateReceived], ['Grade', details.grade || 'Not specified'],
-          ['Batch status', details.status], ['Notes', details.notes || 'None'],
-        ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-xs text-slate-500">{label}</dt><dd className="break-words font-medium text-gray-900 mt-1">{value}</dd></div>)}
-      </dl>}
+      {details && <BatchDetailsFields batch={details} />}
     </Modal>
     <ConfirmDialog open={!!disposal} onClose={() => { if (!submissionLock.current) setDisposal(null); }}
       onConfirm={() => void dispose()} title="Dispose expired batch?" confirmLabel="Dispose / Write Off" loading={saving}

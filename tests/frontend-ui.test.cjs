@@ -27,6 +27,7 @@ const compiled = buildSync({
   stdin: { contents: `
     export { default as http } from './src/lib/api';
     export { ProductTable } from './src/features/inventory/components/ProductTable';
+    export { BatchDetailsFields } from './src/features/inventory/components/BatchDetailsFields';
     export { ExpiredBatchTable } from './src/features/inventory/components/ExpiredBatchTable';
     export { AdminLayout } from './src/app/layouts/AdminLayout';
     export { StaffLayout } from './src/app/layouts/StaffLayout';
@@ -994,6 +995,44 @@ test('expired batch confirmation blocks duplicate submissions and preserves fail
   assert.equal(toastErrors.length, 1);
 });
 
+
+test('batch details use serializer values, preserve zero, and omit null and placeholder rows', () => {
+  const source = { product: { name: 'Milk', unit: 'liter', category: { name: 'Dairy' } }, batch_number: 'B-1', expiration_date: '2026-01-01', remaining_quantity: '0.00', initial_quantity: '10.00', unit_price: null, date_received: null, status: 'expired', notes: '  ', grade: 'A' };
+  const batch = { source, kind: 'product', unitCost: '999.00', dateReceived: 'invented', notes: 'fallback', grade: 'A' };
+  const rows = tree => Object.fromEntries(elements(tree, node => node.type === 'div').map(row => [elements(row, node => node.type === 'dt')[0].props.children, elements(row, node => node.type === 'dd')[0].props.children]));
+  let values = rows(render(ui.BatchDetailsFields, { batch }));
+  assert.equal(values['Product name'], 'Milk');
+  assert.equal(values['Remaining stock'], '0.00 liter');
+  assert.equal(values.Category, 'Dairy');
+  for (const label of ['Type', 'Grade', 'Unit cost', 'Date received', 'Notes']) assert.equal(label in values, false);
+  values = rows(render(ui.BatchDetailsFields, { batch: { ...batch, source: { ...source, unit_price: '0.00', notes: 'Keep refrigerated' } } }));
+  assert.equal(values['Unit cost'], '0.00');
+  assert.equal(values.Notes, 'Keep refrigerated');
+  const ingredient = { ...source, ingredient: { name: 'Cream', unit: 'liter' } };
+  delete ingredient.product;
+  values = rows(render(ui.BatchDetailsFields, { batch: { ...batch, kind: 'ingredient', category: 'Ingredients', source: ingredient } }));
+  assert.equal(values['Product name'], 'Cream');
+  assert.equal('Category' in values, false);
+});
+
+test('staff inventory keeps expired batch actions view-only on mobile and desktop', () => {
+  const row = { id: 1, name: 'Milk', cat: 'Dairy', price: 120, stock: 5, expiry: '2000-01-01', low: false,
+    expiredBatch: { id: 7, key: 'product-7', kind: 'product', name: 'Milk', batch: 'EX-7', quantity: 5, status: 'available' } };
+  const props = { readOnly: true, data: [row], rowKey: item => item.id, columns: [{ key: 'name', header: 'Product' }, { key: 'actions', header: 'Actions' }] };
+  let tree = render(ui.ProductTable, props);
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  assert.equal(table.props.pageSize, 5);
+  const buttons = elements(table.props.columns.at(-1).render(row, 0), node => node.props.label);
+  assert.deepEqual(buttons.map(node => node.props.label), ['View details']);
+  const mobile = table.props.renderMobileRow(row, 0);
+  const card = mobile.type(mobile.props);
+  const mobileButtons = elements(card, node => node.type === 'button');
+  assert.equal(mobileButtons.length, 1);
+  assert.equal(mobileButtons[0].props['aria-label'], 'View details');
+  mobileButtons[0].props.onClick();
+  tree = render(ui.ProductTable, props);
+  assert.equal(elements(tree, node => node.props.title === 'Expired batch details')[0].props.open, true);
+});
 
 test('mobile ProductTable keeps five products per page despite a legacy one-row capacity', () => {
   const products = Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: `Product ${index + 1}`, cat: 'Dairy', price: 120, stock: 30, expiry: '', low: false }));
