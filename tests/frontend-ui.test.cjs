@@ -27,6 +27,9 @@ const compiled = buildSync({
   stdin: { contents: `
     export { default as http } from './src/lib/api';
     export { ProductTable } from './src/features/inventory/components/ProductTable';
+    export { Card } from './src/components/data-display/Card';
+    export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
+    export { QueryErrorMessage } from './src/components/feedback/QueryErrorMessage';
     export { BatchDetailsFields } from './src/features/inventory/components/BatchDetailsFields';
     export { ExpiredBatchTable } from './src/features/inventory/components/ExpiredBatchTable';
     export { AdminLayout } from './src/app/layouts/AdminLayout';
@@ -1080,5 +1083,71 @@ test('shared ProductTable keeps batch edits scoped to batches and uses five-row 
   await elements(elements(tree, node => node.props.title === 'Edit batch')[0], node => node.type === 'button')[0].props.onClick();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(requests[0].url, '/inventory/ingredient-batches/7/');
-  assert.deepEqual(JSON.parse(requests[0].data), { unit_price: '12.50', notes: '' });
+  assert.deepEqual(JSON.parse(requests[0].data), { unit_price: 12.5, notes: '' });
+});
+
+test('forced query refresh bypasses fresh nested caches and retains visible data', async () => {
+  let calls = 0;
+  const nestedKey = `${ui.dataCacheEpoch()}:forced:nested`;
+  const Component = () => ui.useCachedQuery('forced:outer', () => ui.fetchDataCache(nestedKey, async () => ++calls, ['inventory']), ['inventory']);
+  render(Component); effects.at(-1)(); await settle();
+  assert.equal(render(Component).data, 1);
+  await render(Component).refresh();
+  assert.equal(calls, 1);
+  const pending = render(Component).refresh({ force: true });
+  assert.equal(render(Component).data, 1);
+  assert.equal(render(Component).loading, false);
+  await pending; await settle();
+  assert.equal(calls, 2);
+  assert.equal(render(Component).data, 2);
+});
+
+test('Card forwards HTML attributes and events without changing its classes', () => {
+  const onClick = () => {};
+  const tree = render(ui.Card, { children: 'Contents', className: 'p-5', 'aria-busy': true, id: 'metrics', onClick });
+  assert.equal(tree.props['aria-busy'], true);
+  assert.equal(tree.props.id, 'metrics');
+  assert.equal(tree.props.onClick, onClick);
+  assert.equal(tree.props.className, 'bg-white border border-slate-100 rounded-xl shadow-sm p-5');
+});
+
+test('FEFO monitor displays five items while summary totals cover the whole feed', () => {
+  const batches = Array.from({ length: 7 }, (_, index) => ({ id: index, product: `Milk ${index}`, batch: `B-${index}`, qty: 5, expiry: '2000-01-01', days: -1, st: 'red', priority: 'Critical' }));
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:fefo-monitor`, [[], batches], ['inventory', 'dashboard']);
+  const tree = render(ui.FEFOMonitor);
+  assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 5);
+  assert.equal(elements(tree, node => node.type === 'p' && /^Milk /.test(node.props.children ?? '')).length, 5);
+  assert.ok(elements(tree, node => node.props.children === '7').length > 0);
+});
+
+test('Customers, Users and FEFO show retry errors rather than empty data after initial failure', async () => {
+  authState = { user: { username: 'audit', email: 'audit@example.com' }, loading: false };
+  for (const [Page, key, groups] of [
+    [ui.AdminCustomers, 'customers:list:all', ['customers']],
+    [ui.AdminUserManagement, 'users:list', ['users']],
+    [ui.FEFOMonitor, 'dashboard:fefo-monitor', ['dashboard', 'inventory']],
+  ]) {
+    states = []; refs = []; effects = [];
+    await assert.rejects(ui.fetchDataCache(`${ui.dataCacheEpoch()}:${key}`, async () => { throw new Error('Service unavailable'); }, groups));
+    const tree = render(Page);
+    const error = elements(tree, node => node.type === ui.QueryErrorMessage)[0];
+    assert.ok(error);
+    assert.equal(error.props.error.message, 'Service unavailable');
+    assert.equal(elements(tree, node => node.type === ui.EnhancedTable).length, 0);
+    const message = render(ui.QueryErrorMessage, error.props);
+    assert.equal(message.props.role, 'alert');
+    assert.equal(elements(message, node => node.type === 'button')[0].props.children, 'Retry');
+  }
+});
+
+test('expired mobile batch cards label batch operations while normal products retain their labels', () => {
+  const product = { id: 1, name: 'Milk', cat: 'Dairy', price: 120, stock: 5, expiry: '2000-01-01', low: false };
+  const props = { product: { ...product, expiredBatch: { batch: 'B-1' } }, onEdit() {}, onDelete() {} };
+  let tree = render(ui.MobileInventoryCard, props);
+  elements(tree, node => node.type === 'button')[0].props.onClick();
+  tree = render(ui.MobileInventoryCard, props);
+  assert.ok(elements(tree, node => node.type === 'button' && node.props.children.includes('Edit Batch')).length);
+  assert.ok(elements(tree, node => node.type === 'button' && node.props.children.includes('Dispose Batch')).length);
+  tree = render(ui.MobileInventoryCard, { ...props, product });
+  assert.ok(elements(tree, node => node.type === 'button' && node.props.children.includes('Edit Product')).length);
 });

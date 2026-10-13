@@ -1,4 +1,5 @@
 import { TableCard } from "@/components/data-display/TableCard";
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { MobileCustomerCard } from "@/features/customers/components/MobileCustomerCard";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { toastApiError } from "@/lib/errorHandling";
@@ -181,12 +182,12 @@ export function AdminCustomers() {
           {label:"Repeat", value:list.filter(c=>c.isActive && c.orders >= 2).length, color:C.green},
           {label:"First-time", value:list.filter(c=>c.isActive && c.orders === 1).length, color:C.navy},
         ].map(stat=>(
-          <SummaryCard compact key={stat.label} label={stat.label} value={stat.value} color={stat.color} />
+          <SummaryCard compact key={stat.label} label={stat.label} value={query.error ? "Unavailable" : stat.value} color={stat.color} />
         ))}
       </div>
 
       <TableCard className="viewport-table-card">
-        <EnhancedTable
+        {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <EnhancedTable
           contentHeight
           reserveTableHeight
           pageSize={5}
@@ -214,7 +215,7 @@ export function AdminCustomers() {
               {SEGMENTS.map(s => <option key={s} value={s}>{s === "All" ? "Active Customers" : s}</option>)}
             </select>
           }
-        />
+        />}
       </TableCard>
 
       <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="Add Customer" size="sm"

@@ -41,11 +41,12 @@ export function ProductTable(props: Props) {
   };
   const saveBatch = async () => {
     if (!editBatch || submissionLock.current) return;
-    if (!editDraft.price.trim() || !Number.isFinite(Number(editDraft.price)) || Number(editDraft.price) < 0) { toast.error('Enter a valid nonnegative unit price.'); return; }
+    const parsedPrice = Number(editDraft.price);
+    if (!editDraft.price.trim() || !Number.isFinite(parsedPrice) || parsedPrice < 0) { toast.error('Enter a valid nonnegative unit price.'); return; }
     submissionLock.current = true; setSaving(true);
     try {
       const update = editBatch.kind === 'product' ? inventoryService.updateProductBatch : inventoryService.updateIngredientBatch;
-      await update(editBatch.id, { unit_price: editDraft.price, notes: editDraft.notes });
+      await update(editBatch.id, { unit_price: parsedPrice, notes: editDraft.notes });
       setEditBatch(null); toast.success('Batch updated.');
     } catch (error) { toastApiError(error, 'Unable to update this batch.'); }
     finally { submissionLock.current = false; setSaving(false); }

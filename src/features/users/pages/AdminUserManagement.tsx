@@ -1,4 +1,5 @@
 import { TableCard } from "@/components/data-display/TableCard";
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { MobileUserCard } from "@/features/users/components/MobileUserCard";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { toastApiError } from "@/lib/errorHandling";
@@ -341,12 +342,12 @@ export function AdminUserManagement() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 flex-shrink-0">
   {summary.map(s=>(
-    <SummaryCard compact key={s.label} label={s.label} value={s.value} color={s.color} />
+    <SummaryCard compact key={s.label} label={s.label} value={query.error ? "Unavailable" : s.value} color={s.color} />
   ))}
 </div>
 
       <TableCard className="viewport-table-card">
-        <EnhancedTable
+        {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <EnhancedTable
           contentHeight
           reserveTableHeight
           pageSize={5}
@@ -382,7 +383,7 @@ export function AdminUserManagement() {
             </select>
             </div>
           }
-        />
+        />}
       </TableCard>
 
       {/* View Drawer */}

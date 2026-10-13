@@ -55,11 +55,11 @@ export function MobileInventoryCard({ product, busy, deleteDisabled = false, onE
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button" disabled={busy} onClick={() => onEdit(product)}
           className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-2 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50">
-          <Edit size={15} className="shrink-0" aria-hidden="true" />Edit Product
+          <Edit size={15} className="shrink-0" aria-hidden="true" />{product.expiredBatch ? "Edit Batch" : "Edit Product"}
         </button>
         <button type="button" disabled={busy || deleteDisabled} onClick={() => onDelete(product)}
           className="flex min-h-11 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-2 py-2 text-sm font-medium text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50">
-          <Trash2 size={15} className="shrink-0" aria-hidden="true" />Delete Product
+          <Trash2 size={15} className="shrink-0" aria-hidden="true" />{product.expiredBatch ? "Dispose Batch" : "Delete Product"}
         </button>
       </div>
     </div>}

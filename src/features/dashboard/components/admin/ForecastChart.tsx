@@ -40,7 +40,7 @@ export function forecastExplanation(data: Record<string, unknown> | null): strin
   if (status === "insufficient_history") return "Forecast withheld: there is not enough complete sales history for this period.";
   if (status === "model_unavailable") return "Forecast withheld: the selected model could not complete every evaluation period.";
   if (status === "incomplete_current_period") return "Forecast withheld until the current sales period is complete.";
-  return `Forecast withheld: ${status.replaceAll("_", " ")}.`;
+  return `Forecast withheld: ${status.replace(/_/g, " ")}.`;
 }
 
 export function publishedForecast(data: Record<string, unknown> | null): Record<string, unknown> | null {

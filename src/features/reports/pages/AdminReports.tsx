@@ -69,7 +69,7 @@ export function AdminReports() {
     }
   };
 
-  return <div className="w-full h-auto lg:h-full min-h-0 flex flex-col gap-4 px-4 pt-3 pb-6 lg:pb-8 sm:px-6">
+  return <div className="w-full h-auto lg:h-full min-h-0 flex flex-col gap-4 px-4 pt-3 pb-6 lg:pb-8 sm:px-6 overflow-y-auto max-h-[calc(100vh-120px)]">
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
       <div className="min-w-0 flex-1">
         <h2 className="text-lg font-semibold text-gray-700">Reports</h2>

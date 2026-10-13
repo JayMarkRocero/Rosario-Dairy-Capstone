@@ -60,6 +60,33 @@ beforeEach(() => {
   };
 });
 
+test('sales dates use the Manila business day across UTC midnight and timestamp offsets', () => {
+  const transaction = { id: 1, handled_by: { id: 7, username: 'staff' }, payment_method: 'cash', total_amount: '120' };
+  for (const [created_at, expected] of [
+    ['2026-10-13T16:30:00Z', '2026-10-14'],
+    ['2026-10-14T00:30:00+08:00', '2026-10-14'],
+    ['2026-10-13T15:59:59Z', '2026-10-13'],
+    ['invalid', ''],
+  ]) assert.equal(api.toSale({ ...transaction, created_at }).date, expected);
+  assert.equal(api.forecastExplanation({ status: 'new_model_status' }), 'Forecast withheld: new model status.');
+});
+
+test('FEFO includes stocked expired batches, excludes disposed stock and orders by expiry', async () => {
+  const product = { name: 'Milk', is_active: true };
+  const batches = [
+    { id: 1, product, status: 'available', remaining_quantity: '5', expiration_date: '2099-01-01', batch_number: 'B1' },
+    { id: 2, product, status: 'expired', remaining_quantity: '4', expiration_date: '2000-01-01', batch_number: 'B2' },
+    { id: 3, product, status: 'available', remaining_quantity: '3', expiration_date: '2001-01-01', batch_number: 'B3' },
+    { id: 4, product, status: 'disposed', remaining_quantity: '2', expiration_date: '1999-01-01' },
+    { id: 5, product, status: 'expired', remaining_quantity: '0', expiration_date: '1999-01-01' },
+    { id: 6, product: { ...product, is_active: false }, status: 'expired', remaining_quantity: '2', expiration_date: '1999-01-01' },
+  ];
+  api.http.defaults.adapter = async config => ({ config, status: 200, headers: {}, data: config.url === '/settings/inventory/' ? { near_expiry_threshold: 7, critical_expiry_threshold: 3 } : batches });
+  const items = await api.inventoryService.getFEFO();
+  assert.deepEqual(items.map(item => item.id), [2, 3, 1]);
+  assert.ok(items.slice(0, 2).every(item => item.st === 'red' && item.priority === 'Critical'));
+});
+
 test('protected calls use bearer tokens; login uses exact credentials and returns both tokens', async () => {
   api.setAccessToken('access');
   api.setRefreshToken('refresh');

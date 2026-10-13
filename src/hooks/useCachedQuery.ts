@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { dataCacheEpoch, DEFAULT_STALE_TIME, ensureCacheEvents, fetchDataCache, readDataCache, subscribeDataCache, type CacheGroup } from "@/lib/dataCache";
+import { dataCacheEpoch, DEFAULT_STALE_TIME, ensureCacheEvents, fetchDataCache, invalidateDataCache, readDataCache, subscribeDataCache, type CacheGroup } from "@/lib/dataCache";
 import { toastApiError } from "@/lib/errorHandling";
 
 export function useCachedQuery<T>(key: string, fetcher: () => Promise<T>, groups: CacheGroup[], enabled = true) {
@@ -32,5 +32,9 @@ export function useCachedQuery<T>(key: string, fetcher: () => Promise<T>, groups
   }, [key, groupKey, enabled]);
   return { data: enabled ? snapshot.data : undefined, loading: enabled && snapshot.data === undefined && !snapshot.error,
     error: enabled && snapshot.data === undefined ? snapshot.error : undefined,
-    refresh: () => { if (enabled && session === dataCacheEpoch()) void fetchDataCache(key, fetcher, groups).catch(() => {}); } };
+    refresh: ({ force = false }: { force?: boolean } = {}) => {
+      if (!enabled || session !== dataCacheEpoch()) return;
+      if (force) invalidateDataCache(groups);
+      return fetchDataCache(key, fetcher, groups, force).catch(() => {});
+    } };
 }

@@ -1,4 +1,5 @@
 import { useCachedQuery } from "@/hooks/useCachedQuery";
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { AlertOctagon, AlertTriangle, PackageX, Wallet } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
 import { EmptyState } from "@/components/EmptyState";
@@ -11,8 +12,8 @@ export function FEFOMonitor() {
   const [items, fefoItems] = query.data ?? [[], []];
   const loading = query.loading;
 
-  const expiredCount = fefoItems.filter(i => i.days < 0).length;
-  const nearExpiryCount = fefoItems.filter(i => i.days >= 0 && i.st !== "green").length;
+  const expiredCount = fefoItems.filter(i => i.days < 0 || i.st === "red").length;
+  const nearExpiryCount = fefoItems.filter(i => i.days >= 0 && i.st !== "red" && i.st !== "green").length;
   const lowStockCount = items.filter(i => i.low).length;
   const invValue = items.reduce((sum, i) => sum + i.price * i.stock, 0);
 
@@ -72,7 +73,7 @@ export function FEFOMonitor() {
             >
               <div className="flex items-center justify-center gap-1.5">
                 <Icon size={13} style={{ color: m.color, opacity: 0.85 }} />
-                <div className="font-bold text-base" style={{ color: m.color }}>{m.value}</div>
+                <div className="font-bold text-base" style={{ color: m.color }}>{query.error ? "Unavailable" : m.value}</div>
               </div>
               <div className="text-xs mt-0.5" style={{ color: C.muted }}>{m.label}</div>
             </div>
@@ -84,12 +85,14 @@ export function FEFOMonitor() {
       <div>
         {loading ? (
           <EmptyState compact loading title="Checking batches" />
+        ) : query.error ? (
+          <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} />
         ) : fefoItems.length === 0 ? (
           <EmptyState compact title="No batches to monitor" description="Active batches will appear here." />
         ) : (
           <>
           <div className="divide-y xl:hidden" style={{ borderColor: C.border }}>
-            {fefoItems.map(item => <div key={item.id} className="py-3.5 first:pt-1 last:pb-0">
+            {fefoItems.slice(0, 5).map(item => <div key={item.id} className="py-3.5 first:pt-1 last:pb-0">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="break-words text-sm font-medium" style={{ color: C.text }}>{item.product}</p>
@@ -127,7 +130,7 @@ export function FEFOMonitor() {
               </tr>
             </thead>
             <tbody>
-              {fefoItems.map(item => (
+              {fefoItems.slice(0, 5).map(item => (
                 <tr
                   key={item.id}
                   className="hover:bg-gray-50 transition-colors"

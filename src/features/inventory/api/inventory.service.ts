@@ -182,12 +182,12 @@ export const inventoryService = {
   ]);
 
   return batches
-    .filter((b: DjangoProductBatch) => b.status === "available" && b.product.is_active && Number(b.remaining_quantity) > 0)
+    .filter((b: DjangoProductBatch) => ["available", "expired"].includes(b.status) && b.product.is_active && Number(b.remaining_quantity) > 0)
     .map((b: DjangoProductBatch) => {
 
 
         const days = daysUntil(b.expiration_date);
-        const { st, priority } = fefoStatus(days, settings);
+        const { st, priority } = b.status === "expired" ? { st: "red" as const, priority: "Critical" } : fefoStatus(days, settings);
         return {
           id: b.id,
           product: [b.product.name, b.product.variant].filter(Boolean).join(" "),
@@ -198,7 +198,7 @@ export const inventoryService = {
           priority,
           st,
         };
-      });
+      }).sort((a, b) => a.expiry.localeCompare(b.expiry));
   },
 
   getCategoriesRaw: async () => {
