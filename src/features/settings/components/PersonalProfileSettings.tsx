@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/data-display/Card";
 import { useAuth } from "@/features/auth/context/AuthContext";
 import { userService } from "@/features/users/api/user.service";
-import { ApiError, getApiErrorMessage } from "@/lib/api";
+import { ApiError, getApiErrorMessage, setAccessToken, setRefreshToken } from "@/lib/api";
+import { authService } from "@/features/auth/api/auth.service";
 
 interface ProfileDraft {
   username: string;
@@ -18,19 +19,30 @@ export function PersonalProfileSettings({ compact = false }: { compact?: boolean
   const [draft, setDraft] = useState<ProfileDraft>({ username: "", email: "", first_name: "", last_name: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [notice, setNotice] = useState("");
+  const submissionLock = useRef(false);
+  const pendingEmail = useRef<string | null>(null);
 
   useEffect(() => {
-    if (user) setDraft({ username: user.username, email: user.email, first_name: user.first_name, last_name: user.last_name });
+    if (user) setDraft({ username: user.username, email: pendingEmail.current ?? user.email, first_name: user.first_name, last_name: user.last_name });
   }, [user]);
 
   if (!user) return null;
 
   const changed = (Object.keys(draft) as Array<keyof ProfileDraft>)
-    .some(key => draft[key].trim() !== (user[key] ?? ""));
+    .some(key => key === "email"
+      ? draft.email.trim().toLowerCase() !== user.email.toLowerCase()
+      : draft[key].trim() !== (user[key] ?? ""));
+  const emailChanged = draft.email.trim().toLowerCase() !== user.email.toLowerCase();
+  const usernameChanged = draft.username.trim() !== user.username;
+  const awaitingCode = emailChanged && verificationEmail === draft.email.trim();
 
-  const saveProfile = async (event: React.FormEvent) => {
+  const saveProfile = async (event: React.FormEvent, resend = false) => {
     event.preventDefault();
-    if (!changed || saving) return;
+    if (!changed || submissionLock.current) return;
     const trimmed = {
       username: draft.username.trim(), email: draft.email.trim(),
       first_name: draft.first_name.trim(), last_name: draft.last_name.trim(),
@@ -45,23 +57,62 @@ export function PersonalProfileSettings({ compact = false }: { compact?: boolean
     }
     const changes = Object.fromEntries(
       (Object.keys(trimmed) as Array<keyof ProfileDraft>)
-        .filter(key => trimmed[key] !== (user[key] ?? ""))
+        .filter(key => key !== "email" && trimmed[key] !== (user[key] ?? ""))
         .map(key => [key, trimmed[key]])
-    ) as Partial<ProfileDraft>;
-    if (!Object.keys(changes).length) return;
+    ) as Partial<Omit<ProfileDraft, "email">>;
+    if (!Object.keys(changes).length && !emailChanged) return;
+    if ((usernameChanged || emailChanged) && !currentPassword) {
+      setError("Enter your current password to change your username or recovery email.");
+      return;
+    }
+    if (awaitingCode && !resend && !/^\d{6}$/.test(otp)) {
+      setError("Enter the 6-digit verification code from your email.");
+      return;
+    }
+    submissionLock.current = true;
+    pendingEmail.current = emailChanged ? trimmed.email : null;
     setSaving(true);
     setError("");
+    setNotice("");
+    let profileSaved = false;
+    let stage = "profile";
     try {
-      const updated = await userService.updateCurrentUser(changes);
-      setCurrentUser(updated);
-      toast.success("Personal profile saved. Use your new username the next time you sign in.");
+      if (Object.keys(changes).length) {
+        const updated = await userService.updateCurrentUser({
+          ...changes, ...(usernameChanged ? { current_password: currentPassword } : {}),
+        });
+        setCurrentUser(updated);
+        profileSaved = true;
+      }
+      if (emailChanged) {
+        stage = "email";
+        const payload = { email: trimmed.email, current_password: currentPassword };
+        if (awaitingCode && !resend) {
+          await authService.confirmEmailChange({ ...payload, otp });
+          setCurrentPassword("");
+          setOtp("");
+          setAccessToken(null);
+          setRefreshToken(null);
+          window.location.replace("/");
+        } else {
+          await authService.requestEmailChange(payload);
+          setVerificationEmail(trimmed.email);
+          setOtp("");
+          setNotice(`${profileSaved ? "Other profile changes saved. " : ""}Verification code sent to ${trimmed.email}. Enter it below to confirm your email and sign in again.`);
+        }
+      } else {
+        setCurrentPassword("");
+        toast.success("Personal profile saved. Use your new username the next time you sign in.");
+      }
     } catch (cause) {
-      const message = cause instanceof ApiError && (cause.status === 429 || /Profile can only be updated once every/i.test(cause.message))
+      const message = cause instanceof ApiError && ((stage === "profile" && cause.status === 429) || /Profile can only be updated once every/i.test(cause.message))
         ? `Profile changes are limited to once every 5 minutes. ${cause.message}`
         : getApiErrorMessage(cause, "Unable to save your profile.");
-      setError(message);
-      toast.error(message);
+      const detail = profileSaved ? `Other profile changes were saved. Email change could not be completed: ${message}` : message;
+      setError(detail);
+      toast.error(detail);
     } finally {
+      submissionLock.current = false;
       setSaving(false);
     }
   };
@@ -87,15 +138,35 @@ export function PersonalProfileSettings({ compact = false }: { compact?: boolean
           <label htmlFor={`profile-${key}`} className="mb-1.5 block text-xs font-semibold">{label}</label>
           <input id={`profile-${key}`} type={type ?? "text"} required={required} maxLength={key === "username" ? 150 : key === "email" ? 254 : undefined}
             autoComplete={key === "username" ? "username" : key === "email" ? "email" : key === "first_name" ? "given-name" : "family-name"}
-            value={draft[key]} onChange={event => { setDraft(current => ({ ...current, [key]: event.target.value })); setError(""); }} disabled={saving}
+            value={draft[key]} onChange={event => {
+              const value = event.target.value;
+              setDraft(current => ({ ...current, [key]: value }));
+              if (key === "email") { pendingEmail.current = value; setVerificationEmail(""); setOtp(""); setNotice(""); }
+              setError("");
+            }} disabled={saving}
             className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70`} />
         </div>)}
+        {(usernameChanged || emailChanged) && <div>
+          <label htmlFor="profile-current-password" className="mb-1.5 block text-xs font-semibold">Current password</label>
+          <input id="profile-current-password" type="password" autoComplete="current-password" required maxLength={1024}
+            value={currentPassword} onChange={event => { setCurrentPassword(event.target.value); setError(""); }} disabled={saving}
+            className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70`} />
+        </div>}
+        {awaitingCode && <div>
+          <label htmlFor="profile-email-otp" className="mb-1.5 block text-xs font-semibold">Email verification code</label>
+          <input id="profile-email-otp" type="text" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6}
+            value={otp} onChange={event => { setOtp(event.target.value); setError(""); }} disabled={saving}
+            className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70`} />
+          <button type="button" onClick={event => void saveProfile(event, true)} disabled={saving}
+            className="mt-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-40">Resend code</button>
+        </div>}
       </div>
+      {notice && <p role="status" className="mt-3 text-xs text-slate-500">{notice}</p>}
       {error && <p role="alert" className="mt-3 text-xs text-red-600">{error}</p>}
       <div className={`${compact ? "mt-3 pt-3" : "mt-4 pt-4"} flex justify-end border-t border-slate-100 dark:border-slate-700`}>
         <button type="submit" disabled={!changed || saving}
           className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-medium text-sm disabled:cursor-not-allowed disabled:opacity-50">
-          {saving ? "Saving…" : "Save Profile Changes"}
+          {saving ? "Saving…" : emailChanged ? awaitingCode ? "Verify email & save" : "Send verification code" : "Save Profile Changes"}
         </button>
       </div>
     </form>

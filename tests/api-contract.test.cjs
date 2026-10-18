@@ -113,6 +113,43 @@ test('a token refresh timeout preserves credentials and exposes a retryable erro
   assert.equal(api.getRefreshToken(), 'refresh');
 });
 
+test('profile username changes send current_password and email verification uses POST then PATCH', async () => {
+  responseData = { username: 'new-name', email: 'old@example.com', role: 'staff' };
+  assert.deepEqual(await api.userService.updateCurrentUser({ username: 'new-name', current_password: ' current password ', first_name: 'New' }), responseData);
+  assert.equal(calls[0].url, '/accounts/user/');
+  assert.equal(calls[0].method, 'patch');
+  assert.deepEqual(JSON.parse(calls[0].data), { username: 'new-name', current_password: ' current password ', first_name: 'New' });
+  const credentials = { email: 'new@example.com', current_password: ' current password ' };
+  await api.authService.requestEmailChange(credentials);
+  await api.authService.confirmEmailChange({ ...credentials, otp: '012345' });
+  assert.deepEqual(calls.slice(1).map(call => [call.method, call.url]), [['post', '/accounts/email-change/'], ['patch', '/accounts/email-change/']]);
+  assert.deepEqual(JSON.parse(calls[1].data), credentials);
+  assert.deepEqual(JSON.parse(calls[2].data), { ...credentials, otp: '012345' });
+  await assert.rejects(api.authService.confirmEmailChange({ ...credentials, otp: '12345' }), { status: 400 });
+  assert.equal(calls.length, 3);
+  responseStatus = 400; responseData = { detail: ['Invalid or expired verification code.'] };
+  await assert.rejects(api.authService.confirmEmailChange({ ...credentials, otp: '000000' }), { status: 400, message: 'Invalid or expired verification code.' });
+});
+
+test('orders map compact nested and flat product names without requiring a product variant', async () => {
+  const base = { id: 1, customer: { id: 1, name: 'Customer' }, handled_by: { id: 7, username: 'staff' }, status: 'fulfilled', created_at: '2026-10-18T10:00:00+08:00',
+    transaction: { id: 1, subtotal: '10.00', discount_amount: '0.00', total_amount: '10.00', payment_method: 'cash', amount_tendered: '10.00', change_due: '0.00' } };
+  const amount = { id: 1, quantity: '2.00', unit_price: '5.00', subtotal: '10.00' };
+  for (const [line, name] of [
+    [{ ...amount, product: { id: 3, name: 'Milk' } }, 'Milk'],
+    [{ ...amount, product: { id: 3, name: 'Milk', variant: '1 liter' } }, 'Milk 1 liter'],
+    [{ ...amount, product_id: 3, product_name: 'Milk' }, 'Milk'],
+    [{ ...amount, product: null, product_id: 3, product_name: 'Milk' }, 'Milk'],
+    [{ ...amount, product: { id: 3, name: '' }, product_name: 'Milk' }, 'Milk'],
+    [{ ...amount, product_id: 3 }, 'Product #3'],
+  ]) {
+    responseData = { count: 1, next: null, results: [{ ...base, items: [line] }] };
+    const [order] = await api.ordersService.getAll();
+    assert.deepEqual(order.items, [{ product: name, quantity: 2, unitPrice: 5, subtotal: 10 }]);
+    assert.equal((await api.ordersService.getRecent())[0].items[0].product, name);
+  }
+});
+
 test('sales dates use the Manila business day across UTC midnight and timestamp offsets', () => {
   const transaction = { id: 1, handled_by: { id: 7, username: 'staff' }, payment_method: 'cash', total_amount: '120' };
   for (const [created_at, expected] of [
@@ -990,12 +1027,42 @@ test('inventory-derived duplicates retain server revisions and acknowledgement s
   assert.equal(merged.expiry.status, 'expired');
 });
 
-test('frontend-only alert acknowledgements survive refresh and never post synthetic references', async () => {
+test('server-issued expired alerts persist via inbox POST and reload authoritative read/dismissed state', async () => {
+  let persisted = { id: 'expiry-product-1', revision: 'b'.repeat(64), unread: true, dismissed: false, expiry: { status: 'expired', daysLeft: -2 } };
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    if (config.url === '/settings/inbox/' && config.method === 'post') {
+      const payload = JSON.parse(config.data);
+      assert.deepEqual(payload.notifications, [{ id: persisted.id, revision: persisted.revision }]);
+      persisted = { ...persisted, unread: false, dismissed: payload.action === 'dismiss' };
+      return { status: 200, config, headers: {}, data: { updated: 1, action: payload.action } };
+    }
+    return { status: 200, config, headers: {}, data: config.url === '/settings/inbox/' ? [{ ...persisted }] : [] };
+  };
+  let [item] = await api.notificationsService.getAllWithExpiry();
+  assert.equal(item.clientOnly, undefined);
+  await api.notificationsService.update('read', [item]);
+  api.clearDataCache();
+  [item] = await api.notificationsService.getAllWithExpiry();
+  assert.equal(item.unread, false);
+  await api.notificationsService.update('dismiss', [item]);
+  [item] = await api.notificationsService.getAllWithExpiry();
+  assert.equal(item.dismissed, true);
+  assert.equal(item.unread, false);
+});
+
+const notificationToken = (userId, nonce = '') => `header.${Buffer.from(JSON.stringify({ user_id: userId, jti: nonce })).toString('base64url')}.signature`;
+const syntheticStorageKey = userId => `rosario:synthetic-notifications:v1:${userId}`;
+
+test('synthetic alert acknowledgements survive rehydration and never post synthetic references', async () => {
+  api.setAccessToken(notificationToken(7));
   expiredFeedAdapter();
   let item = (await api.notificationsService.getAllWithExpiry(true))[0];
   calls = [];
   await api.notificationsService.update('dismiss', [item]);
   assert.equal(calls.length, 0);
+  assert.ok(localStorage.getItem(syntheticStorageKey(7)));
+  api.clearDataCache();
   item = (await api.notificationsService.getAllWithExpiry(true))[0];
   assert.equal(item.dismissed, true); assert.equal(item.unread, false);
   await api.notificationsService.update('restore', [item]);
@@ -1003,9 +1070,110 @@ test('frontend-only alert acknowledgements survive refresh and never post synthe
   assert.equal(item.dismissed, false); assert.equal(item.unread, false);
   api.clearDataCache();
   item = (await api.notificationsService.getAllWithExpiry(true))[0];
-  assert.equal(item.dismissed, false); assert.equal(item.unread, true);
+  assert.equal(item.dismissed, false); assert.equal(item.unread, false);
   await api.notificationsService.update('read', [item, { id: 'server-alert', revision: 'c'.repeat(64) }]);
   assert.deepEqual(JSON.parse(calls.at(-1).data), { action: 'read', notifications: [{ id: 'server-alert', revision: 'c'.repeat(64) }] });
+});
+
+test('synthetic acknowledgement storage isolates accounts and retains state across logout and token rotation', async () => {
+  api.setAccessToken(notificationToken(7));
+  expiredFeedAdapter();
+  let [item] = await api.notificationsService.getAllWithExpiry(true);
+  await api.notificationsService.update('dismiss', [item]);
+  const accountSeven = localStorage.getItem(syntheticStorageKey(7));
+  api.setAccessToken(null);
+  api.setAccessToken(notificationToken(8));
+  [item] = await api.notificationsService.getAllWithExpiry(true);
+  assert.equal(item.unread, true); assert.equal(item.dismissed, false);
+  await api.notificationsService.update('read', [item]);
+  assert.equal(localStorage.getItem(syntheticStorageKey(7)), accountSeven);
+  assert.notEqual(localStorage.getItem(syntheticStorageKey(8)), accountSeven);
+  api.setAccessToken(notificationToken(7));
+  [item] = await api.notificationsService.getAllWithExpiry(true);
+  assert.equal(item.unread, false); assert.equal(item.dismissed, true);
+  api.setAccessToken(notificationToken(7, 'rotated'), true);
+  [item] = await api.notificationsService.getAllWithExpiry(true);
+  assert.equal(item.unread, false); assert.equal(item.dismissed, true);
+});
+
+test('changed synthetic alert revisions become unread and replace obsolete stored acknowledgements', async () => {
+  api.setAccessToken(notificationToken(7));
+  expiredFeedAdapter();
+  let [item] = await api.notificationsService.getAllWithExpiry(true);
+  await api.notificationsService.update('dismiss', [item]);
+  const originalRevision = item.revision;
+  const adapter = api.http.defaults.adapter;
+  api.http.defaults.adapter = async config => {
+    const response = await adapter(config);
+    if (config.url === '/inventory/product-batches/') response.data = response.data.map(batch => ({ ...batch, remaining_quantity: '6' }));
+    return response;
+  };
+  [item] = await api.notificationsService.getAllWithExpiry(true);
+  assert.notEqual(item.revision, originalRevision);
+  assert.equal(item.unread, true); assert.equal(item.dismissed, false);
+  await api.notificationsService.update('read', [item]);
+  const stored = JSON.parse(localStorage.getItem(syntheticStorageKey(7)));
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0][0], `${item.id}:${item.revision}`);
+});
+
+test('corrupt or malformed synthetic acknowledgement storage does not hide notifications', async () => {
+  api.setAccessToken(notificationToken(7));
+  expiredFeedAdapter();
+  const [original] = await api.notificationsService.getAllWithExpiry(true);
+  for (const value of ['invalid json', '{}', JSON.stringify([[`${original.id}:${original.revision}`, { unread: 'false', dismissed: true }], null])]) {
+    localStorage.setItem(syntheticStorageKey(7), value);
+    api.clearDataCache();
+    const [item] = await api.notificationsService.getAllWithExpiry(true);
+    assert.equal(item.unread, true); assert.equal(item.dismissed, false);
+  }
+  await api.notificationsService.update('read', [original]);
+  api.clearDataCache();
+  assert.equal((await api.notificationsService.getAllWithExpiry(true))[0].unread, false);
+});
+
+test('blocked browser storage falls back to session acknowledgements without invalid inbox writes', async () => {
+  api.setAccessToken(notificationToken(7));
+  const original = localStorage;
+  global.localStorage = {
+    ...original,
+    getItem: key => { if (key.startsWith('rosario:synthetic-notifications:')) throw new Error('Storage blocked'); return original.getItem(key); },
+    setItem: (key, value) => { if (key.startsWith('rosario:synthetic-notifications:')) throw new Error('Quota exceeded'); original.setItem(key, value); },
+  };
+  expiredFeedAdapter();
+  const [item] = await api.notificationsService.getAllWithExpiry(true);
+  await api.notificationsService.update('read', [item]);
+  assert.equal((await api.notificationsService.getAllWithExpiry(true))[0].unread, false);
+  assert.ok(calls.every(call => call.method === 'get'));
+});
+
+test('synthetic alerts never persist under a shared key when account identity is missing', async () => {
+  expiredFeedAdapter();
+  const [item] = await api.notificationsService.getAllWithExpiry(true);
+  const writes = [];
+  const original = localStorage.setItem;
+  localStorage.setItem = (key, value) => { writes.push(key); original(key, value); };
+  await api.notificationsService.update('read', [item]);
+  assert.equal((await api.notificationsService.getAllWithExpiry(true))[0].unread, false);
+  assert.deepEqual(writes, []);
+  api.clearDataCache();
+  assert.equal((await api.notificationsService.getAllWithExpiry(true))[0].unread, true);
+});
+
+test('a delayed inbox action cannot save synthetic acknowledgements into a different account', async () => {
+  api.setAccessToken(notificationToken(7));
+  expiredFeedAdapter();
+  const [item] = await api.notificationsService.getAllWithExpiry(true);
+  let complete;
+  api.http.defaults.adapter = config => new Promise(resolve => { complete = () => resolve({ status: 200, config, headers: {}, data: {} }); });
+  const pending = api.notificationsService.update('read', [item, { id: 'server', revision: 'a'.repeat(64) }]);
+  await new Promise(resolve => setImmediate(resolve));
+  api.setAccessToken(notificationToken(8));
+  complete(); await pending;
+  assert.equal(localStorage.getItem(syntheticStorageKey(7)), null);
+  assert.equal(localStorage.getItem(syntheticStorageKey(8)), null);
+  expiredFeedAdapter();
+  assert.equal((await api.notificationsService.getAllWithExpiry(true))[0].unread, true);
 });
 
 test('partial expired batch feed failure keeps inbox and available ingredient alerts', async () => {

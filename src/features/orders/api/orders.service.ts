@@ -1,6 +1,6 @@
 import { reportsService } from "@/features/reports/api/reports.service";
 import http, { ApiError, getAllPages, type PaginatedResponse } from "@/lib/api";
-import type { CreateOrderPayload, Order, OrderItem, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
+import type { CreateOrderPayload, Order, OrderListLine, OrderListResponse, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
 
 function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
   const map: Record<Order["status"], DisplayOrderStatus> = {
@@ -12,7 +12,7 @@ function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
 
 export const ordersService = {
   getAll: async (): Promise<OrderListItem[]> => {
-    const orders = await getAllPages<Order>("/sales/orders/", { page_size: 500 });
+    const orders = await getAllPages<OrderListResponse>("/sales/orders/", { page_size: 500 });
     // Sort the complete list before either Orders view filters or paginates it.
     return [...orders].sort((a, b) => b.id - a.id).map(mapOrder);
   },
@@ -41,12 +41,12 @@ export const ordersService = {
   },
 
   getRecent: async (limit = 5): Promise<OrderListItem[]> => {
-    const { data } = await http.get<PaginatedResponse<Order>>("/sales/orders/", { params: { page: 1, page_size: limit } });
+    const { data } = await http.get<PaginatedResponse<OrderListResponse>>("/sales/orders/", { params: { page: 1, page_size: limit } });
     return data.results.map(mapOrder);
   },
 };
 
-export function mapOrder(o: Order): OrderListItem {
+export function mapOrder(o: OrderListResponse): OrderListItem {
   const total = parseFloat(o.transaction.total_amount);
   return {
     id: o.id,
@@ -66,11 +66,17 @@ export function mapOrder(o: Order): OrderListItem {
     amountTendered: o.transaction.amount_tendered ? parseFloat(o.transaction.amount_tendered) : null,
     changeDue: o.transaction.change_due ? parseFloat(o.transaction.change_due) : null,
     warning: o.warning,
-    items: o.items.map((item: OrderItem) => ({
-      product: [item.product.name, item.product.variant].filter(Boolean).join(" "),
+    items: o.items.map(item => ({
+      product: orderProductName(item),
       quantity: parseFloat(item.quantity),
       unitPrice: parseFloat(item.unit_price),
       subtotal: parseFloat(item.subtotal),
     })),
   };
+}
+
+function orderProductName(item: OrderListLine): string {
+  const name = item.product?.name?.trim() || item.product_name?.trim();
+  const id = item.product?.id ?? item.product_id;
+  return [name || (id != null ? `Product #${id}` : ""), item.product?.variant].filter(Boolean).join(" ");
 }

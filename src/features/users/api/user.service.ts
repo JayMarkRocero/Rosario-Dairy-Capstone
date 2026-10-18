@@ -19,7 +19,7 @@ function formatLastLogin(lastLogin: string | null): string {
 }
 
 export const userService = {
-  updateCurrentUser: async (input: Partial<Pick<CurrentUser, "username" | "email" | "first_name" | "last_name">>): Promise<CurrentUser> => {
+  updateCurrentUser: async (input: Partial<Pick<CurrentUser, "username" | "first_name" | "last_name">> & { current_password?: string }): Promise<CurrentUser> => {
     const { data } = await http.patch<CurrentUser>("/accounts/user/", input);
     return data;
   },

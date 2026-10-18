@@ -78,7 +78,7 @@ export function NotificationBell({ staff = false }: { staff?: boolean } = {}) {
   const visible = notifications.filter(n => filter === 'dismissed' ? n.dismissed : !n.dismissed && (filter === 'all' || n.unread))
     .sort((a, b) => (b.expiry?.status === 'expired' ? 2 : b.expiry?.status === 'critical' ? 1 : 0)
       - (a.expiry?.status === 'expired' ? 2 : a.expiry?.status === 'critical' ? 1 : 0));
-  const actionClass = 'rounded-lg p-1.5 hover:bg-slate-100 disabled:opacity-40 transition-colors';
+  const actionClass = 'rounded-lg p-1.5 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-40 transition-colors';
 
   return <div ref={ref} className="relative">
     <button type="button" aria-label="Notifications" aria-expanded={open} aria-controls={open ? panelId : undefined}
@@ -93,11 +93,11 @@ export function NotificationBell({ staff = false }: { staff?: boolean } = {}) {
       <div id={panelId} role="region" aria-label="Notifications inbox" className="fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 w-auto sm:w-96 bg-white rounded-2xl shadow-2xl z-50 overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
         <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
           <span className="font-semibold text-sm" style={{ color: C.text, fontFamily: 'Poppins, sans-serif' }}>Notifications</span>
-          <span aria-live="polite" className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: C.blue + '15', color: C.blue }}>{unread.length} unread</span>
+          <span aria-live="polite" className="text-[10px] font-medium text-slate-400">{unread.length} unread</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2" style={{ borderBottom: `1px solid ${C.border}` }}>
-          <div className="flex gap-1">{(['all', 'unread', 'dismissed'] as const).map(value => <button key={value} type="button" onClick={() => setFilter(value)} aria-pressed={filter === value} className="text-xs capitalize px-2 py-1 rounded-lg" style={{ backgroundColor: filter === value ? C.blue + '15' : 'transparent', color: filter === value ? C.blue : C.muted }}>{value}</button>)}</div>
-          <button type="button" onClick={() => void update('read', unread)} disabled={saving || loading || !unread.length} className="text-xs font-medium disabled:opacity-40" style={{ color: C.blue }}>Mark all as read</button>
+          <div className="flex gap-1">{(['all', 'unread', 'dismissed'] as const).map(value => <button key={value} type="button" onClick={() => setFilter(value)} aria-pressed={filter === value} className={`text-[10px] capitalize px-2 py-1 rounded-lg transition-colors ${filter === value ? 'font-medium text-slate-600' : 'text-slate-400 hover:text-slate-600'}`}>{value}</button>)}</div>
+          <button type="button" onClick={() => void update('read', unread)} disabled={saving || loading || !unread.length} className="text-[10px] font-medium text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-40">Mark all as read</button>
         </div>
         {failed && <div role="alert" className="px-4 py-2 text-xs" style={{ color: C.red }}>Could not refresh notifications. <button type="button" className="underline" onClick={() => void refresh()}>Retry</button></div>}
         <div className="max-h-[60vh] sm:max-h-96 overflow-y-auto" aria-busy={loading || saving}>
@@ -109,21 +109,21 @@ export function NotificationBell({ staff = false }: { staff?: boolean } = {}) {
             const color = isExpiry ? expired || critical ? C.red : C.orange : ({ warning: C.orange, danger: C.red, info: C.blue, success: C.green })[n.type] ?? C.blue;
             const daysLabel = !expired && n.expiry?.daysLeft != null ? ` • ${n.expiry.daysLeft} ${n.expiry.daysLeft === 1 ? 'day' : 'days'} left` : '';
             const notificationContent = <>
-                <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold" style={{ color: C.text }}>{expired ? 'EXPIRED • Action Required' : n.title}</span><span className="text-xs flex-shrink-0" style={{ color: C.muted }}>{n.time}</span></div>
-                {isExpiry && <span className={`mt-2 inline-flex ${expired ? 'bg-red-600 text-white font-bold px-2 py-0.5 text-xs rounded' : `rounded-md px-2 py-1 text-[11px] font-semibold ${critical ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}`}>
+                <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5"><span className={`min-w-0 break-words text-xs font-semibold ${n.unread ? 'text-slate-800' : 'text-slate-500'}`}>{expired ? 'EXPIRED • Action Required' : n.title}</span><span className="ml-auto text-[10px] text-slate-400 flex-shrink-0 text-right">{n.time}</span></div>
+                {isExpiry && <span className={`mt-1.5 inline-flex rounded px-1 text-[10px] font-medium ${n.unread ? expired || critical ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>
                   {expired ? 'EXPIRED' : critical ? 'CRITICAL EXPIRY' : n.expiry ? 'Near Expiry' : 'Expiry warning'}{daysLabel}
                 </span>}
-                <p className="text-xs mt-1 leading-relaxed" style={{ color: C.muted }}>{n.body}</p>
-                {expired && <p className="mt-2 text-xs font-bold leading-relaxed text-red-700">Product has expired! Remove batch from active stock immediately.</p>}
-                {critical && <p className="mt-2 text-xs font-medium leading-relaxed text-red-700">Urgent action required: Discount or prioritize batch for immediate dispatch via FEFO.</p>}
+                <p className={`text-xs mt-1 font-normal leading-relaxed break-words ${n.unread ? 'text-slate-700' : 'text-slate-500'}`}>{n.body}</p>
+                {expired && <p className={`mt-1.5 text-xs font-normal leading-relaxed ${n.unread ? 'text-red-700' : 'text-slate-500'}`}>Product has expired! Remove batch from active stock immediately.</p>}
+                {critical && <p className={`mt-1.5 text-xs font-normal leading-relaxed ${n.unread ? 'text-red-700' : 'text-slate-500'}`}>Urgent action required: Discount or prioritize batch for immediate dispatch via FEFO.</p>}
             </>;
-            return <div key={n.id} data-notification-id={n.id} className={`flex gap-3 px-4 py-3 transition-colors ${expired || critical ? 'bg-red-50 border-l-4 border-l-red-500' : ''}`} style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: expired || critical ? undefined : n.unread ? C.blue + '06' : undefined }}>
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: color + '15', color }}><Icon size={14} /></div>
+            return <div key={n.id} data-notification-id={n.id} className={`flex gap-2.5 px-4 py-3 border-b border-slate-100 last:border-b-0 transition-colors ${n.unread ? 'bg-slate-50/60' : 'bg-white'}`}>
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ color: n.unread ? color : C.muted }}><Icon size={14} /></div>
               <div className="flex-1 min-w-0">
                 {notificationContent}
-                <div className="flex items-center justify-between mt-2 gap-2">
-                  <span className="text-xs" style={{ color: n.unread ? C.blue : C.muted }}>{n.dismissed ? 'Dismissed' : n.unread ? 'Unread' : 'Read'}</span>
-                  <div className="flex items-center gap-1" style={{ color: C.muted }}>
+                <div className="flex items-center justify-end mt-1.5 gap-2">
+                  <span className="text-[10px] text-slate-400 text-right">{n.dismissed ? 'Dismissed' : n.unread ? 'Unread' : 'Read'}</span>
+                  <div className="flex items-center gap-1">
                     {!n.dismissed && n.unread && <button type="button" aria-label={`Mark as read: ${n.body}`} title="Mark as read" onClick={() => void update('read', [n])} disabled={saving || loading} className={actionClass}><Check size={15} /></button>}
                     {n.dismissed ? <button type="button" aria-label={`Restore notification: ${n.body}`} title="Restore notification" onClick={() => void update('restore', [n])} disabled={saving || loading} className={actionClass}><RotateCcw size={15} /></button> : <button type="button" aria-label={`Dismiss notification: ${n.body}`} title="Dismiss notification" onClick={() => void update('dismiss', [n])} disabled={saving || loading} className={actionClass}><X size={15} /></button>}
                   </div>

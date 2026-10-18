@@ -63,6 +63,7 @@ const compiled = buildSync({
     export { AdminCustomers } from './src/features/customers/pages/AdminCustomers';
     export { AdminUserManagement } from './src/features/users/pages/AdminUserManagement';
     export { AdminSettings } from './src/features/settings/pages/AdminSettings';
+    export { PersonalProfileSettings } from './src/features/settings/components/PersonalProfileSettings';
     export { SETTINGS_UPDATED } from './src/features/settings/api/settings.service';
     export { useReportVersion } from './src/features/reports/hooks/useReportPreview';
     export { InventoryAlert } from './src/features/dashboard/components/staff/InventoryAlert';
@@ -337,6 +338,111 @@ test('stretched desktop inventory rows fill both full and partial pages', () => 
 
 const staffCards = tree => elements(tree, node => typeof node.props.trendLabel === 'string');
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('profile username changes require and forward the current password without email', async () => {
+  authState = { user: { id: 7, username: 'staff', email: 'old@example.com', first_name: 'Old', last_name: 'Name' }, setCurrentUser: value => { authState.user = value; } };
+  render(ui.PersonalProfileSettings); effects[0]();
+  let tree = render(ui.PersonalProfileSettings);
+  const field = (tree, id) => elements(tree, node => node.type === 'input' && node.props.id === id)[0];
+  field(tree, 'profile-username').props.onChange({ target: { value: 'new-name' } });
+  tree = render(ui.PersonalProfileSettings);
+  let requests = [];
+  ui.http.defaults.adapter = async config => { requests.push(config); return { status: 200, config, headers: {}, data: { ...authState.user, username: 'new-name' } }; };
+  await elements(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  assert.equal(requests.length, 0);
+  field(tree, 'profile-current-password').props.onChange({ target: { value: ' password ' } });
+  tree = render(ui.PersonalProfileSettings);
+  const submit = elements(tree, node => node.type === 'form')[0].props.onSubmit;
+  const pending = submit({ preventDefault() {} });
+  await submit({ preventDefault() {} });
+  await pending;
+  assert.equal(requests.length, 1);
+  assert.deepEqual(JSON.parse(requests[0].data), { username: 'new-name', current_password: ' password ' });
+  assert.equal(authState.user.username, 'new-name');
+  assert.equal(elements(render(ui.PersonalProfileSettings), node => node.type === 'input' && node.props.type === 'password').length, 0);
+});
+
+test('a failed email request preserves its draft after other profile changes save and can retry or resend', async () => {
+  authState = { user: { id: 7, username: 'staff', email: 'old@example.com', first_name: 'Old', last_name: 'Name' }, setCurrentUser: value => { authState.user = value; } };
+  render(ui.PersonalProfileSettings); effects[0]();
+  const input = (tree, id) => elements(tree, node => node.type === 'input' && node.props.id === id)[0];
+  let tree = render(ui.PersonalProfileSettings);
+  input(tree, 'profile-first_name').props.onChange({ target: { value: 'Updated' } });
+  input(tree, 'profile-email').props.onChange({ target: { value: 'new@example.com' } });
+  tree = render(ui.PersonalProfileSettings);
+  input(tree, 'profile-current-password').props.onChange({ target: { value: 'password' } });
+  const requests = [];
+  let failEmail = true;
+  ui.http.defaults.adapter = async config => {
+    requests.push(config);
+    if (config.url === '/accounts/user/') return { status: 200, config, headers: {}, data: { ...authState.user, first_name: 'Updated' } };
+    if (failEmail) throw new AxiosError('Throttled', undefined, config, undefined, { status: 429, data: { detail: 'Wait before requesting another code.' }, config });
+    return { status: 200, config, headers: {}, data: {} };
+  };
+  tree = render(ui.PersonalProfileSettings);
+  await elements(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  render(ui.PersonalProfileSettings); effects.at(-1)();
+  tree = render(ui.PersonalProfileSettings);
+  assert.equal(input(tree, 'profile-email').props.value, 'new@example.com');
+  assert.equal(input(tree, 'profile-first_name').props.value, 'Updated');
+  assert.match(toastErrors.at(-1)[0], /Other profile changes were saved/);
+  assert.ok(!toastErrors.at(-1)[0].includes('Profile changes are limited'));
+  assert.deepEqual(JSON.parse(requests[0].data), { first_name: 'Updated' });
+  failEmail = false;
+  await elements(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  tree = render(ui.PersonalProfileSettings);
+  input(tree, 'profile-email-otp').props.onChange({ target: { value: '12' } });
+  tree = render(ui.PersonalProfileSettings);
+  elements(tree, node => node.type === 'button' && node.props.children === 'Resend code')[0].props.onClick({ preventDefault() {} });
+  await settle();
+  assert.deepEqual(requests.map(call => [call.method, call.url]), [
+    ['patch', '/accounts/user/'], ['post', '/accounts/email-change/'], ['post', '/accounts/email-change/'], ['post', '/accounts/email-change/'],
+  ]);
+  assert.equal(input(render(ui.PersonalProfileSettings), 'profile-email-otp').props.value, '');
+});
+
+test('profile email verification preserves drafts on failure and signs out only after successful confirmation', async () => {
+  authState = { user: { id: 7, username: 'staff', email: 'old@example.com', first_name: 'Old', last_name: 'Name' }, setCurrentUser: value => { authState.user = value; } };
+  const storage = new Map([['rosario_access_token', 'access'], ['rosario_refresh_token', 'refresh']]);
+  global.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+  let redirected = '';
+  window.location = { replace: value => { redirected = value; } };
+  render(ui.PersonalProfileSettings); effects[0]();
+  const input = (tree, id) => elements(tree, node => node.type === 'input' && node.props.id === id)[0];
+  let tree = render(ui.PersonalProfileSettings);
+  input(tree, 'profile-email').props.onChange({ target: { value: 'new@example.com' } });
+  tree = render(ui.PersonalProfileSettings);
+  input(tree, 'profile-current-password').props.onChange({ target: { value: 'password' } });
+  const requests = [];
+  let rejectCode = true;
+  ui.http.defaults.adapter = async config => {
+    requests.push(config);
+    if (config.method === 'patch' && rejectCode) throw new AxiosError('Invalid code', undefined, config, undefined, { status: 400, data: { detail: 'Invalid or expired verification code.' }, config });
+    return { status: 200, config, headers: {}, data: {} };
+  };
+  tree = render(ui.PersonalProfileSettings);
+  await elements(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  assert.equal(requests[0].method, 'post');
+  assert.equal(requests[0].url, '/accounts/email-change/');
+  assert.equal(redirected, '');
+  assert.equal(authState.user.email, 'old@example.com');
+  tree = render(ui.PersonalProfileSettings);
+  assert.ok(input(tree, 'profile-email-otp'));
+  input(tree, 'profile-email-otp').props.onChange({ target: { value: '012345' } });
+  tree = render(ui.PersonalProfileSettings);
+  await elements(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  tree = render(ui.PersonalProfileSettings);
+  assert.equal(input(tree, 'profile-email').props.value, 'new@example.com');
+  assert.equal(input(tree, 'profile-email-otp').props.value, '012345');
+  assert.equal(redirected, '');
+  assert.equal(storage.get('rosario_access_token'), 'access');
+  rejectCode = false;
+  await elements(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  assert.ok(requests.every(call => call.url === '/accounts/email-change/'));
+  assert.deepEqual(JSON.parse(requests.at(-1).data), { email: 'new@example.com', current_password: 'password', otp: '012345' });
+  assert.equal(storage.size, 0);
+  assert.equal(redirected, '/');
+});
 
 for (const [label, failure, expected] of [
   ['network failure', config => new AxiosError('Network Error', AxiosError.ERR_NETWORK, config), 'Unable to connect to the server'],
@@ -1051,10 +1157,11 @@ test('notification inbox prioritizes critical expiry and differentiates urgency 
   const tree = render(ui.NotificationBell);
   const cards = elements(tree, node => !!node.props['data-notification-id']);
   assert.deepEqual(cards.map(card => card.props['data-notification-id']), ['expiry-ingredient-2', 'expiry-product-1', 'low-stock-products']);
-  assert.ok(cards[0].props.className.includes('border-l-red-500'));
-  assert.equal(cards[0].props.style.backgroundColor, undefined);
-  const badge = card => elements(card, node => node.type === 'span' && node.props.className?.includes('font-semibold') && node.props.className.includes('rounded-md'))[0];
-  assert.ok(badge(cards[0]).props.className.includes('bg-red-100'));
+  assert.ok(cards[0].props.className.includes('bg-white'));
+  assert.ok(cards.slice(1).every(card => card.props.className.includes('bg-slate-50/60')));
+  assert.ok(cards.every(card => !card.props.className.includes('border-l-') && card.props.className.includes('border-b border-slate-100 last:border-b-0')));
+  const badge = card => elements(card, node => node.type === 'span' && node.props.className?.includes('text-[10px]') && node.props.className.includes('rounded'))[0];
+  assert.ok(badge(cards[0]).props.className.includes('bg-slate-100 text-slate-500'));
   assert.equal(React.Children.toArray(badge(cards[0]).props.children).join(''), 'CRITICAL EXPIRY \u2022 0 days left');
   assert.ok(badge(cards[1]).props.className.includes('bg-amber-100'));
   assert.equal(React.Children.toArray(badge(cards[1]).props.children).join(''), 'Near Expiry \u2022 5 days left');
@@ -1076,8 +1183,10 @@ test('expired notifications keep their styling and removal message without navig
   const tree = render(ui.NotificationBell, props);
   const cards = elements(tree, node => !!node.props['data-notification-id']);
   assert.equal(cards[0].props['data-notification-id'], 'expiry-ingredient-2');
-  const badge = elements(cards[0], node => node.type === 'span' && node.props.className?.includes('bg-red-600'))[0];
-  assert.ok(badge.props.className.includes('text-white font-bold px-2 py-0.5 text-xs rounded'));
+  const badge = elements(cards[0], node => node.type === 'span' && node.props.className?.includes('rounded px-1 text-[10px] font-medium'))[0];
+  assert.ok(badge.props.className.includes('bg-slate-100 text-slate-500'));
+  assert.ok(cards[0].props.className.includes('bg-white'));
+  assert.ok(!cards[0].props.className.includes('border-l-'));
   assert.equal(elements(cards[0], node => node.props.children === 'EXPIRED \u2022 Action Required').length, 1);
   assert.equal(React.Children.toArray(badge.props.children).join(''), 'EXPIRED');
   assert.equal(elements(cards[0], node => node.props.children === 'Product has expired! Remove batch from active stock immediately.').length, 1);

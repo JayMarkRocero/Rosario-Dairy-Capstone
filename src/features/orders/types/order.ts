@@ -31,6 +31,20 @@ export interface Order {
   updated_at: string;
 }
 
+// List responses use compact product/transaction serializers; detail responses
+// remain complete. Optional flat fields also allow product_id/product_name rows.
+export interface OrderListLine extends Omit<OrderItem, "product"> {
+  product?: (Pick<DjangoProduct, "id" | "name"> & Partial<Pick<DjangoProduct, "variant">>) | null;
+  product_id?: number;
+  product_name?: string;
+}
+
+export interface OrderListResponse extends Omit<Order, "items" | "transaction"> {
+  items: OrderListLine[];
+  transaction: Pick<DjangoTransaction, "id" | "subtotal" | "discount_amount" | "total_amount" |
+    "payment_method" | "amount_tendered" | "change_due" | "source_reference" | "source_invoice_number">;
+}
+
 export type DisplayOrderStatus = "Fulfilled" | "Cancelled";
 
 export interface OrderItemDisplay {

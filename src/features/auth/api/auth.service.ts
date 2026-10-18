@@ -2,6 +2,7 @@ import http, { ApiError, refreshAccessToken, getAccessToken, type CurrentUser, t
 
 export interface RecoveryIdentity { username: string; email: string }
 export interface RecoveryResetPayload extends RecoveryIdentity { otp: string; new_password: string }
+export interface EmailChangePayload { email: string; current_password: string }
 
 // Used only to scope frontend requests; the backend validates the access token.
 export function getSessionUserId(user?: Pick<CurrentUser, "id"> | null): number | null {
@@ -19,6 +20,13 @@ export function getSessionUserId(user?: Pick<CurrentUser, "id"> | null): number 
 }
 
 export const authService = {
+  requestEmailChange: async (payload: EmailChangePayload): Promise<void> => {
+    await http.post("/accounts/email-change/", payload);
+  },
+  confirmEmailChange: async (payload: EmailChangePayload & { otp: string }): Promise<void> => {
+    if (!/^\d{6}$/.test(payload.otp)) throw new ApiError(400, "Enter the 6-digit verification code from your email.");
+    await http.patch("/accounts/email-change/", payload);
+  },
   refresh: refreshAccessToken,
   getCurrentUserId: async (): Promise<number> => {
     // Validate/refresh the session before reading the identity claim for query scoping.
