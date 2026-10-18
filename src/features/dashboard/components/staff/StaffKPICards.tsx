@@ -50,7 +50,7 @@ export function StaffKPICards() {
     const mySalesToday = sales.filter(s => s.date === today && s.cashier === username);
     const myTotalToday = mySalesToday.reduce((sum, s) => sum + s.total, 0);
 
-    const fulfilledOrders = orders.filter(o => o.status === "Fulfilled");
+    const fulfilledOrders = orders.filter(o => o.status === "Fulfilled" && !!username && o.staff === username);
 
     const availableProducts = products.filter(p => p.stock > 0).length;
 
@@ -68,7 +68,7 @@ export function StaffKPICards() {
       {
         title: "Fulfilled Orders", value: String(fulfilledOrders.length), icon: <ClipboardList size={20}/>,
         trend: "neutral" as const, trendLabel: "All time", color: C.orange,
-        detail: "Completed customer orders",
+        detail: "Completed orders you processed",
       },
       {
         title: "Available Products", value: `${availableProducts} / ${products.length}`, icon: <Package size={20}/>,

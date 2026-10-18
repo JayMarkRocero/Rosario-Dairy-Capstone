@@ -800,6 +800,34 @@ test('staff KPI loading clears and displays the returned metrics', async () => {
   } finally { cleanup(); }
 });
 
+test('staff fulfilled KPI counts only fulfilled orders processed by the logged-in staff member', async () => {
+  authState = { user: { id: 7, username: 'audit' }, loading: false };
+  const order = (id, status, username, historical = false) => ({
+    id, status, customer: { id: 1, name: 'Customer' }, handled_by: { id: username === 'audit' ? 7 : 8, username },
+    created_at: '2020-01-01T12:00:00+08:00', items: [],
+    transaction: { id, total_amount: '10.00', subtotal: '10.00', discount_amount: '0.00', payment_method: 'cash', amount_tendered: '10.00', change_due: '0.00', source_reference: historical ? 'imported' : null },
+  });
+  const orders = [
+    order(1, 'fulfilled', 'audit'), order(2, 'fulfilled', 'audit'),
+    order(3, 'cancelled', 'audit'), order(4, 'fulfilled', 'other'), order(5, 'fulfilled', 'audit', true),
+  ];
+  ui.http.defaults.adapter = async config => ({
+    status: 200, config, headers: {},
+    data: config.url === '/sales/orders/' ? { count: orders.length, next: null, results: orders } : [],
+  });
+  render(ui.StaffKPICards);
+  const cleanup = effects.at(-1)();
+  try {
+    await settle();
+    const cards = staffCards(render(ui.StaffKPICards));
+    const fulfilled = cards.find(card => card.props.title === 'Fulfilled Orders');
+    assert.equal(fulfilled.props.value, '2');
+    assert.equal(fulfilled.props.detail, 'Completed orders you processed');
+    assert.equal(fulfilled.props.trendLabel, 'All time');
+    assert.deepEqual(cards.map(card => card.props.value), ['\u20b10', '0', '2', '0 / 0']);
+  } finally { cleanup(); }
+});
+
 test('staff KPI loading clears after a failed API call and can recover on refresh', async () => {
   ui.http.defaults.adapter = async () => { throw new Error('Simulated metrics outage'); };
   render(ui.StaffKPICards);
