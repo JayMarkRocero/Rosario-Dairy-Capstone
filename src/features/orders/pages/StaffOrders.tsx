@@ -1,11 +1,10 @@
+import { StaffOrdersTable } from "@/features/orders/components/StaffOrdersTable";
 import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";
-import { OrdersTable } from "@/features/orders/components/OrdersTable";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useMemo, useState } from "react";
 import { Plus, Eye } from "lucide-react";
-import { Btn } from "@/components/buttons/Btn";
 import { type Column } from "@/components/data-display/EnhancedTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { Drawer } from "@/components/overlays/Drawer";
@@ -14,12 +13,18 @@ import { CreateOrderModal } from "@/features/orders/components/CreateOrderModal"
 import type { OrderListItem } from "@/features/orders/types/order";
 import { C } from "@/styles/tokens/colors";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
+import { useAuth } from "@/features/auth/context/AuthContext";
+import { getSessionUserId } from "@/features/auth/api/auth.service";
 
 const STATUSES = ["Fulfilled", "Cancelled"];
 
 export function StaffOrders() {
-  const { data: cachedOrders, loading, refresh } = useCachedQuery("orders:list", ordersService.getAll, ["orders"]);
-  const orders = cachedOrders ?? [];
+  const { user, loading: authLoading } = useAuth();
+  const userId = user ? getSessionUserId(user) : null;
+  const { data: cachedOrders, loading, refresh } = useCachedQuery("orders:list", ordersService.getAll, ["orders"], !authLoading && userId !== null);
+  const orders = useMemo(() => !authLoading && userId !== null
+    ? (cachedOrders ?? []).filter(order => order.staffId === userId && !order.isHistorical)
+    : [], [cachedOrders, userId, authLoading]);
   const [status, setStatus] = useState("All");
   const [selected, setSelected] = useState<OrderListItem | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
@@ -38,12 +43,12 @@ export function StaffOrders() {
     { key:"actions", header:"Actions", align:"center", width:"12%", render:o=><div onClick={e=>e.stopPropagation()}><ActionButton label="View details" onClick={()=>view(o)}><Eye size={13}/></ActionButton></div> },
   ];
 
-  return <div className="records-page viewport-records-page orders-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-    <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="min-w-0 break-words text-lg font-semibold" style={{color:C.muted}}>Manage and track customer orders</h2><Btn variant="primary" fullWidth icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
+  return <div className="h-[calc(100vh-80px)] max-h-[calc(100vh-80px)] min-h-0 flex flex-1 flex-col space-y-3 p-6 pt-6 pb-0 overflow-hidden max-w-[1400px] mx-auto mb-0 w-full">
+    <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="text-xl font-bold text-slate-900">Orders</h1><p className="text-xs text-slate-500">Manage and track customer orders</p></div><button type="button" className="px-3.5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5" onClick={()=>setCreateOpen(true)}><Plus size={14}/>Create Order</button></div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green], ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-    <OrdersTable contentHeight pageSize={5} rowHeight={52} columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} />} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
+    <StaffOrdersTable columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} />} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md">
       {selected&&<div className="space-y-5">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>

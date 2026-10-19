@@ -58,6 +58,8 @@ const compiled = buildSync({
     export { EnhancedTable } from './src/components/data-display/EnhancedTable';
     export * from './src/features/inventory/components/InventoryWarnings';
     export { AdminInventory } from './src/features/inventory/pages/AdminInventory';
+    export { StaffInventoryTable } from './src/features/inventory/components/StaffInventoryTable';
+    export { StaffOrdersTable } from './src/features/orders/components/StaffOrdersTable';
     export { StaffInventory } from './src/features/inventory/pages/StaffInventory';
     export { AdminCategories } from './src/features/inventory/pages/AdminCategories';
     export { AdminCustomers } from './src/features/customers/pages/AdminCustomers';
@@ -87,7 +89,7 @@ const render = (component, props = {}) => { stateIndex = refIndex = 0; return co
 function elements(tree, predicate) {
   if (Array.isArray(tree)) return tree.flatMap(child => elements(child, predicate));
   if (!tree || typeof tree !== 'object' || !tree.props) return [];
-  if (tree.type === ui.CustomerTable || tree.type === ui.OrdersTable) {
+  if (tree.type === ui.CustomerTable || tree.type === ui.OrdersTable || tree.type === ui.StaffOrdersTable) {
     return [...(predicate(tree) ? [tree] : []), ...elements(tree.type(tree.props), predicate)];
   }
   return [...(predicate(tree) ? [tree] : []), ...elements(tree.props.children, predicate)];
@@ -123,7 +125,7 @@ test('mobile order cards preserve details and enforce cancellation availability'
 });
 
 test('admin and staff Orders use five mobile cards without the default sort selector', () => {
-  const orders = Array.from({ length: 6 }, (_, index) => ({ id: index + 1, invoiceNumber: `INV-${index}`, customer: 'Customer', staff: 'Staff', date: '2026-10-11', total: 120, status: 'Fulfilled', isHistorical: false }));
+  const orders = Array.from({ length: 6 }, (_, index) => ({ id: index + 1, invoiceNumber: `INV-${index}`, customer: 'Customer', staff: 'Staff', staffId: 7, date: '2026-10-11', total: 120, status: 'Fulfilled', isHistorical: false }));
   ui.writeDataCache(`${ui.dataCacheEpoch()}:orders:list`, orders, ['orders']);
   for (const Page of [ui.AdminOrders, ui.StaffOrders]) {
     states = []; refs = [];
@@ -136,6 +138,60 @@ test('admin and staff Orders use five mobile cards without the default sort sele
     assert.equal(elements(tree, node => node.props['aria-label'] === 'Sort records').length, 0);
     assert.ok(elements(tree, node => node.props.children === 'Page 1 of 2').length > 0);
   }
+});
+
+test('Staff Orders scopes its table and all summary cards by staff ID while Admin Orders stays store-wide', () => {
+  authState = { user: { id: 7, username: 'audit' }, loading: false };
+  const mine = Array.from({ length: 6 }, (_, index) => ({
+    id: index + 1, customer: 'Customer', invoiceNumber: '', staff: 'Previous username', staffId: 7,
+    date: '2026-10-19', total: 10, status: index < 4 ? 'Fulfilled' : 'Cancelled', isHistorical: false,
+  }));
+  const other = [
+    { ...mine[0], id: 7, staffId: 8, staff: 'audit' },
+    { ...mine[5], id: 8, staffId: 8, staff: 'audit' },
+    { ...mine[0], id: 9, staffId: null, staff: 'Not recorded', isHistorical: true },
+  ];
+  const all = Object.freeze([...mine, ...other]);
+  const key = `${ui.dataCacheEpoch()}:orders:list`;
+  ui.writeDataCache(key, all, ['orders']);
+  const summary = tree => elements(tree, node => ['Total', 'Fulfilled', 'Cancelled'].includes(node.props.label)).map(node => node.props.value);
+  const table = tree => elements(tree, node => node.type === ui.EnhancedTable)[0];
+  let tree = render(ui.StaffOrders);
+  assert.deepEqual(table(tree).props.data, mine);
+  assert.deepEqual(summary(tree), [6, 4, 2]);
+  assert.equal(table(tree).props.pageSize, 5);
+  assert.equal(table(tree).props.reserveTableHeight, false);
+  assert.ok(elements(tree, node => node.type === 'div' && node.props.className?.includes('[&_.enhanced-table]:overflow-hidden')).length > 0);
+  table(tree).props.extraControls.props.onChange({ target: { value: 'Fulfilled' } });
+  tree = render(ui.StaffOrders);
+  assert.deepEqual(table(tree).props.data, mine.slice(0, 4));
+  assert.deepEqual(summary(tree), [6, 4, 2], 'Status filtering does not change the staff totals');
+  assert.equal(ui.readDataCache(key).data, all, 'The shared store-wide cache is not filtered in place');
+  states = []; refs = []; effects = [];
+  tree = render(ui.AdminOrders);
+  assert.deepEqual(table(tree).props.data, all);
+  assert.deepEqual(summary(tree), [9, 6, 3]);
+});
+
+test('Staff Orders waits for initialized identity and never exposes cached orders for an unknown account', async () => {
+  const orders = [
+    { id: 1, staffId: 7, staff: 'audit', status: 'Fulfilled', isHistorical: false },
+    { id: 2, staffId: 8, staff: 'other', status: 'Cancelled', isHistorical: false },
+  ];
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:orders:list`, orders, ['orders']);
+  let requests = 0;
+  ui.http.defaults.adapter = async () => { requests++; throw new Error('Unexpected unscoped request'); };
+  for (const context of [{ user: { id: 7, username: 'audit' }, loading: true }, { user: null, loading: false }]) {
+    authState = context;
+    const tree = render(ui.StaffOrders);
+    effects.at(-1)(); await settle();
+    assert.deepEqual(elements(tree, node => node.type === ui.EnhancedTable)[0].props.data, []);
+    assert.deepEqual(elements(tree, node => ['Total', 'Fulfilled', 'Cancelled'].includes(node.props.label)).map(node => node.props.value), [0, 0, 0]);
+  }
+  assert.equal(requests, 0);
+  authState = { user: { id: 8, username: 'other' }, loading: false };
+  const tree = render(ui.StaffOrders);
+  assert.deepEqual(elements(tree, node => node.type === ui.EnhancedTable)[0].props.data, [orders[1]]);
 });
 
 test('mobile customer cards preserve record details and active/inactive actions', () => {
@@ -1170,7 +1226,7 @@ test('admin and staff inventory filters expose alert statuses and retain compoun
     for (const [status, ids] of [['Low Stock', [2, 4]], ['Near Expiry', [3, 4]], ['Expired', [5]], ['All', [1, 2, 3, 4, 5]]]) {
       dropdown.props.onChange({ target: { value: status } });
       tree = render(component);
-      assert.ok(elements(tree, node => node.type === ui.ProductTable).length > 0);
+      assert.ok(elements(tree, node => node.type === (component === ui.StaffInventory ? ui.StaffInventoryTable : ui.ProductTable)).length > 0);
       assert.deepEqual(table(tree).props.data.map(row => row.id).sort((a, b) => a - b), ids, `${key}: ${status}`);
     }
   }
@@ -1345,9 +1401,9 @@ test('staff inventory keeps expired batch actions view-only on mobile and deskto
   const row = { id: 1, name: 'Milk', cat: 'Dairy', price: 120, stock: 5, expiry: '2000-01-01', low: false,
     expiredBatch: { id: 7, key: 'product-7', kind: 'product', name: 'Milk', batch: 'EX-7', quantity: 5, status: 'available' } };
   const props = { readOnly: true, data: [row], rowKey: item => item.id, columns: [{ key: 'name', header: 'Product' }, { key: 'actions', header: 'Actions' }] };
-  let tree = render(ui.ProductTable, props);
+  let tree = render(ui.StaffInventoryTable, props);
   const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
-  assert.equal(table.props.pageSize, 5);
+  assert.equal(table.props.pageSize, 6);
   const buttons = elements(table.props.columns.at(-1).render(row, 0), node => node.props.label);
   assert.deepEqual(buttons.map(node => node.props.label), ['View details']);
   const mobile = table.props.renderMobileRow(row, 0);
@@ -1356,7 +1412,7 @@ test('staff inventory keeps expired batch actions view-only on mobile and deskto
   assert.equal(mobileButtons.length, 1);
   assert.equal(mobileButtons[0].props['aria-label'], 'View details');
   mobileButtons[0].props.onClick();
-  tree = render(ui.ProductTable, props);
+  tree = render(ui.StaffInventoryTable, props);
   assert.equal(elements(tree, node => node.props.title === 'Expired batch details')[0].props.open, true);
 });
 
@@ -1519,4 +1575,30 @@ test('expired mobile batch cards label batch operations while normal products re
   assert.ok(elements(tree, node => node.type === 'button' && node.props.children.includes('Dispose Batch')).length);
   tree = render(ui.MobileInventoryCard, { ...props, product });
   assert.ok(elements(tree, node => node.type === 'button' && node.props.children.includes('Edit Product')).length);
+});
+
+
+test('Staff Inventory enforces six rows on desktop and mobile independently of Admin ProductTable', () => {
+  const products = Array.from({ length: 7 }, (_, index) => ({ id: index + 1, name: `Product ${index + 1}`, cat: 'Dairy', price: 120, stock: 30, expiry: '', low: false }));
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:staff`, products, ['inventory']);
+  const wrapper = elements(render(ui.StaffInventory), node => node.type === ui.StaffInventoryTable)[0];
+  assert.equal(wrapper.props.pageSize, 6);
+  states = []; refs = [];
+  const tree = render(ui.StaffInventoryTable, { ...wrapper.props, pageSize: 1, autoPageSize: true, pageCapacity: { pageSize: 1 } });
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  assert.equal(table.props.pageSize, 6);
+  assert.equal(table.props.autoPageSize, false);
+  assert.equal(table.props.pageCapacity, undefined);
+  for (const desktop of [false, true]) {
+    states = []; refs = [];
+    window.matchMedia = () => ({ matches: desktop, addEventListener() {}, removeEventListener() {} });
+    const page = render(ui.EnhancedTable, table.props);
+    assert.equal(elements(page, node => node.type === 'tbody')[0].props.children.length, 6);
+    assert.equal(elements(page, node => node.type === table.props.renderMobileRow(products[0]).type).length, 6);
+    assert.ok(elements(page, node => node.props.children === 'Page 1 of 2').length > 0);
+    elements(page, node => node.type === 'button').at(-1).props.onClick();
+    const next = render(ui.EnhancedTable, table.props);
+    assert.equal(elements(next, node => node.type === 'tbody')[0].props.children.length, 1);
+    assert.ok(elements(next, node => node.props.children === 'Page 2 of 2').length > 0);
+  }
 });

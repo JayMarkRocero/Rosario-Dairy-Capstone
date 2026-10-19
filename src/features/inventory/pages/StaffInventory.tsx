@@ -1,5 +1,4 @@
-import { ProductTable } from "@/features/inventory/components/ProductTable";
-import { TableCard } from "@/components/data-display/TableCard";
+import { StaffInventoryTable } from "@/features/inventory/components/StaffInventoryTable";
 import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { InventoryStockValue, InventoryExpiryValue, InventoryStatusBadge } from "@/features/inventory/components/InventoryWarnings";
@@ -78,7 +77,7 @@ export function StaffInventory() {
   );
 
   return (
-    <div className="records-page inventory-page staff-inventory-page px-4 sm:px-6 pt-2 flex flex-1 flex-col gap-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page staff-inventory-page md:!h-full md:!min-h-0 md:!overflow-hidden !pb-2 px-4 sm:px-6 pt-2 flex flex-1 flex-col gap-3 max-w-[1400px] mx-auto w-full">
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Products and stock levels</h2>
         <span className="text-xs" style={{color:C.muted}}>Product catalog and batch details</span>
@@ -87,12 +86,8 @@ export function StaffInventory() {
         ["Products", items.length, C.blue], ["Low stock", items.filter(p=>getInventoryWarnings(p).lowStock).length, C.orange],
         ["Near expiry", items.filter(p=>getInventoryWarnings(p).nearExpiry).length, C.orange], ["Expired", items.filter(p=>getInventoryWarnings(p).expired).length, C.red],
       ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-      <TableCard className="inventory-table-card">
-        <div className="flex h-auto min-w-0 flex-col justify-start">
-        <ProductTable readOnly contentHeight pageSize={5} rowHeight={52} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
+      <StaffInventoryTable contentHeight pageSize={6} rowHeight={52} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
           extraControls={filterControls}/>
-        </div>
-      </TableCard>
     </div>
   );
 }
