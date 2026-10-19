@@ -1,4 +1,4 @@
-import { AlertTriangle, Trash2, RefreshCw, LogOut, XCircle } from "lucide-react";
+import { AlertTriangle, Trash2, RefreshCw } from "lucide-react";
 import { Modal } from "@/components/overlays/Modal";
 import { C } from "@/styles/tokens/colors";
 

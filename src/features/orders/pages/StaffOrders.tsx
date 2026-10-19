@@ -1,3 +1,4 @@
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { StaffOrdersTable } from "@/features/orders/components/StaffOrdersTable";
 import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";
 import { filterSelectClass } from "@/styles/controlClasses";
@@ -21,7 +22,7 @@ const STATUSES = ["Fulfilled", "Cancelled"];
 export function StaffOrders() {
   const { user, loading: authLoading } = useAuth();
   const userId = user ? getSessionUserId(user) : null;
-  const { data: cachedOrders, loading, refresh } = useCachedQuery("orders:list", ordersService.getAll, ["orders"], !authLoading && userId !== null);
+  const { data: cachedOrders, loading, refresh, error } = useCachedQuery("orders:list", ordersService.getAll, ["orders"], !authLoading && userId !== null);
   const orders = useMemo(() => !authLoading && userId !== null
     ? (cachedOrders ?? []).filter(order => order.staffId === userId && !order.isHistorical)
     : [], [cachedOrders, userId, authLoading]);
@@ -48,7 +49,7 @@ export function StaffOrders() {
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green], ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-    <StaffOrdersTable columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} />} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
+    <StaffOrdersTable errorContent={error ? <QueryErrorMessage error={error} onRetry={() => void refresh({ force: true })} /> : undefined} columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} />} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md">
       {selected&&<div className="space-y-5">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>

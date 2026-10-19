@@ -1,3 +1,4 @@
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { StaffInventoryTable } from "@/features/inventory/components/StaffInventoryTable";
 import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
@@ -86,7 +87,7 @@ export function StaffInventory() {
         ["Products", items.length, C.blue], ["Low stock", items.filter(p=>getInventoryWarnings(p).lowStock).length, C.orange],
         ["Near expiry", items.filter(p=>getInventoryWarnings(p).nearExpiry).length, C.orange], ["Expired", items.filter(p=>getInventoryWarnings(p).expired).length, C.red],
       ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-      <StaffInventoryTable contentHeight pageSize={6} rowHeight={52} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
+      <StaffInventoryTable errorContent={query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} /> : undefined} contentHeight pageSize={6} rowHeight={52} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
           extraControls={filterControls}/>
     </div>
   );

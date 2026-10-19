@@ -1293,3 +1293,45 @@ test('unified catalog includes expired batches first without modifying the sella
     assert.equal(product.stock, 0); assert.equal(product.low, true); assert.equal(product.expiry, '');
   } finally { api.inventoryService.getOverview = originalOverview; api.inventoryService.getExpiredBatches = originalExpired; }
 });
+
+
+test('API base URL prefers VITE_API_URL, then VITE_API_BASE_URL, then the proxy', () => {
+  for (const [env, expected] of [
+    [{ VITE_API_URL: 'https://primary.example/api', VITE_API_BASE_URL: 'https://legacy.example/api' }, 'https://primary.example/api'],
+    [{ VITE_API_URL: '', VITE_API_BASE_URL: 'https://legacy.example/api' }, 'https://legacy.example/api'],
+    [{}, '/backend'],
+  ]) {
+    const output = buildSync({ stdin: { contents: "export { default } from './src/lib/api';", resolveDir: root },
+      define: { 'import.meta.env': JSON.stringify(env) }, bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false,
+    }).outputFiles[0].text;
+    const instance = new Module(path.join(root, 'tests', 'env-in-memory.cjs'), module);
+    instance.filename = path.join(root, 'tests', 'env-in-memory.cjs'); instance.paths = module.paths;
+    instance._compile(output, instance.filename);
+    assert.equal(instance.exports.default.defaults.baseURL, expected);
+  }
+});
+
+test('blocked token storage supports session requests and logout without reviving persisted tokens', async () => {
+  const original = global.localStorage;
+  const deny = () => { throw new Error('Storage blocked'); };
+  try {
+    Object.defineProperty(global, 'localStorage', { configurable: true, get: deny });
+    assert.equal(api.getAccessToken(), null);
+    assert.equal(api.getRefreshToken(), null);
+    api.setAccessToken('memory-access'); api.setRefreshToken('memory-refresh');
+    assert.equal(api.getAccessToken(), 'memory-access');
+    assert.equal(api.getRefreshToken(), 'memory-refresh');
+    await api.authService.getCurrentUser();
+    assert.equal(calls.at(-1).headers.Authorization, 'Bearer memory-access');
+    api.setAccessToken(null); api.setRefreshToken(null);
+    Object.defineProperty(global, 'localStorage', { configurable: true, writable: true, value: { getItem: () => 'old-token', setItem: deny, removeItem: deny } });
+    assert.equal(api.getAccessToken(), null);
+    assert.equal(api.getRefreshToken(), null);
+    api.setAccessToken('new-memory-access'); api.setRefreshToken('new-memory-refresh');
+    assert.equal(api.getAccessToken(), 'new-memory-access');
+    assert.equal(api.getRefreshToken(), 'new-memory-refresh');
+  } finally {
+    Object.defineProperty(global, 'localStorage', { configurable: true, writable: true, value: original });
+    api.setAccessToken(null); api.setRefreshToken(null);
+  }
+});

@@ -1602,3 +1602,58 @@ test('Staff Inventory enforces six rows on desktop and mobile independently of A
     assert.ok(elements(next, node => node.props.children === 'Page 2 of 2').length > 0);
   }
 });
+
+
+test('Staff Orders and Inventory preserve card styling while showing fetch errors and force-retrying', async () => {
+  authState = { user: { id: 7, username: 'audit', role: 'staff' }, loading: false };
+  const requests = [];
+  ui.http.defaults.adapter = async config => {
+    requests.push(config.url);
+    return { config, status: 200, headers: {}, data: [] };
+  };
+  for (const [Page, Wrapper, key, group] of [
+    [ui.StaffOrders, ui.StaffOrdersTable, 'orders:list', 'orders'],
+    [ui.StaffInventory, ui.StaffInventoryTable, 'inventory:staff', 'inventory'],
+  ]) {
+    states = []; refs = []; effects = [];
+    const cacheKey = `${ui.dataCacheEpoch()}:${key}`;
+    await assert.rejects(ui.fetchDataCache(cacheKey, async () => { throw new Error('Service unavailable'); }, [group]));
+    const page = render(Page);
+    const wrapper = elements(page, node => node.type === Wrapper)[0];
+    const failed = render(Wrapper, wrapper.props);
+    const error = elements(failed, node => node.type === ui.QueryErrorMessage)[0];
+    assert.equal(error.props.error.message, 'Service unavailable');
+    assert.equal(elements(failed, node => node.type === ui.EnhancedTable).length, 0);
+    const frame = elements(failed, node => node.type === 'div' && node.props.className?.includes('bg-white rounded-xl'))[0].props.className;
+    error.props.onRetry(); await settle();
+    assert.deepEqual(ui.readDataCache(cacheKey).data, []);
+    assert.equal(ui.readDataCache(cacheKey).error, undefined);
+    states = []; refs = []; effects = [];
+    const recovered = elements(render(Page), node => node.type === Wrapper)[0];
+    const success = render(Wrapper, recovered.props);
+    assert.equal(elements(success, node => node.type === ui.QueryErrorMessage).length, 0);
+    assert.equal(elements(success, node => node.type === ui.EnhancedTable).length, 1);
+    assert.equal(elements(success, node => node.type === 'div' && node.props.className?.includes('bg-white rounded-xl'))[0].props.className, frame);
+  }
+  assert.ok(requests.includes('/sales/orders/'));
+  assert.ok(requests.includes('/inventory/products/'));
+});
+
+test('auth startup handles a blocked browser storage getter without throwing or staying loading', async () => {
+  const original = global.localStorage;
+  try {
+    Object.defineProperty(global, 'localStorage', { configurable: true, get() { throw new Error('Storage blocked'); } });
+    render(ui.AuthProvider);
+    assert.doesNotThrow(() => effects[0]());
+    await settle();
+    const auth = render(ui.AuthProvider).props.value;
+    assert.equal(auth.loading, false);
+    assert.equal(auth.user, null);
+    assert.equal(auth.authError, null);
+  } finally {
+    Object.defineProperty(global, 'localStorage', { configurable: true, writable: true, value: original });
+    // Clear the in-memory tombstone from the failed refresh-token removal.
+    const auth = render(ui.AuthProvider).props.value;
+    auth.logout();
+  }
+});

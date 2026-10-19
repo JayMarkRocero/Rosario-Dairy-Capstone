@@ -6,7 +6,7 @@ const REFRESH_TOKEN_KEY = "rosario_refresh_token";
 const ACCESS_TOKEN_KEY = "rosario_access_token";
 
 const axiosInstance = axios.create({
-  baseURL: import.meta.env?.VITE_API_BASE_URL || "/backend",
+  baseURL: import.meta.env?.VITE_API_URL || import.meta.env?.VITE_API_BASE_URL || "/backend",
   timeout: 15_000,
   headers: { "Content-Type": "application/json" },
 });
@@ -35,24 +35,42 @@ function notifyUnauthorized() {
   unauthorizedListeners.forEach((listener) => listener());
 }
 
+// Keep a session usable when browser policy blocks token persistence.
+// Failed removals also override any old persisted token until the next write.
+const sessionTokens = new Map<string, string | null>();
+
+function readToken(key: string): string | null {
+  if (sessionTokens.has(key)) return sessionTokens.get(key) ?? null;
+  try { return localStorage.getItem(key); }
+  catch { return null; }
+}
+
+function writeToken(key: string, token: string | null) {
+  try {
+    if (token) localStorage.setItem(key, token);
+    else localStorage.removeItem(key);
+    sessionTokens.delete(key);
+  } catch {
+    sessionTokens.set(key, token);
+  }
+}
+
 export function setAccessToken(token: string | null, refreshingSession = false) {
   if (!refreshingSession && token !== getAccessToken()) clearDataCache();
-  if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token);
-  else localStorage.removeItem(ACCESS_TOKEN_KEY);
+  writeToken(ACCESS_TOKEN_KEY, token);
 }
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
+  return readToken(ACCESS_TOKEN_KEY);
 }
 
 export function setRefreshToken(token: string | null) {
   if (!token) clearDataCache();
-  if (token) localStorage.setItem(REFRESH_TOKEN_KEY, token);
-  else localStorage.removeItem(REFRESH_TOKEN_KEY);
+  writeToken(REFRESH_TOKEN_KEY, token);
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+  return readToken(REFRESH_TOKEN_KEY);
 }
 
 const PUBLIC_AUTH_PATHS = ["/accounts/login/", "/accounts/forgot-password/", "/accounts/reset-password/", "/accounts/refresh/"];
@@ -96,7 +114,7 @@ function appendTrailingSlash(url: string): string {
 axiosInstance.interceptors.request.use((config) => {
   if (config.url) config.url = appendTrailingSlash(config.url);
 
-  const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+  const token = getAccessToken();
   if (token && !config.headers.Authorization && !PUBLIC_AUTH_PATHS.includes(config.url ?? "")) config.headers.Authorization = `Bearer ${token}`;
 
   return config;

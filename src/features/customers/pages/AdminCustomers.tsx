@@ -14,7 +14,6 @@ import { Modal } from "@/components/overlays/Modal";
 import { Drawer } from "@/components/overlays/Drawer";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { type Column } from "@/components/data-display/EnhancedTable";
-import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { C } from "@/styles/tokens/colors";
 import { customersService } from "@/features/customers/api/customers.service";
 import type { Customer } from "@/features/customers/types/customer";
