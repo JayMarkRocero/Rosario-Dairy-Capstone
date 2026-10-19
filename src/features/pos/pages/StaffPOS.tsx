@@ -13,6 +13,7 @@ import { TransactionDetails } from "@/features/sales/components/TransactionDetai
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { checkoutService } from "@/features/pos/api/checkout.service";
 import { customersService } from "@/features/customers/api/customers.service";
+import { useAuth } from "@/features/auth/context/AuthContext";
 import { CustomerPicker } from "@/features/customers/components/CustomerPicker";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 import type { Customer } from "@/features/customers/types/customer";
@@ -159,7 +160,7 @@ function CartContents({
   cart, total, subtotal, payMethod, setPayMethod, cashReceived, setCash, change,
   discountType, setDiscountType,
   discountValue, setDiscountValue, showDiscount, setShowDiscount, updateQty, clearCart, onComplete,
-  customers, customerId, setCustomerId, setItemQuantity,
+  customers, customerId, setCustomerId, setItemQuantity, canDiscount,
 }: {
   cart: CartItem[]; total: number; subtotal: number;
   payMethod: PayMethod; setPayMethod: (m: PayMethod) => void;
@@ -171,6 +172,7 @@ function CartContents({
   setItemQuantity: (id: number, quantity: number) => void;
   updateQty: (id: number, delta: number) => void; clearCart: () => void;
   onComplete: () => void;
+  canDiscount: boolean;
 }) {
   return (
     <>
@@ -224,7 +226,7 @@ function CartContents({
           <span>Total</span>
           <span>₱{money(total)}</span>
         </div>
-        {cart.length > 0 && (!showDiscount ? <button type="button" onClick={()=>setShowDiscount(true)} className="text-xs font-semibold text-left pt-2" style={{color:C.blue}}>+ Apply Discount</button> : <div className="grid grid-cols-2 gap-2 pt-2">
+        {canDiscount && cart.length > 0 && (!showDiscount ? <button type="button" onClick={()=>setShowDiscount(true)} className="text-xs font-semibold text-left pt-2" style={{color:C.blue}}>+ Apply Discount</button> : <div className="grid grid-cols-2 gap-2 pt-2">
           <select value={discountType} onChange={event => setDiscountType(event.target.value as DiscountType)}
             className="px-3 py-2 rounded-xl text-xs outline-none border bg-gray-50" style={{borderColor:C.border,color:C.text}}>
             <option value="none">No Discount</option>
@@ -287,6 +289,8 @@ function CartContents({
 
 // ─── Main POS ─────────────────────────────────────────────────────────────────
 export function StaffPOS() {
+  const { user } = useAuth();
+  const canDiscount = user?.role === "admin";
   const [products, setProducts] = useState<InventoryItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
@@ -347,10 +351,11 @@ export function StaffPOS() {
   ));
 
   const subtotal = roundMoney(cart.reduce((s,i)=>s + roundMoney(i.price * i.qty), 0));
-  const parsedDiscount = Number(discountValue) || 0;
-  const discountAmount = roundMoney(discountType === "percent"
+  const effectiveDiscountType = canDiscount ? discountType : "none";
+  const parsedDiscount = canDiscount ? Number(discountValue) || 0 : 0;
+  const discountAmount = roundMoney(effectiveDiscountType === "percent"
     ? subtotal * parsedDiscount / 100
-    : discountType === "fixed" ? parsedDiscount : 0);
+    : effectiveDiscountType === "fixed" ? parsedDiscount : 0);
   const total = roundMoney(Math.max(0, subtotal - discountAmount));
   const cashValue = roundMoney(parseFloat(cashReceived));
   const change   = payMethod==="Cash" && cashReceived && !isNaN(cashValue)
@@ -361,7 +366,7 @@ export function StaffPOS() {
   const handleComplete = () => {
     if (submissionLock.current) return;
     if (cart.length===0) { toast.error("Cart is empty."); return; }
-    if (!Number.isFinite(Number(discountValue)) || parsedDiscount < 0 || (discountType === "percent" && parsedDiscount > 100) || (discountType === "fixed" && parsedDiscount > subtotal)) {
+    if (canDiscount && (!Number.isFinite(Number(discountValue)) || parsedDiscount < 0 || (effectiveDiscountType === "percent" && parsedDiscount > 100) || (effectiveDiscountType === "fixed" && parsedDiscount > subtotal))) {
       toast.error("Enter a valid discount value."); return;
     }
     if (payMethod === "Cash" && (!cashReceived || !Number.isFinite(cashValue) || cashValue < total)) {
@@ -386,8 +391,8 @@ export function StaffPOS() {
       customerId: customerId ? Number(customerId) : null,
       items: cart.map(i => ({ productId: i.id, quantity: i.qty })),
       paymentMethod: payMethod,
-      discountType,
-      discountValue: discountType === "none" ? 0 : parsedDiscount,
+      discountType: effectiveDiscountType,
+      discountValue: effectiveDiscountType === "none" ? 0 : parsedDiscount,
       amountTendered: payMethod === "Cash" ? cashValue : undefined,
     })
       .then((result) => {
@@ -491,8 +496,8 @@ export function StaffPOS() {
           cart={cart} total={total} subtotal={subtotal}
           payMethod={payMethod} setPayMethod={setPayMethod}
           cashReceived={cashReceived} setCash={setCash} change={change}
-          discountType={discountType} setDiscountType={setDiscountType}
-          discountValue={discountValue} setDiscountValue={setDiscountValue}
+          canDiscount={canDiscount} discountType={effectiveDiscountType} setDiscountType={setDiscountType}
+          discountValue={canDiscount ? discountValue : "0"} setDiscountValue={setDiscountValue}
           showDiscount={showDiscount} setShowDiscount={setShowDiscount}
           customers={customers} customerId={customerId} setCustomerId={setCustomerId}
           setItemQuantity={setItemQuantity}
@@ -533,8 +538,8 @@ export function StaffPOS() {
                 cart={cart} total={total} subtotal={subtotal}
                 payMethod={payMethod} setPayMethod={setPayMethod}
                 cashReceived={cashReceived} setCash={setCash} change={change}
-                discountType={discountType} setDiscountType={setDiscountType}
-                discountValue={discountValue} setDiscountValue={setDiscountValue}
+                canDiscount={canDiscount} discountType={effectiveDiscountType} setDiscountType={setDiscountType}
+                discountValue={canDiscount ? discountValue : "0"} setDiscountValue={setDiscountValue}
                 showDiscount={showDiscount} setShowDiscount={setShowDiscount}
                 customers={customers} customerId={customerId} setCustomerId={setCustomerId}
                 setItemQuantity={setItemQuantity}

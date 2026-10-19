@@ -50,7 +50,7 @@ export function StaffKPICards() {
     const mySalesToday = sales.filter(s => s.date === today && s.cashier === username);
     const myTotalToday = mySalesToday.reduce((sum, s) => sum + s.total, 0);
 
-    const fulfilledOrders = orders.filter(o => o.status === "Fulfilled" && !!username && o.staff === username);
+    const fulfilledOrders = orders.filter(o => o.status === "Fulfilled" && userId !== null && o.staffId === userId);
 
     const availableProducts = products.filter(p => p.stock > 0).length;
 
@@ -76,7 +76,7 @@ export function StaffKPICards() {
         detail: "Active products with available stock",
       },
     ];
-  }, [sales, orders, products, username, theme]);
+  }, [sales, orders, products, username, userId, theme]);
 
   return (
     <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={authLoading || loading}>

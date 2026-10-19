@@ -64,6 +64,7 @@ export interface OrderListItem {
   customerEmail: string;
   status: DisplayOrderStatus;
   staff: string;
+  staffId: number | null;
   date: string;
   total: number;
   subtotal: number;

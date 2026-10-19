@@ -3,6 +3,7 @@ import { daysUntilExpiry } from '@/features/inventory/utils/expiry';
 import { inventoryService } from '@/features/inventory/api/inventory.service';
 import { dataCacheEpoch } from '@/lib/dataCache';
 import { getSessionUserId } from '@/features/auth/api/auth.service';
+import { settingsService } from '@/features/settings/api/settings.service';
 
 export interface AppNotification {
   id: string;
@@ -55,8 +56,12 @@ export const notificationsService = {
     const accountId = getSessionUserId();
     const [inbox, expiredBatches] = await Promise.all([
       notificationsService.getAll(),
-      // A failed optional inventory request must not hide the server inbox.
-      inventoryService.getExpiredBatches(staffVisibleOnly, true).catch(() => []),
+      // Staff can read notification preferences. Only synthesize expiry alerts
+      // when explicitly enabled; optional request failures keep the server inbox.
+      settingsService.getNotifications()
+        .then(settings => settings.near_expiry_alerts === true
+          ? inventoryService.getExpiredBatches(staffVisibleOnly, true) : [])
+        .catch(() => []),
     ]);
     if (session !== dataCacheEpoch() || accountId !== getSessionUserId()) return [];
     const notifications = [...inbox];

@@ -54,7 +54,8 @@ beforeEach(() => {
   responseStatus = 200;
   api.http.defaults.adapter = async config => {
     calls.push(config);
-    const response = { data: responseData, status: responseStatus, statusText: '', headers: {}, config };
+    const data = config.method === 'get' && config.url === '/settings/notifications/' ? { near_expiry_alerts: true } : responseData;
+    const response = { data, status: responseStatus, statusText: '', headers: {}, config };
     if (responseStatus >= 400) throw new AxiosError('Request failed', undefined, config, undefined, response);
     return response;
   };
@@ -145,9 +146,11 @@ test('orders map compact nested and flat product names without requiring a produ
   ]) {
     responseData = { count: 1, next: null, results: [{ ...base, items: [line] }] };
     const [order] = await api.ordersService.getAll();
+    assert.equal(order.staffId, 7);
     assert.deepEqual(order.items, [{ product: name, quantity: 2, unitPrice: 5, subtotal: 10 }]);
     assert.equal((await api.ordersService.getRecent())[0].items[0].product, name);
   }
+  assert.equal(api.mapOrder({ ...base, transaction: { ...base.transaction, source_reference: 'imported' }, items: [] }).staffId, null);
 });
 
 test('sales dates use the Manila business day across UTC midnight and timestamp offsets', () => {
@@ -936,7 +939,7 @@ test('expiry notifications use permitted feed classification and retain backend 
   const date = `${expiry.getFullYear()}-${String(expiry.getMonth() + 1).padStart(2, '0')}-${String(expiry.getDate()).padStart(2, '0')}`;
   api.http.defaults.adapter = async config => {
     calls.push(config);
-    const data = config.url === '/settings/inbox/' ? inbox : [{ id: 1, expiration_date: date,
+    const data = config.url === '/settings/notifications/' ? { near_expiry_alerts: true } : config.url === '/settings/inbox/' ? inbox : [{ id: 1, expiration_date: date,
       expiry_status: config.url.endsWith('/products/') ? 'critical' : 'near_expiry' }];
     return { status: 200, config, headers: {}, data };
   };
@@ -944,22 +947,22 @@ test('expiry notifications use permitted feed classification and retain backend 
   assert.deepEqual(items[0], { ...inbox[0], expiry: { status: 'critical', daysLeft: 5 } });
   assert.deepEqual(items[1], { ...inbox[1], expiry: { status: 'near_expiry', daysLeft: 5 } });
   assert.deepEqual(items[2], inbox[2]);
-  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/inventory/product-batches/', '/inventory/ingredient-batches/', '/inventory/expiring/products/', '/inventory/expiring/ingredients/']);
+  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/settings/notifications/', '/inventory/product-batches/', '/inventory/ingredient-batches/', '/inventory/expiring/products/', '/inventory/expiring/ingredients/']);
 });
 
 test('expiry enrichment keeps inbox alerts if a feed fails and avoids guessing critical windows', async () => {
   const inbox = [{ id: 'expiry-product-1' }, { id: 'expiry-ingredient-2' }];
   api.http.defaults.adapter = async config => {
     if (config.url.endsWith('/products/')) throw new Error('Feed unavailable');
-    return { status: 200, config, headers: {}, data: config.url === '/settings/inbox/' ? inbox : [{ id: 2, expiration_date: '2099-01-01', expiry_status: 'near_expiry' }] };
+    return { status: 200, config, headers: {}, data: config.url === '/settings/notifications/' ? { near_expiry_alerts: true } : config.url === '/settings/inbox/' ? inbox : [{ id: 2, expiration_date: '2099-01-01', expiry_status: 'near_expiry' }] };
   };
   const items = await api.notificationsService.getAllWithExpiry();
   assert.deepEqual(items[0], inbox[0]);
   assert.equal(items[1].expiry.status, 'near_expiry');
   responseData = [];
-  api.http.defaults.adapter = async config => { calls.push(config); return { status: 200, config, headers: {}, data: [] }; };
+  api.http.defaults.adapter = async config => { calls.push(config); return { status: 200, config, headers: {}, data: config.url === '/settings/notifications/' ? { near_expiry_alerts: true } : [] }; };
   assert.deepEqual(await api.notificationsService.getAllWithExpiry(), []);
-  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/inventory/product-batches/', '/inventory/ingredient-batches/']);
+  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/settings/notifications/', '/inventory/product-batches/', '/inventory/ingredient-batches/']);
 });
 
 
@@ -968,7 +971,7 @@ test('server expiry metadata includes expired items without redundant feed reque
     expiry: { status: 'expired', daysLeft: -3 } }];
   const items = await api.notificationsService.getAllWithExpiry();
   assert.deepEqual(items, responseData);
-  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/inventory/product-batches/', '/inventory/ingredient-batches/']);
+  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/settings/notifications/', '/inventory/product-batches/', '/inventory/ingredient-batches/']);
 });
 
 test('expired inventory batches include products and ingredients with remaining stock only', async () => {
@@ -997,7 +1000,7 @@ function expiredFeedAdapter(inbox = []) {
   const batch = { id: 1, batch_number: 'PAST', expiration_date: '2000-01-01', remaining_quantity: '5', status: 'available' };
   api.http.defaults.adapter = async config => {
     calls.push(config);
-    const data = config.url === '/settings/inbox/' ? inbox : config.url === '/inventory/product-batches/' ? [
+    const data = config.url === '/settings/notifications/' ? { near_expiry_alerts: true } : config.url === '/settings/inbox/' ? inbox : config.url === '/inventory/product-batches/' ? [
       { ...batch, product }, { ...batch, id: 2, product, remaining_quantity: '0' },
       { ...batch, id: 3, product, status: 'disposed' }, { ...batch, id: 4, product, expiration_date: '2099-01-01' },
       { ...batch, id: 5, product: { ...product, category: { ...product.category, is_visible_to_staff: false } } },
@@ -1013,7 +1016,53 @@ test('frontend combines expired batches with an empty inbox and preserves staff 
   assert.ok(items.every(item => item.clientOnly && item.unread && !item.dismissed && item.expiry.status === 'expired'));
   assert.equal(items[0].title, 'EXPIRED \u2022 Action Required');
   assert.match(items[0].body, /Milk.*PAST.*5 liter remaining/);
-  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/inventory/product-batches/', '/inventory/ingredient-batches/']);
+  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/settings/notifications/', '/inventory/product-batches/', '/inventory/ingredient-batches/']);
+});
+
+test('disabled expiry preferences suppress synthetic alerts for admin and staff and retain other inbox alerts', async () => {
+  const inbox = [{ id: 'low-stock-products', revision: 'a'.repeat(64), unread: true, dismissed: false }];
+  expiredFeedAdapter(inbox);
+  const adapter = api.http.defaults.adapter;
+  let enabled = false;
+  api.http.defaults.adapter = async config => {
+    if (config.url === '/settings/notifications/') {
+      calls.push(config);
+      return { status: 200, config, headers: {}, data: { near_expiry_alerts: enabled } };
+    }
+    return adapter(config);
+  };
+  for (const staff of [false, true]) {
+    calls = [];
+    assert.deepEqual(await api.notificationsService.getAllWithExpiry(staff), inbox);
+    assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/settings/notifications/']);
+    enabled = true;
+    let items = await api.notificationsService.getAllWithExpiry(staff);
+    const synthetic = items.find(item => item.clientOnly);
+    assert.ok(synthetic);
+    await api.notificationsService.update('read', [synthetic]);
+    enabled = false;
+    assert.deepEqual(await api.notificationsService.getAllWithExpiry(staff), inbox);
+    enabled = true;
+    items = await api.notificationsService.getAllWithExpiry(staff);
+    assert.equal(items.find(item => item.id === synthetic.id).unread, false);
+    assert.ok(calls.every(call => call.url !== '/settings/inventory/'));
+    enabled = false;
+  }
+});
+
+test('unavailable notification preferences keep the server inbox without inventing synthetic expiry alerts', async () => {
+  const inbox = [{ id: 'fulfilled-1', revision: 'a'.repeat(64), unread: false, dismissed: false }];
+  expiredFeedAdapter(inbox);
+  const adapter = api.http.defaults.adapter;
+  api.http.defaults.adapter = async config => {
+    if (config.url === '/settings/notifications/') {
+      calls.push(config);
+      throw new AxiosError('Unavailable', undefined, config, undefined, { status: 500, data: {}, config });
+    }
+    return adapter(config);
+  };
+  assert.deepEqual(await api.notificationsService.getAllWithExpiry(true), inbox);
+  assert.deepEqual(calls.map(call => call.url), ['/settings/inbox/', '/settings/notifications/']);
 });
 
 test('inventory-derived duplicates retain server revisions and acknowledgement states', async () => {

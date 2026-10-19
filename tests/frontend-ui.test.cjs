@@ -811,6 +811,8 @@ test('staff fulfilled KPI counts only fulfilled orders processed by the logged-i
     order(1, 'fulfilled', 'audit'), order(2, 'fulfilled', 'audit'),
     order(3, 'cancelled', 'audit'), order(4, 'fulfilled', 'other'), order(5, 'fulfilled', 'audit', true),
   ];
+  orders[0].handled_by.username = 'previous-username';
+  orders[3].handled_by.username = 'audit';
   ui.http.defaults.adapter = async config => ({
     status: 200, config, headers: {},
     data: config.url === '/sales/orders/' ? { count: orders.length, next: null, results: orders } : [],
@@ -917,6 +919,7 @@ test('order form blocks excessive discounts and duplicate submissions', async ()
 });
 
 test('POS rounds line totals, discounts and change before validating exact cash payments', () => {
+  authState.user.role = 'admin';
   for (const [cart, discountType, discountValue, cash, subtotal, total, change] of [
     [[{ price: 0.1, qty: 3 }], 'none', '0', '0.30', 0.3, 0.3, 0],
     [[{ price: 0.1, qty: 1 }, { price: 0.2, qty: 1 }], 'fixed', '0.1', '0.20', 0.3, 0.2, 0],
@@ -968,6 +971,39 @@ test('POS sends the rounded cash amount in the checkout payload', async () => {
   assert.deepEqual(payload.items, [{ product_id: 1, quantity: '3' }]);
   assert.equal(refs[0].current, false);
 });
+
+for (const role of ['staff', 'admin']) {
+  test(`POS ${role} discount controls, totals and checkout payload follow backend permissions`, async () => {
+    authState.user.role = role;
+    render(ui.StaffPOS);
+    states[0] = [{ id: 1, name: 'Milk', price: 100, stock: 10, expiry: '2099-01-01', cat: 'Dairy' }];
+    states[3] = [{ id: 1, name: 'Milk', price: 100, qty: 1, stock: 10 }];
+    states[7] = '75'; states[9] = 'percent'; states[10] = '25'; states[11] = true; states[16] = true;
+    const summaries = elements(render(ui.StaffPOS), node => typeof node.props.onComplete === 'function');
+    assert.equal(summaries.length, 2, 'Desktop panel and mobile sheet use the same permission');
+    for (const summary of summaries) {
+      assert.equal(summary.props.canDiscount, role === 'admin');
+      assert.equal(summary.props.total, role === 'admin' ? 75 : 100);
+      const contents = summary.type(summary.props);
+      assert.equal(elements(contents, node => node.type === 'input' && node.props.placeholder === 'Discount value').length, role === 'admin' ? 1 : 0);
+      assert.equal(elements(contents, node => node.props.children === '+ Apply Discount').length, 0);
+    }
+    if (role === 'staff') {
+      summaries[0].props.onComplete();
+      assert.equal(states[12], false, 'A hidden stale discount cannot permit underpayment');
+      assert.equal(toastErrors.at(-1)[0], 'Cash received must be at least the total amount.');
+      states[7] = '100';
+    }
+    elements(render(ui.StaffPOS), node => typeof node.props.onComplete === 'function')[0].props.onComplete();
+    let payload;
+    ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); throw new AxiosError('Simulated checkout outage'); };
+    elements(render(ui.StaffPOS), node => typeof node.props.onConfirm === 'function')[0].props.onConfirm();
+    await settle();
+    assert.equal(payload.discount_type, role === 'admin' ? 'percent' : 'none');
+    assert.equal(payload.discount_value, role === 'admin' ? '25' : '0');
+    assert.equal(payload.amount_tendered, role === 'admin' ? '75' : '100');
+  });
+}
 
 test('POS confirmation sends only one request while checkout is pending', async () => {
   render(ui.StaffPOS);

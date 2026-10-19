@@ -58,6 +58,7 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
     customerEmail: o.customer.email ?? "",
     status: toDisplayStatus(o.status),
     staff: o.transaction.source_reference ? "Not recorded" : o.handled_by.username,
+    staffId: o.transaction.source_reference ? null : o.handled_by.id,
     date: o.created_at.slice(0, 10),
     total,
     subtotal: parseFloat(o.transaction.subtotal),

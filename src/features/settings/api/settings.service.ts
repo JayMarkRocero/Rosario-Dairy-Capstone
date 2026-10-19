@@ -44,6 +44,7 @@ export const SETTINGS_UPDATED = "rosario:settings-updated";
 
 export const settingsService = {
   get: async (): Promise<AppSettings> => (await http.get<AppSettings>("/settings/")).data,
+  getNotifications: async (): Promise<NotificationSettings> => (await http.get<NotificationSettings>("/settings/notifications/")).data,
   getInventory: async (): Promise<InventorySettings> => (await http.get<InventorySettings>("/settings/inventory/")).data,
   updateInventory: async (data: InventorySettingsPatch): Promise<InventorySettings> =>
     (await http.patch<InventorySettings>("/settings/inventory/", data)).data,
