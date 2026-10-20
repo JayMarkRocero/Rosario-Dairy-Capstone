@@ -93,8 +93,9 @@ export function AdminSalesHistory() {
       <TableCard className="viewport-table-card">
         <div className="h-auto flex flex-col">
           {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <EnhancedTable
+          responsivePageSize
             contentHeight
-            reserveTableHeight
+            reserveTableHeight={false}
             pageSize={5}
             rowHeight={52}
             columns={columns}

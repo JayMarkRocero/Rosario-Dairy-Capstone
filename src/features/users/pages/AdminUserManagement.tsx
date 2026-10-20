@@ -347,8 +347,9 @@ export function AdminUserManagement() {
 
       <TableCard className="viewport-table-card">
         {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <EnhancedTable
+          responsivePageSize
           contentHeight
-          reserveTableHeight
+          reserveTableHeight={false}
           pageSize={5}
           rowHeight={52}
           columns={columns}

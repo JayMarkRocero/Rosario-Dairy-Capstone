@@ -1,3 +1,4 @@
+import { TABLE_CARD_CLASS_NAME } from "@/components/data-display/TableCard";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { Eye } from "lucide-react";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
@@ -23,8 +24,8 @@ export function StaffInventoryTable({ errorContent, ...props }: Props) {
     : [...props.columns, actionColumn];
 
   return <>
-    <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm flex flex-col justify-between flex-1 min-h-0 overflow-hidden [&_.enhanced-table]:flex-1 [&_.enhanced-table]:min-h-0 [&_.enhanced-table]:overflow-hidden [&_[data-table-surface]]:flex-1 [&_[data-table-surface]]:min-h-0 [&_[data-table-surface]]:overflow-hidden [&_[data-table-surface]>div:last-child]:!overflow-visible [&_tbody_tr]:!h-auto [&_tbody_td]:!py-2 [&_.enhanced-table>div:last-child:not([data-table-surface])]:mt-auto [&_.enhanced-table>div:last-child:not([data-table-surface])]:!pt-3 [&_.enhanced-table>div:last-child:not([data-table-surface])]:border-t [&_.enhanced-table>div:last-child:not([data-table-surface])]:border-slate-100">
-      {errorContent ?? <EnhancedTable {...props} columns={columns} contentHeight reserveTableHeight={false}
+    <div className={TABLE_CARD_CLASS_NAME}>
+      {errorContent ?? <EnhancedTable {...props} responsivePageSize columns={columns} contentHeight reserveTableHeight={false}
         pageSize={6} autoPageSize={false} pageCapacity={undefined} rowHeight={52}
         rowKey={item => item.catalogKey || `product-${item.id}`} onRowClick={view}
         renderMobileRow={item => <StaffInventoryCard product={item} onView={view} />} />}

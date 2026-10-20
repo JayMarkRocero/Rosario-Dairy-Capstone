@@ -9,6 +9,7 @@ const { AxiosError } = require('axios');
 // Exercise real event handlers with deterministic hook state, without a browser or database writes.
 let states, refs, stateIndex, refIndex, effects, authState, toastErrors;
 let effectCleanups = [];
+let captureLayoutEffects = false, layoutEffects = [];
 const hooks = {
   ...React,
   useState(initial) {
@@ -18,7 +19,7 @@ const hooks = {
   },
   useRef(initial) { return refs[refIndex++] ?? (refs[refIndex - 1] = { current: initial }); },
   useId() { return `test-tooltip-${refIndex++}`; },
-  useEffect(effect) { effects.push(() => { const cleanup = effect(); if (typeof cleanup === 'function') effectCleanups.push(cleanup); return cleanup; }); }, useLayoutEffect() {},
+  useEffect(effect) { effects.push(() => { const cleanup = effect(); if (typeof cleanup === 'function') effectCleanups.push(cleanup); return cleanup; }); }, useLayoutEffect(effect) { if (captureLayoutEffects) layoutEffects.push(effect); },
   useContext() { return { theme: 'light', ...authState }; },
   useMemo: fn => fn(), useCallback: fn => fn,
 };
@@ -31,6 +32,8 @@ const compiled = buildSync({
     export { EmptyState } from './src/components/EmptyState';
     export { ProductTable } from './src/features/inventory/components/ProductTable';
     export { Card } from './src/components/data-display/Card';
+    export { useAutoPageSize, calculatePageSize } from './src/hooks/useAutoPageSize';
+    export { TableCard, TABLE_CARD_CLASS_NAME } from './src/components/data-display/TableCard';
     export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
     export { QueryErrorMessage } from './src/components/feedback/QueryErrorMessage';
     export { BatchDetailsFields } from './src/features/inventory/components/BatchDetailsFields';
@@ -95,6 +98,7 @@ function elements(tree, predicate) {
   return [...(predicate(tree) ? [tree] : []), ...elements(tree.props.children, predicate)];
 }
 beforeEach(() => {
+  captureLayoutEffects = false; layoutEffects = [];
   effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
   ui.clearDataCache();
   states = []; refs = []; effects = []; stateIndex = refIndex = 0;
@@ -161,7 +165,7 @@ test('Staff Orders scopes its table and all summary cards by staff ID while Admi
   assert.deepEqual(summary(tree), [6, 4, 2]);
   assert.equal(table(tree).props.pageSize, 5);
   assert.equal(table(tree).props.reserveTableHeight, false);
-  assert.ok(elements(tree, node => node.type === 'div' && node.props.className?.includes('[&_.enhanced-table]:overflow-hidden')).length > 0);
+  assert.ok(elements(tree, node => node.type === 'div' && node.props.className?.includes('table-card')).length > 0);
   table(tree).props.extraControls.props.onChange({ target: { value: 'Fulfilled' } });
   tree = render(ui.StaffOrders);
   assert.deepEqual(table(tree).props.data, mine.slice(0, 4));
@@ -1556,7 +1560,11 @@ test('admin content permits vertical scrolling and email titles use the actual e
   authState = { user: { username: 'audit', email: 'audit@example.com' }, loading: false };
   const main = elements(render(ui.AdminLayout, { onLogout() {} }), node => node.type === 'main')[0];
   assert.ok(main.props.className.includes('overflow-y-auto'));
-  assert.ok(!main.props.className.includes('overflow-hidden'));
+  assert.ok(!main.props.className.split(/\s+/).includes('overflow-hidden'));
+  states[0] = 'orders';
+  const recordsMain = elements(render(ui.AdminLayout, { onLogout() {} }), node => node.type === 'main')[0];
+  assert.ok(recordsMain.props.className.includes('md:overflow-hidden'));
+  assert.ok(recordsMain.props.className.includes('overflow-y-auto'));
   const user = { name: 'Staff', email: 'a.long.email@example.com', role: 'Staff', status: 'Active', last: 'Never' };
   const card = render(ui.MobileUserCard, { user, actions: null });
   const email = elements(card, node => node.type === 'p')[0];
@@ -1578,7 +1586,7 @@ test('expired mobile batch cards label batch operations while normal products re
 });
 
 
-test('Staff Inventory enforces six rows on desktop and mobile independently of Admin ProductTable', () => {
+test('Staff Inventory retains six mobile cards and uses adaptive desktop capacity', () => {
   const products = Array.from({ length: 7 }, (_, index) => ({ id: index + 1, name: `Product ${index + 1}`, cat: 'Dairy', price: 120, stock: 30, expiry: '', low: false }));
   ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:staff`, products, ['inventory']);
   const wrapper = elements(render(ui.StaffInventory), node => node.type === ui.StaffInventoryTable)[0];
@@ -1593,12 +1601,12 @@ test('Staff Inventory enforces six rows on desktop and mobile independently of A
     states = []; refs = [];
     window.matchMedia = () => ({ matches: desktop, addEventListener() {}, removeEventListener() {} });
     const page = render(ui.EnhancedTable, table.props);
-    assert.equal(elements(page, node => node.type === 'tbody')[0].props.children.length, 6);
-    assert.equal(elements(page, node => node.type === table.props.renderMobileRow(products[0]).type).length, 6);
+    assert.equal(elements(page, node => node.type === 'tbody')[0].props.children.length, desktop ? 4 : 6);
+    assert.equal(elements(page, node => node.type === table.props.renderMobileRow(products[0]).type).length, desktop ? 4 : 6);
     assert.ok(elements(page, node => node.props.children === 'Page 1 of 2').length > 0);
     elements(page, node => node.type === 'button').at(-1).props.onClick();
     const next = render(ui.EnhancedTable, table.props);
-    assert.equal(elements(next, node => node.type === 'tbody')[0].props.children.length, 1);
+    assert.equal(elements(next, node => node.type === 'tbody')[0].props.children.length, desktop ? 3 : 1);
     assert.ok(elements(next, node => node.props.children === 'Page 2 of 2').length > 0);
   }
 });
@@ -1655,5 +1663,113 @@ test('auth startup handles a blocked browser storage getter without throwing or 
     // Clear the in-memory tombstone from the failed refresh-token removal.
     const auth = render(ui.AuthProvider).props.value;
     auth.logout();
+  }
+});
+
+
+test('all table card variants use natural height and content-height footers follow the last row', () => {
+  const props = { data: [], columns: [{ key: 'name', header: 'Name' }], rowKey: row => row.id };
+  for (const Wrapper of [ui.TableCard, ui.OrdersTable, ui.CustomerTable, ui.StaffOrdersTable, ui.StaffInventoryTable]) {
+    states = []; refs = [];
+    const tree = render(Wrapper, props);
+    const frame = elements(tree, node => node.type === 'div' && node.props.className?.includes('bg-white rounded-xl'))[0];
+    assert.ok(frame.props.className.includes('p-5 shadow-sm h-auto shrink-0'));
+    const classes = frame.props.className.split(/\s+/);
+    assert.ok(!classes.some(value => value === 'flex-1' || value === 'h-full' || /^min-h-\[/.test(value)));
+    assert.ok(classes.includes('md:flex-1'));
+    assert.ok(classes.includes('md:min-h-0'));
+    assert.ok(classes.includes('md:overflow-hidden'));
+  }
+  for (const count of [1, 2, 5, 6]) {
+    states = []; refs = [];
+    const tree = render(ui.EnhancedTable, { ...props, contentHeight: true, reserveTableHeight: false,
+      data: Array.from({ length: count }, (_, id) => ({ id, name: `Record ${id}` })), pageSize: 6 });
+    const rows = elements(tree, node => node.type === 'tbody')[0].props.children;
+    assert.equal(rows.length, count);
+    assert.ok(rows.every(row => row.props.className.includes('h-auto')));
+    assert.ok(elements(tree, node => node.type === 'td').every(cell => cell.props.className.includes('py-3')));
+    const footer = elements(tree, node => node.type === 'div' && node.props.className?.includes('border-t border-slate-100 px-1'))[0];
+    assert.ok(footer.props.className.includes('mt-4 pt-3'));
+    assert.ok(!footer.props.className.includes('mt-auto'));
+    assert.ok(elements(footer, node => node.props.children === 'Page 1 of 1').length > 0);
+  }
+});
+
+
+test('adaptive table observer measures available space and intrinsic contents, clamps 4?10, and disconnects', () => {
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  let resized, disconnected = false, contentHeight = 32;
+  const observed = [];
+  global.ResizeObserver = class { constructor(callback) { resized = callback; } observe(node) { observed.push(node); } disconnect() { disconnected = true; } };
+  global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: '12px', paddingBottom: '12px' });
+  let cleanup;
+  try {
+    const surface = { clientHeight: 340, querySelectorAll: () => [{ children: [{ getBoundingClientRect: () => ({ height: contentHeight }) }] }] };
+    const header = { getBoundingClientRect: () => ({ height: 44 }) };
+    const Hook = () => ui.useAutoPageSize(56, 320, { minPageSize: 4, maxPageSize: 10, measureRows: true });
+    let capacity = render(Hook);
+    capacity.containerRef(surface); capacity.headerRef(header);
+    render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 5);
+    assert.deepEqual(observed, [surface, header]);
+    surface.clientHeight = 620; resized();
+    assert.equal(render(Hook).pageSize, 10);
+    surface.clientHeight = 240; resized();
+    assert.equal(render(Hook).pageSize, 4);
+    surface.clientHeight = 900; contentHeight = 100;
+    render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 6, 'Wrapped content reduces capacity without measuring stretched row height');
+    assert.equal(ui.calculatePageSize(500, 44, 48, 56, { minPageSize: 4, maxPageSize: 10 }), 7);
+  } finally {
+    cleanup?.(); captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+  assert.equal(disconnected, true);
+});
+
+test('adaptive desktop tables resize, paginate and search while mobile retains its card capacity', () => {
+  window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+  const props = { contentHeight: true, responsivePageSize: true, pageSize: 5, showExport: false,
+    columns: [{ key: 'name', header: 'Name', sortKey: row => row.name }],
+    data: Array.from({ length: 30 }, (_, id) => ({ id, name: `Record ${id}` })), rowKey: row => row.id, searchKeys: row => [row.name] };
+  let tree = render(ui.EnhancedTable, props);
+  assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 4);
+  states[3] = 8;
+  tree = render(ui.EnhancedTable, props);
+  assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 8);
+  assert.ok(elements(tree, node => node.props.children === 'Page 1 of 4').length > 0);
+  elements(tree, node => node.type === 'button').at(-1).props.onClick();
+  tree = render(ui.EnhancedTable, props);
+  assert.ok(elements(tree, node => node.props.children === 'Page 2 of 4').length > 0);
+  states[3] = 4;
+  render(ui.EnhancedTable, props); effects.at(-1)();
+  tree = render(ui.EnhancedTable, props);
+  assert.ok(elements(tree, node => node.props.children === 'Page 1 of 8').length > 0);
+  const footer = elements(tree, node => node.type === 'div' && node.props.className?.includes('border-t border-slate-100 px-1'))[0];
+  assert.ok(footer.props.className.includes('mt-auto pt-3'));
+  elements(tree, node => node.type === 'input')[0].props.onChange({ target: { value: 'Record 29' } });
+  tree = render(ui.EnhancedTable, props);
+  assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 1);
+  assert.ok(elements(tree, node => node.props.children === 'Page 1 of 1').length > 0);
+});
+
+
+test('every active admin and staff data view enables measured desktop pagination', () => {
+  authState = { user: { id: 7, username: 'audit', email: 'audit@example.com', role: 'admin' }, loading: false };
+  for (const [Page, key, Wrapper] of [
+    [ui.AdminOrders, 'orders:list', null], [ui.StaffOrders, 'orders:list', null],
+    [ui.AdminCustomers, 'customers:list:all', null], [ui.AdminCategories, 'categories:list', null],
+    [ui.AdminSalesHistory, 'sales:history:', null], [ui.StaffSalesHistory, 'sales:mine:7', null],
+    [ui.AdminUserManagement, 'users:list', null], [ui.AdminInventory, 'inventory:admin', ui.ProductTable],
+    [ui.StaffInventory, 'inventory:staff', ui.StaffInventoryTable],
+  ]) {
+    states = []; refs = []; effects = [];
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, [], ['orders', 'inventory', 'sales', 'users', 'categories', 'customers']);
+    let tree = render(Page);
+    if (Wrapper) { const node = elements(tree, item => item.type === Wrapper)[0]; tree = render(Wrapper, node.props); }
+    const table = elements(tree, item => item.type === ui.EnhancedTable)[0];
+    assert.ok(table, Page.name);
+    assert.equal(table.props.responsivePageSize, true, Page.name);
   }
 });

@@ -1,11 +1,10 @@
 import { useCachedQuery } from "@/hooks/useCachedQuery";
-import { useAdminAutoPageSize } from "@/hooks/useAutoPageSize";
 import { toastApiError } from "@/lib/errorHandling";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { useState, useRef } from "react";
 import { Plus, Edit, Trash2, Eye, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { Card } from "@/components/data-display/Card";
+import { TableCard } from "@/components/data-display/TableCard";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
@@ -81,7 +80,6 @@ export function AdminCategories() {
   const [loading,    setLoading]    = useState(false);
   const submissionLock = useRef(false);
   const [statusFilter, setStatusFilter] = useState<CategoryStatus>("Active");
-  const pageCapacity = useAdminAutoPageSize(56);
 
   const visibleCategories = cats.filter(cat =>
     statusFilter === "All" || cat.is_active === (statusFilter === "Active")
@@ -220,7 +218,7 @@ export function AdminCategories() {
   ];
 
   return (
-    <div className="records-page flex flex-1 flex-col h-full min-h-0 overflow-hidden gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page flex flex-1 flex-col h-auto gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       <div className="flex shrink-0 min-h-10 flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Organize product categories and catalogs</h2>
         <Btn fullWidth variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
@@ -240,9 +238,9 @@ export function AdminCategories() {
         ))}
       </div>
 
-      <Card className="records-card p-3 md:p-4 flex-1 min-h-0 flex flex-col justify-between mb-3 overflow-hidden">
-        <EnhancedTable rowHeight={56} columns={columns}
-          data={sortedCategories} rowKey={cat => cat.id} pageCapacity={pageCapacity}
+      <TableCard className="records-card">
+        <EnhancedTable responsivePageSize contentHeight reserveTableHeight={false} rowHeight={56} columns={columns}
+          data={sortedCategories} rowKey={cat => cat.id}
           searchable searchKeys={cat => [cat.name]} searchPlaceholder="Search categories…"
           onRowClick={cat => { setSelected(cat); setViewOpen(true); }}
           renderMobileRow={cat => <MobileCategoryCard category={cat} busy={loading}
@@ -258,7 +256,7 @@ export function AdminCategories() {
             <option value="Active">Active</option>
             <option value="Inactive">Inactive</option>
           </select></div>} />
-      </Card>
+      </TableCard>
 
       {/* Add Modal */}
       <Modal busy={loading} open={addOpen} onClose={()=>setAddOpen(false)} title="Add Category" subtitle="Create a new product category"

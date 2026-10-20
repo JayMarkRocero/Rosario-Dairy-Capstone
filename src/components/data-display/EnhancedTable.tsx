@@ -1,7 +1,7 @@
 import { useAutoPageSize, type AutoPageCapacity } from "@/hooks/useAutoPageSize";
 import { searchContainerClass } from "@/styles/controlClasses";
 // components/EnhancedTable.tsx
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect } from "react";
 import { Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 import { EmptyState, Skeleton } from "@/components/EmptyState";
@@ -21,6 +21,7 @@ interface Props<T> {
   rowKey:           (row: T) => string | number;
   pageSize?:        number;
   autoPageSize?:    boolean;
+  responsivePageSize?: boolean;
   pageCapacity?: AutoPageCapacity;
   searchable?:      boolean;
   searchKeys?:      (row: T) => string[];
@@ -50,15 +51,15 @@ function alignmentClasses(align: Column<unknown>["align"]) {
 type SortDir = "asc" | "desc" | null;
 
 export function EnhancedTable<T>({
-  columns, data, rowKey, pageSize: requestedPageSize = 10, autoPageSize = false, pageCapacity,
+  columns, data, rowKey, pageSize: requestedPageSize = 10, autoPageSize = false, responsivePageSize = false, pageCapacity,
   searchable = true, searchKeys, searchPlaceholder = "Search…",
   onRowClick, extraControls, emptyTitle = "No records found",
   emptyDesc = "Try adjusting your search or add a new record.", loading,
   showExport = true, showCount = true, fillHeight = false, contentHeight = false, reserveTableHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
   mobileTable = false, renderMobileRow,
 }: Props<T>) {
-  const defaultCapacity = useAutoPageSize(rowHeight);
-  const capacity = pageCapacity ?? defaultCapacity;
+  const defaultCapacity = useAutoPageSize(rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 4, maxPageSize: 10, measureRows: true } : {});
+  const capacity = responsivePageSize ? defaultCapacity : pageCapacity ?? defaultCapacity;
   autoPageSize = autoPageSize || !!pageCapacity;
   const [desktopTable, setDesktopTable] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches);
   useEffect(() => {
@@ -68,7 +69,15 @@ export function EnhancedTable<T>({
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
-  const pageSize = autoPageSize && desktopTable ? capacity.pageSize : requestedPageSize;
+  const [responsiveDesktop, setResponsiveDesktop] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const update = () => setResponsiveDesktop(media.matches);
+    update(); media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  const adaptive = responsivePageSize && responsiveDesktop;
+  const pageSize = adaptive || autoPageSize && desktopTable ? capacity.pageSize : requestedPageSize;
   // Keep page sizing independent of content height to avoid shrinking-page feedback.
   fillHeight = !contentHeight && (fillHeight || autoPageSize);
   scrollBody = !contentHeight && (scrollBody || autoPageSize);
@@ -107,6 +116,8 @@ export function EnhancedTable<T>({
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage   = Math.min(page, totalPages);
   const pageData   = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useLayoutEffect(() => { if (adaptive) capacity.remeasure?.(); }, [adaptive, sorted, safePage, pageSize]);
 
   const handleSort = (col: Column<T>) => {
     if (!col.sortKey) return;
@@ -156,7 +167,7 @@ export function EnhancedTable<T>({
   const pageButtons = Array.from({ length: Math.min(maxPageButtons, totalPages) }, (_, i) => Math.max(1, Math.min(safePage - 2, totalPages - maxPageButtons + 1)) + i);
 
   return (
-    <div className={`enhanced-table flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-visible xl:overflow-hidden" : contentHeight ? "h-auto" : "h-auto xl:h-full"}`}>
+    <div className={`enhanced-table ${adaptive ? "responsive-table flex-1 min-h-0 overflow-hidden" : ""} flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-visible xl:overflow-hidden" : contentHeight ? "h-auto" : "h-auto xl:h-full"}`}>
       {/* Controls bar */}
       {showControlsBar && (
         <div className={renderMobileRow ? "flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between mb-2 md:mb-4 shrink-0" : "flex flex-wrap items-center justify-between gap-3 mb-4 flex-shrink-0"}>
@@ -201,7 +212,7 @@ export function EnhancedTable<T>({
       )}
 
       {/* Table */}
-      <div data-table-surface ref={autoPageSize && desktopTable && !contentHeight ? capacity.containerRef : undefined} className={contentHeight ? `relative h-auto bg-slate-50/50 rounded-lg border border-slate-100 overflow-hidden ${reserveTableHeight ? "md:min-h-[360px] flex flex-col justify-start shrink-0" : ""}` : `relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
+      <div data-table-surface ref={adaptive || autoPageSize && desktopTable && !contentHeight ? capacity.containerRef : undefined} className={contentHeight ? `relative h-auto bg-slate-50/50 rounded-lg border border-slate-100 overflow-hidden ${reserveTableHeight ? "md:min-h-[360px] flex flex-col justify-start shrink-0" : ""}` : `relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
         {renderMobileRow && <div className="block md:hidden space-y-3 px-1 py-2">
           {pageData.length === 0 ? emptyState : pageData.map((row, index) => <div key={rowKey(row)}>{renderMobileRow(row, index)}</div>)}
         </div>}
@@ -248,11 +259,11 @@ export function EnhancedTable<T>({
           {emptyState}
         </div>}
         <div
-          className={`${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${contentHeight ? "h-auto" : ""} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
-          style={{ WebkitOverflowScrolling: "touch" }}
+          className={`${adaptive ? "h-full overflow-hidden" : ""} ${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${contentHeight ? adaptive ? "h-full" : "h-auto" : ""} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
+          style={{ WebkitOverflowScrolling: "touch", ...(adaptive ? { overflow: "hidden" } : {}) }}
         >
-          <table className={`w-full ${contentHeight ? "h-auto" : ""} table-fixed text-sm text-slate-700 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
-            <thead ref={autoPageSize ? capacity.headerRef : undefined} className={`bg-slate-50/80 border-b border-slate-100 ${tableScrollBody ? `block shrink-0 overflow-hidden ${tableDisableScroll ? "" : "[scrollbar-gutter:stable]"}` : ""}`}>
+          <table className={`${adaptive ? "h-full" : ""} w-full ${contentHeight ? adaptive ? "h-full" : "h-auto" : ""} table-fixed text-sm text-slate-700 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
+            <thead ref={adaptive || autoPageSize ? capacity.headerRef : undefined} className={`${adaptive ? "h-px" : ""} bg-slate-50/80 border-b border-slate-100 ${tableScrollBody ? `block shrink-0 overflow-hidden ${tableDisableScroll ? "" : "[scrollbar-gutter:stable]"}` : ""}`}>
               <tr style={rowStyle}>
                 {columns.map(col => (
                   <th
@@ -287,13 +298,13 @@ export function EnhancedTable<T>({
                   <tr
                     key={rowKey(row)}
                     style={rowStyle}
-                    className={`${stretchRows && tableScrollBody ? "min-h-0" : (tableDisableScroll || contentHeight) && rowHeight === 52 ? "h-[52px]" : "h-14"} shrink-0 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                    className={`${contentHeight ? "h-auto" : stretchRows && tableScrollBody ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} shrink-0 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
                     onClick={() => onRowClick?.(row)}
                   >
                     {columns.map(col => (
                       <td
                         key={col.key}
-                        className={`${contentHeight && rowHeight === 52 ? "py-2.5" : "py-2"} pl-4 ${alignmentClasses(col.align)} whitespace-nowrap ${tableScrollBody ? `min-w-0 flex flex-col justify-center overflow-hidden ${col.align === "center" ? "items-center" : col.align === "right" ? "items-end" : "items-start"}` : ""}`}
+                        className={`${contentHeight ? "py-3" : "py-2"} pl-4 ${alignmentClasses(col.align)} whitespace-nowrap ${tableScrollBody ? `min-w-0 flex flex-col justify-center overflow-hidden ${col.align === "center" ? "items-center" : col.align === "right" ? "items-end" : "items-start"}` : ""}`}
                       >
                         {col.render ? col.render(row, ri) : String((row as any)[col.key] ?? "")}
                       </td>
@@ -308,8 +319,8 @@ export function EnhancedTable<T>({
       </div>
 
       {/* Pagination */}
-      {(totalPages > 1 || contentHeight && sorted.length > 0) && (
-        <div className={contentHeight ? `flex items-center justify-between pt-2 px-1 gap-2 shrink-0 ${reserveTableHeight ? "mt-auto" : ""}` : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
+      {(totalPages > 1 || adaptive || contentHeight && sorted.length > 0) && (
+        <div className={contentHeight ? `flex items-center justify-between ${adaptive ? "mt-auto" : "mt-4"} pt-3 border-t border-slate-100 px-1 gap-2 shrink-0` : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
           <span className={contentHeight ? "text-xs whitespace-nowrap" : "text-xs order-2 sm:order-1"} style={{ color: C.muted }}>
             {contentHeight ? `Page ${safePage} of ${totalPages}` : <>
             <span className="hidden sm:inline">Page {safePage} of {totalPages}</span>
