@@ -78,7 +78,7 @@ export function StaffInventory() {
   );
 
   return (
-    <div className="records-page staff-inventory-page px-4 sm:px-6 pt-2 flex flex-1 flex-col gap-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page staff-inventory-page px-4 sm:px-6 pt-2 flex flex-col gap-3 max-w-[1400px] mx-auto w-full">
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Products and stock levels</h2>
         <span className="text-xs" style={{color:C.muted}}>Product catalog and batch details</span>
@@ -87,7 +87,7 @@ export function StaffInventory() {
         ["Products", items.length, C.blue], ["Low stock", items.filter(p=>getInventoryWarnings(p).lowStock).length, C.orange],
         ["Near expiry", items.filter(p=>getInventoryWarnings(p).nearExpiry).length, C.orange], ["Expired", items.filter(p=>getInventoryWarnings(p).expired).length, C.red],
       ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
-      <StaffInventoryTable errorContent={query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} /> : undefined} contentHeight pageSize={6} rowHeight={52} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
+      <StaffInventoryTable errorContent={query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} /> : undefined} contentHeight pageSize={5} rowHeight={52} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
           extraControls={filterControls}/>
     </div>
   );

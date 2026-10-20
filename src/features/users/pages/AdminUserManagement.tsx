@@ -329,7 +329,7 @@ export function AdminUserManagement() {
   ];
 
   return (
-    <div className="records-page viewport-records-page users-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
+    <div className="records-page viewport-records-page users-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
       <div className="flex flex-wrap shrink-0 min-h-10 items-center justify-between gap-2">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>
           Manage administrator and staff accounts
@@ -347,7 +347,7 @@ export function AdminUserManagement() {
 
       <TableCard className="viewport-table-card">
         {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <EnhancedTable
-          responsivePageSize
+          responsivePageSize autoPageSize={false} pageCapacity={undefined}
           contentHeight
           reserveTableHeight={false}
           pageSize={5}

@@ -218,7 +218,7 @@ export function AdminCategories() {
   ];
 
   return (
-    <div className="records-page flex flex-1 flex-col h-auto gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
+    <div className="records-page flex flex-col h-auto gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       <div className="flex shrink-0 min-h-10 flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Organize product categories and catalogs</h2>
         <Btn fullWidth variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
@@ -239,7 +239,7 @@ export function AdminCategories() {
       </div>
 
       <TableCard className="records-card">
-        <EnhancedTable responsivePageSize contentHeight reserveTableHeight={false} rowHeight={56} columns={columns}
+        <EnhancedTable responsivePageSize pageSize={5} autoPageSize={false} pageCapacity={undefined} contentHeight reserveTableHeight={false} rowHeight={56} columns={columns}
           data={sortedCategories} rowKey={cat => cat.id}
           searchable searchKeys={cat => [cat.name]} searchPlaceholder="Search categories…"
           onRowClick={cat => { setSelected(cat); setViewOpen(true); }}

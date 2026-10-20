@@ -64,7 +64,7 @@ export function AdminSalesHistory() {
   ];
 
   return (
-    <div className="records-page viewport-records-page sales-history-page flex flex-1 flex-col gap-3 px-3.5 sm:px-4 pt-2 max-w-[1400px] mx-auto w-full">
+    <div className="records-page viewport-records-page sales-history-page flex flex-col gap-3 px-3.5 sm:px-4 pt-2 max-w-[1400px] mx-auto w-full">
       <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
         <div className="min-w-0 flex-1">
           <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{ color: C.muted }}>Complete transaction records</h2>
@@ -93,7 +93,7 @@ export function AdminSalesHistory() {
       <TableCard className="viewport-table-card">
         <div className="h-auto flex flex-col">
           {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <EnhancedTable
-          responsivePageSize
+          responsivePageSize autoPageSize={false} pageCapacity={undefined}
             contentHeight
             reserveTableHeight={false}
             pageSize={5}

@@ -58,7 +58,7 @@ export function EnhancedTable<T>({
   showExport = true, showCount = true, fillHeight = false, contentHeight = false, reserveTableHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
   mobileTable = false, renderMobileRow,
 }: Props<T>) {
-  const defaultCapacity = useAutoPageSize(rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 4, maxPageSize: 10, measureRows: true, viewportBased: true } : {});
+  const defaultCapacity = useAutoPageSize(responsivePageSize ? Math.max(56, rowHeight) : rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 1, maxPageSize: 5, measureRows: true, viewportBased: true, naturalFit: true } : {});
   const capacity = responsivePageSize ? defaultCapacity : pageCapacity ?? defaultCapacity;
   autoPageSize = autoPageSize || !!pageCapacity;
   const [desktopTable, setDesktopTable] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches);
@@ -87,7 +87,7 @@ export function EnhancedTable<T>({
   const [sortDir,    setSortDir]   = useState<SortDir>(null);
   const [page,       setPage]      = useState(1);
 
-  useEffect(() => { setPage(1); }, [pageSize]);
+  useEffect(() => { if (!responsivePageSize) setPage(1); }, [pageSize, responsivePageSize]);
 
   // ── Search ──────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -212,7 +212,7 @@ export function EnhancedTable<T>({
       )}
 
       {/* Table */}
-      <div data-table-surface ref={adaptive || autoPageSize && desktopTable && !contentHeight ? capacity.containerRef : undefined} className={contentHeight ? `relative h-auto bg-slate-50/50 rounded-lg border border-slate-100 overflow-hidden ${reserveTableHeight ? "md:min-h-[360px] flex flex-col justify-start shrink-0" : ""}` : `relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
+      <div data-table-surface ref={adaptive || autoPageSize && desktopTable && !contentHeight ? capacity.containerRef : undefined} className={contentHeight ? `relative h-auto bg-slate-50/50 rounded-lg border border-slate-100 overflow-visible ${reserveTableHeight ? "md:min-h-[360px] flex flex-col justify-start shrink-0" : ""}` : `relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
         {renderMobileRow && <div className="block md:hidden space-y-3 px-1 py-2">
           {pageData.length === 0 ? emptyState : pageData.map((row, index) => <div key={rowKey(row)}>{renderMobileRow(row, index)}</div>)}
         </div>}
@@ -298,7 +298,7 @@ export function EnhancedTable<T>({
                   <tr
                     key={rowKey(row)}
                     style={rowStyle}
-                    className={`${contentHeight ? "h-14" : stretchRows && tableScrollBody ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} shrink-0 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                    className={`${contentHeight ? "h-auto" : stretchRows && tableScrollBody ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} shrink-0 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
                     onClick={() => onRowClick?.(row)}
                   >
                     {columns.map(col => (

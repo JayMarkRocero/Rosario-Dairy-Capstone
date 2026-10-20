@@ -415,7 +415,7 @@ export function AdminInventory() {
   );
 
   return (
-    <div className="records-page inventory-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
+    <div className="records-page inventory-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
       {/* Header */}
       <div className="block shrink-0 min-h-10 md:flex md:items-center md:justify-between md:gap-3">
         <div className="min-w-0 flex-1">

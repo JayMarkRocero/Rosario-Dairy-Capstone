@@ -62,7 +62,7 @@ export function AdminOrders() {
     </div> },
   ];
 
-  return <div className="records-page viewport-records-page orders-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
+  return <div className="records-page viewport-records-page orders-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
     <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center"><h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Manage and track all customer orders</h2><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 flex-shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green],

@@ -44,7 +44,7 @@ export function StaffOrders() {
     { key:"actions", header:"Actions", align:"center", width:"12%", render:o=><div onClick={e=>e.stopPropagation()}><ActionButton label="View details" onClick={()=>view(o)}><Eye size={13}/></ActionButton></div> },
   ];
 
-  return <div className="records-page orders-page h-auto flex flex-1 flex-col gap-4 p-4 sm:p-6 max-w-[1400px] mx-auto w-full">
+  return <div className="records-page orders-page h-auto flex flex-col gap-4 p-4 sm:p-6 max-w-[1400px] mx-auto w-full">
     <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="text-xl font-bold text-slate-900">Orders</h1><p className="text-xs text-slate-500">Manage and track customer orders</p></div><button type="button" className="px-3.5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5" onClick={()=>setCreateOpen(true)}><Plus size={14}/>Create Order</button></div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green], ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red],

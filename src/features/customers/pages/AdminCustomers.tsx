@@ -167,7 +167,7 @@ export function AdminCustomers() {
   ];
 
   return (
-    <div className="records-page viewport-records-page customers-page flex flex-1 flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
+    <div className="records-page viewport-records-page customers-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
       <div className="flex flex-wrap shrink-0 min-h-10 justify-between items-center gap-2">
         <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Customer profiles and purchase activity</h2>
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>

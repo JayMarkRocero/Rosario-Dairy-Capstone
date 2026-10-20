@@ -150,19 +150,23 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
   scrollbar-color: var(--border) transparent;
 }
 
-/* Cards use native table flow; only the application content scrolls if needed. */
+/* Natural-height data views: the main application content owns vertical scrolling. */
 .records-page {
   height: auto;
-  min-height: calc(100dvh - 80px);
   padding: 1rem;
   overflow: visible;
-  justify-content: space-between;
+  justify-content: flex-start;
   row-gap: 1rem;
 }
 .table-card .enhanced-table { height: auto; flex: none; }
-.table-card > div { height: auto; flex: none; min-height: 0; }
+.table-card > div { height: auto; flex: none; }
 @media (min-width: 640px) {
   .records-page { padding: 1.5rem; }
+}
+
+@media (min-width: 768px) and (max-height: 700px) {
+  .records-page { padding: 1rem; row-gap: 0.75rem; }
+  .table-card { padding: 1rem; }
 }
 
 /* Staff catalog columns fit their proportional widths without horizontal scrolling. */

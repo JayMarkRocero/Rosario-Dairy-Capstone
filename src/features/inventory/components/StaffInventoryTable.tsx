@@ -26,7 +26,7 @@ export function StaffInventoryTable({ errorContent, ...props }: Props) {
   return <>
     <div className={TABLE_CARD_CLASS_NAME}>
       {errorContent ?? <EnhancedTable {...props} responsivePageSize columns={columns} contentHeight reserveTableHeight={false}
-        pageSize={6} autoPageSize={false} pageCapacity={undefined} rowHeight={52}
+        pageSize={5} autoPageSize={false} pageCapacity={undefined} rowHeight={52}
         rowKey={item => item.catalogKey || `product-${item.id}`} onRowClick={view}
         renderMobileRow={item => <StaffInventoryCard product={item} onView={view} />} />}
     </div>
