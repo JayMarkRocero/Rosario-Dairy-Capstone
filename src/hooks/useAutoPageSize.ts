@@ -41,7 +41,7 @@ export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSiz
   const [footer, footerRef] = useState<HTMLElement | null>(null);
   const [pageSize, setPageSize] = useState(naturalFit ? 5 : fitContainer ? 5 : viewportBased && typeof window !== "undefined" && window.innerHeight < 768 ? 5 : minPageSize);
   const measureRef = useRef<(() => void) | null>(null);
-  const rowMeasurement = useRef({ width: -1, height: measureRenderedRows ? 0 : rowHeight, key: measurementKey });
+  const rowMeasurement = useRef({ width: -1, height: measureRenderedRows ? 0 : rowHeight, key: measurementKey, padding: 0 });
   useLayoutEffect(() => {
     if (!container) {
       const estimate = () => setPageSize(naturalFit ? calculateNaturalPageSize(window.innerHeight, viewportOffset, 0, 0, rowHeight) : fitContainer ? calculatePageSize(window.innerHeight, viewportOffset, 0, rowHeight, { minPageSize: 1 }) : viewportBased
@@ -58,6 +58,7 @@ export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSiz
       // clientHeight excludes the shell border; controls outside this shell
       // already consume flex space and must not be subtracted a second time.
       let measuredRowHeight = rowHeight;
+      let measuredRowPadding = 0;
       if (measureRows) {
         // Measure cell contents rather than stretched row heights, so extra space
         // cannot feed back into a smaller page size on the next observer callback.
@@ -65,8 +66,9 @@ export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSiz
           const style = getComputedStyle(cell);
           const contentHeight = Math.max(parseFloat(style.lineHeight) || 0,
             ...Array.from(cell.children).map(child => child.getBoundingClientRect().height));
-          measuredRowHeight = Math.max(measuredRowHeight,
-            contentHeight + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) + 1);
+          const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+          measuredRowPadding = Math.max(measuredRowPadding, padding);
+          measuredRowHeight = Math.max(measuredRowHeight, contentHeight + padding + 1);
         });
       }
       let hasRenderedRows = false;
@@ -79,8 +81,10 @@ export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSiz
       }
       if (fitContainer) {
         const width = container.clientWidth ?? 0;
-        if (rowMeasurement.current.width !== width || rowMeasurement.current.key !== measurementKey) {
-          rowMeasurement.current = { width, height: measureRenderedRows ? 0 : rowHeight, key: measurementKey };
+        if (rowMeasurement.current.width !== width || rowMeasurement.current.key !== measurementKey || rowMeasurement.current.padding !== measuredRowPadding) {
+          // CSS density changes must discard the old taller-row estimate, including
+          // during hot reload, while page changes retain a stable capacity.
+          rowMeasurement.current = { width, height: measureRenderedRows ? 0 : rowHeight, key: measurementKey, padding: measuredRowPadding };
         }
         // A taller row on the next page must not make capacity oscillate between pages.
         if (!measureRenderedRows || hasRenderedRows) {
@@ -93,6 +97,8 @@ export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSiz
       if (fitContainer) {
         const tableViewport = container.querySelector?.('table')?.parentElement;
         const horizontalScrollbar = Math.max(0, (tableViewport?.offsetHeight ?? 0) - (tableViewport?.clientHeight ?? 0));
+        // Never borrow space from the footer: capacity uses the actual compact
+        // row height, including padding/borders, and reserves horizontal scrollbars.
         setPageSize(calculateFittedPageSize(window.innerHeight, container.clientHeight - horizontalScrollbar, headerHeight, measuredRowHeight));
       } else if (viewportBased) {
         const card = container.closest('.table-card');

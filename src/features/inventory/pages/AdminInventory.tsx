@@ -335,7 +335,7 @@ export function AdminInventory() {
           </div>
           <div>
             <div className="font-medium text-sm" style={{color:C.text}}>{r.name}</div>
-            <div className="text-xs mt-0.5" style={{color:C.muted}}>{r.expiredBatch ? `Batch ${r.expiredBatch.batch}` : `PRD-${String(r.id).padStart(3,"0")}`}</div>
+            <div className="text-xs mt-0.5 md:mt-0" style={{color:C.muted}}>{r.expiredBatch ? `Batch ${r.expiredBatch.batch}` : `PRD-${String(r.id).padStart(3,"0")}`}</div>
           </div>
         </div>
       ),

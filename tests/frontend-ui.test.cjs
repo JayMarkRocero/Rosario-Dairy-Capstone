@@ -2013,16 +2013,15 @@ test('desktop row measurements remain stable across pages and reset for width or
 });
 
 
-test('Orders, Customers and Sales History opt into natural row measurement without changing mobile size', () => {
-  for (const Component of [ui.OrdersTable, ui.StaffOrdersTable, ui.CustomerTable, ui.AdminSalesHistory, ui.StaffSalesHistory]) {
+test('all active data modules explicitly enable the same natural row measurement without changing mobile size', () => {
+  authState = { user: { id: 7, username: 'audit', email: 'audit@example.com', role: 'admin' }, loading: false };
+  for (const Component of [ui.OrdersTable, ui.StaffOrdersTable, ui.CustomerTable, ui.AdminSalesHistory, ui.StaffSalesHistory, ui.ProductTable, ui.StaffInventoryTable, ui.AdminCategories, ui.AdminUserManagement]) {
     states = []; refs = [];
     const table = elements(render(Component, { data: [], columns: [], rowKey: row => row.id }), node => node.type === ui.EnhancedTable)[0];
     assert.equal(table.props.measureRenderedRows, true, Component.name);
     assert.equal(table.props.responsivePageSize, true, Component.name);
     assert.equal(table.props.pageSize, 5, 'Mobile fallback remains unchanged');
   }
-  states = []; refs = [];
-  assert.equal(elements(render(ui.StaffInventoryTable, { data: [], columns: [], rowKey: row => row.id }), node => node.type === ui.EnhancedTable)[0].props.measureRenderedRows, undefined);
 });
 
 test('natural row measurement recovers an extra complete row without borrowing footer or scrollbar space', () => {
@@ -2061,6 +2060,144 @@ test('natural row measurement recovers an extra complete row without borrowing f
     assert.equal(render(Hook).pageSize, 3, 'Page changes cannot cause repeated capacity oscillation');
     render(Hook).resetMeasurement(); render(Hook).remeasure();
     assert.equal(render(Hook).pageSize, 5, 'Filtering can reclaim the shorter row height');
+  } finally {
+    cleanup?.(); captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
+
+test('compact measured rows fit dynamically without positive tolerance or a fixed desktop row limit', () => {
+  for (const count of [4, 5, 6, 8, 10, 14]) {
+    const header = 44, row = 53, surface = header + count * row;
+    assert.equal(ui.calculateFittedPageSize(768, surface, header, row), count);
+    assert.equal(ui.calculateFittedPageSize(1080, surface - 1, header, row), count - 1,
+      'Capacity drops before even 1px of the last row could be clipped');
+  }
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  let cleanup, rowHeight = 53;
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: '10px', paddingBottom: '10px' });
+  try {
+    window.innerHeight = 768;
+    window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+    const viewport = { offsetHeight: 309, clientHeight: 309 };
+    const surface = { clientHeight: 309, clientWidth: 1000,
+      querySelector: () => ({ parentElement: viewport }),
+      querySelectorAll: selector => selector === 'tbody tr'
+        ? [{ getBoundingClientRect: () => ({ height: rowHeight }) }] : [] };
+    const header = { getBoundingClientRect: () => ({ height: 44 }) };
+    const Hook = () => ui.useAutoPageSize(56, 320, { measureRows: true, fitContainer: true, measureRenderedRows: true });
+    const capacity = render(Hook); capacity.containerRef(surface); capacity.headerRef(header);
+    render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 5, 'Reducing each row by 4px frees the required 20px across five rows');
+    assert.ok(44 + render(Hook).pageSize * rowHeight <= surface.clientHeight);
+    viewport.offsetHeight += 17; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 4, 'Horizontal scrollbar height is still reserved');
+    viewport.offsetHeight -= 17;
+    for (const count of [4, 6, 8, 10, 14]) {
+      surface.clientHeight = 44 + count * rowHeight; render(Hook).remeasure();
+      assert.equal(render(Hook).pageSize, count);
+    }
+    surface.clientHeight = 309; rowHeight = 80; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 3, 'Wrapped rows still fit without slicing content');
+  } finally {
+    cleanup?.(); captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
+test('compact desktop tables prevent inner vertical scrolling and retain mobile flow', () => {
+  const props = { responsivePageSize: true, measureRenderedRows: true, contentHeight: true, pageSize: 5,
+    columns: [{ key: 'name', header: 'Name' }], data: Array.from({ length: 12 }, (_, id) => ({ id, name: `Row ${id}` })), rowKey: row => row.id,
+    renderMobileRow: row => React.createElement('article', null, row.name), showExport: false };
+  window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+  let tree = render(ui.EnhancedTable, props);
+  let viewport = elements(tree, node => node.type === 'div' && node.props.className?.includes('hidden md:block overflow-x-auto'))[0];
+  assert.ok(viewport.props.className.includes('flex-1 min-h-0 overflow-y-hidden'));
+  assert.ok(!viewport.props.className.includes('overflow-y-auto'));
+  assert.ok(elements(tree, node => node.type === 'td').every(cell => cell.props.className.includes('py-3 md:py-2.5')));
+  let footer = elements(tree, node => node.props.className?.includes('border-t border-slate-100'))[0];
+  assert.ok(footer.props.className.includes('mt-auto pt-3'));
+  states = []; refs = [];
+  window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  tree = render(ui.EnhancedTable, props);
+  viewport = elements(tree, node => node.type === 'div' && node.props.className?.includes('hidden md:block overflow-x-auto'))[0];
+  assert.ok(!viewport.props.className.includes('overflow-y-auto'));
+  footer = elements(tree, node => node.props.className?.includes('border-t border-slate-100'))[0];
+  assert.ok(footer.props.className.includes('mt-4 pt-3'));
+  assert.equal(elements(tree, node => node.type === 'article').length, 5);
+});
+
+
+test('every responsive native table measures compact rows instead of the estimated minimum', () => {
+  const originalObserver = global.ResizeObserver;
+  const originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: '10px', paddingBottom: '10px' });
+  const data = Array.from({ length: 20 }, (_, id) => ({ id, name: `Row ${id}` }));
+  const baseProps = { responsivePageSize: true, contentHeight: true, pageSize: 5,
+    columns: [{ key: 'name', header: 'Name' }], data, rowKey: row => row.id,
+    renderMobileRow: row => React.createElement('article', null, row.name), showExport: false };
+  try {
+    window.innerHeight = 900;
+    window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+    // The default covers Inventory, Categories and Users; explicit true covers
+    // Orders, Customers and Sales History, including their staff counterparts.
+    for (const measureRenderedRows of [undefined, true]) {
+      states = []; refs = []; layoutEffects = [];
+      let cleanup;
+      try {
+        const props = { ...baseProps, measureRenderedRows };
+        const tree = render(ui.EnhancedTable, props);
+        const surface = elements(tree, node => node.props['data-table-surface'] !== undefined)[0];
+        const header = elements(tree, node => node.type === 'thead')[0];
+        surface.ref({ clientHeight: 309, clientWidth: 1000,
+          querySelectorAll: selector => selector === 'tbody tr'
+            ? [{ getBoundingClientRect: () => ({ height: 53 }) }] : [] });
+        header.ref({ getBoundingClientRect: () => ({ height: 44 }) });
+        render(ui.EnhancedTable, props);
+        // The hook registers the first layout effect; the table remeasures later.
+        cleanup = layoutEffects.at(-2)();
+        const measured = render(ui.EnhancedTable, props);
+        assert.equal(elements(measured, node => node.type === 'tbody')[0].props.children.length, 5);
+        assert.ok(elements(measured, node => node.type === 'td').every(cell => cell.props.className.includes('md:py-2.5')));
+      } finally { cleanup?.(); }
+    }
+  } finally {
+    captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
+
+test('catalog density changes discard stale tall-row measurements and reclaim a fifth row immediately', () => {
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  let cleanup, padding = 10, height = 57, resized;
+  global.ResizeObserver = class { constructor(callback) { resized = callback; } observe() {} disconnect() {} };
+  global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: `${padding}px`, paddingBottom: `${padding}px` });
+  try {
+    window.innerHeight = 768;
+    window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+    const surface = { clientHeight: 309, clientWidth: 1000,
+      querySelectorAll: selector => selector === 'tbody tr'
+        ? [{ getBoundingClientRect: () => ({ height }) }]
+        : [{ children: [{ getBoundingClientRect: () => ({ height: 36 }) }] }] };
+    const header = { getBoundingClientRect: () => ({ height: 44 }) };
+    const Hook = () => ui.useAutoPageSize(56, 320, { measureRows: true, fitContainer: true, measureRenderedRows: true });
+    const capacity = render(Hook); capacity.containerRef(surface); capacity.headerRef(header);
+    render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 4);
+    padding = 8; height = 53; resized();
+    assert.equal(render(Hook).pageSize, 5, 'CSS padding updates reclaim capacity without a reload or data change');
+    assert.ok(44 + 5 * height <= surface.clientHeight);
+    surface.clientHeight = 44 + 8 * height; resized();
+    assert.equal(render(Hook).pageSize, 8, 'The same catalog sizing remains dynamic on larger monitors');
+    padding = 10; height = 57; surface.clientHeight = 309; resized();
+    assert.equal(render(Hook).pageSize, 4, 'Larger density still reduces capacity before content can clip');
   } finally {
     cleanup?.(); captureLayoutEffects = false;
     global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;

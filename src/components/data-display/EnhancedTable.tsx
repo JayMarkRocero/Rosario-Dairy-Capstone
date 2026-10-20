@@ -52,14 +52,14 @@ function alignmentClasses(align: Column<unknown>["align"]) {
 type SortDir = "asc" | "desc" | null;
 
 export function EnhancedTable<T>({
-  columns, data, rowKey, pageSize: requestedPageSize = 10, autoPageSize = false, responsivePageSize = false, measureRenderedRows = false, pageCapacity,
+  columns, data, rowKey, pageSize: requestedPageSize = 10, autoPageSize = false, responsivePageSize = false, measureRenderedRows, pageCapacity,
   searchable = true, searchKeys, searchPlaceholder = "Search…",
   onRowClick, extraControls, emptyTitle = "No records found",
   emptyDesc = "Try adjusting your search or add a new record.", loading,
   showExport = true, showCount = true, fillHeight = false, contentHeight = false, reserveTableHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
   mobileTable = false, renderMobileRow,
 }: Props<T>) {
-  const defaultCapacity = useAutoPageSize(responsivePageSize ? Math.max(56, rowHeight) : rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 1, measureRows: true, fitContainer: true, measurementKey: data, measureRenderedRows } : {});
+  const defaultCapacity = useAutoPageSize(responsivePageSize ? Math.max(56, rowHeight) : rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 1, measureRows: true, fitContainer: true, measurementKey: data, measureRenderedRows: measureRenderedRows ?? contentHeight } : {});
   const capacity = responsivePageSize ? defaultCapacity : pageCapacity ?? defaultCapacity;
   autoPageSize = autoPageSize || !!pageCapacity;
   const [desktopTable, setDesktopTable] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches);
@@ -306,7 +306,7 @@ export function EnhancedTable<T>({
                     {columns.map(col => (
                       <td
                         key={col.key}
-                        className={`${contentHeight ? "py-3" : "py-2"} pl-4 ${alignmentClasses(col.align)} whitespace-nowrap ${tableScrollBody ? `min-w-0 flex flex-col justify-center overflow-hidden ${col.align === "center" ? "items-center" : col.align === "right" ? "items-end" : "items-start"}` : ""}`}
+                        className={`${contentHeight ? "py-3 md:py-2.5" : "py-2"} pl-4 ${alignmentClasses(col.align)} whitespace-nowrap ${tableScrollBody ? `min-w-0 flex flex-col justify-center overflow-hidden ${col.align === "center" ? "items-center" : col.align === "right" ? "items-end" : "items-start"}` : ""}`}
                       >
                         {col.render ? col.render(row, ri) : String((row as any)[col.key] ?? "")}
                       </td>

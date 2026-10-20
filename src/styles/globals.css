@@ -170,6 +170,11 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
   .table-card > div { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; overflow: hidden; }
   .table-card .responsive-table { height: 100%; flex: 1 1 0%; min-height: 0; overflow: hidden; }
   .responsive-table [data-table-surface] { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; }
+  /* Catalog rows include icons or two-line labels; keep their measured height
+     aligned with the other data views without changing mobile card spacing. */
+  .inventory-table-card .responsive-table tbody td,
+  .staff-inventory-page .responsive-table tbody td,
+  .category-table-card .responsive-table tbody td { padding-top: 0.5rem; padding-bottom: 0.5rem; }
 }
 
 @media (min-width: 768px) and (max-height: 700px) {

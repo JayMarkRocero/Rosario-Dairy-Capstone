@@ -238,8 +238,8 @@ export function AdminCategories() {
         ))}
       </div>
 
-      <TableCard className="records-card">
-        <EnhancedTable responsivePageSize pageSize={5} autoPageSize={false} pageCapacity={undefined} contentHeight reserveTableHeight={false} rowHeight={56} columns={columns}
+      <TableCard className="records-card category-table-card">
+        <EnhancedTable responsivePageSize measureRenderedRows pageSize={5} autoPageSize={false} pageCapacity={undefined} contentHeight reserveTableHeight={false} rowHeight={56} columns={columns}
           data={sortedCategories} rowKey={cat => cat.id}
           searchable searchKeys={cat => [cat.name]} searchPlaceholder="Search categories…"
           onRowClick={cat => { setSelected(cat); setViewOpen(true); }}
