@@ -1676,7 +1676,7 @@ test('all table card variants use natural height and content-height footers foll
     assert.ok(frame.props.className.includes('p-4 sm:p-5 shadow-sm h-auto shrink-0'));
     const classes = frame.props.className.split(/\s+/);
     assert.ok(!classes.some(value => value === 'flex-1' || value === 'h-full' || /^min-h-\[/.test(value)));
-    assert.ok(!classes.includes('md:flex-1'));
+    assert.ok(classes.includes('md:flex-1'));
     assert.ok(!classes.includes('overflow-hidden'));
     assert.ok(!classes.includes('min-h-0'));
   }
@@ -1747,7 +1747,7 @@ test('adaptive desktop tables resize, paginate and search while mobile retains i
   tree = render(ui.EnhancedTable, props);
   assert.ok(elements(tree, node => node.props.children === 'Page 2 of 6').length > 0);
   const footer = elements(tree, node => node.type === 'div' && node.props.className?.includes('border-t border-slate-100'))[0];
-  assert.ok(footer.props.className.includes('mt-4 pt-3'));
+  assert.ok(footer.props.className.includes('mt-auto pt-3'));
   elements(tree, node => node.type === 'input')[0].props.onChange({ target: { value: 'Record 29' } });
   tree = render(ui.EnhancedTable, props);
   assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 1);
@@ -1828,10 +1828,10 @@ test('adaptive table markup keeps headers and rows in native flow without forced
 });
 
 
-test('desktop fit capacity measures the allocated surface, uses five on short screens and caps at eight', () => {
+test('desktop fit capacity measures the allocated surface, has no small hardcoded cap', () => {
   assert.equal(ui.calculateFittedPageSize(767, 360, 44, 56), 5);
   assert.equal(ui.calculateFittedPageSize(900, 436, 44, 56), 7);
-  assert.equal(ui.calculateFittedPageSize(1080, 600, 44, 56), 8);
+  assert.equal(ui.calculateFittedPageSize(1080, 600, 44, 56), 9);
   const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
   captureLayoutEffects = true;
   let resized, cleanup;
@@ -1848,8 +1848,8 @@ test('desktop fit capacity measures the allocated surface, uses five on short sc
     render(Hook); cleanup = layoutEffects.at(-1)();
     assert.equal(render(Hook).pageSize, 7, 'Footer space is already outside the observed surface');
     surface.clientHeight = 600; resized();
-    assert.equal(render(Hook).pageSize, 8);
-    window.innerHeight = 720; window.dispatchEvent(new Event('resize'));
+    assert.equal(render(Hook).pageSize, 9);
+    surface.clientHeight = 330; window.innerHeight = 720; window.dispatchEvent(new Event('resize'));
     assert.equal(render(Hook).pageSize, 5);
   } finally {
     cleanup?.(); captureLayoutEffects = false;
@@ -1858,12 +1858,12 @@ test('desktop fit capacity measures the allocated surface, uses five on short sc
 });
 
 
-test('natural table cards keep fixed pages and unclipped rows on short and tall desktop screens', () => {
+test('mobile fallback keeps five cards while desktop capacity is measured separately', () => {
   const products = Array.from({ length: 11 }, (_, index) => ({ id: index + 1, name: `Product ${index + 1}`, cat: 'Dairy', price: 120, stock: 30, expiry: '', low: false }));
   for (const height of [640, 768, 1080, 1440]) {
     states = []; refs = []; effects = [];
     window.innerHeight = height;
-    window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+    window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
     const wrapper = render(ui.StaffInventoryTable, { data: products, columns: [{ key: 'name', header: 'Product' }], rowKey: row => row.id });
     const table = elements(wrapper, node => node.type === ui.EnhancedTable)[0];
     states = []; refs = [];
@@ -1938,6 +1938,129 @@ test('natural fitting observes chrome and wrapped content without stretching or 
     contentHeight = 32; viewport.offsetHeight = 117;
     window.innerHeight = 785; window.dispatchEvent(new Event('resize'));
     assert.equal(render(Hook).pageSize, 4);
+  } finally {
+    cleanup?.(); captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
+
+test('desktop capacity fills surfaces with six through nine complete rows and reserves scrollbar space', () => {
+  for (const count of [6, 7, 8, 9, 12]) {
+    const header = 44, row = 61, surface = header + count * row + 20;
+    const capacity = ui.calculateFittedPageSize(900, surface, header, row);
+    assert.equal(capacity, count);
+    assert.ok(header + capacity * row <= surface);
+    assert.ok(surface - header - capacity * row < row, 'Unused body space is less than one complete row');
+  }
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  let resized, cleanup;
+  global.ResizeObserver = class { constructor(callback) { resized = callback; } observe() {} disconnect() {} };
+  global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: '12px', paddingBottom: '12px' });
+  try {
+    window.innerHeight = 900;
+    const viewport = { offsetHeight: 200, clientHeight: 183 };
+    const surface = { clientHeight: 44 + 8 * 57 + 10,
+      querySelector: () => ({ parentElement: viewport }),
+      querySelectorAll: () => [{ children: [{ getBoundingClientRect: () => ({ height: 32 }) }] }] };
+    const header = { getBoundingClientRect: () => ({ height: 44 }) };
+    const footer = { getBoundingClientRect: () => ({ height: 45 }) };
+    const Hook = () => ui.useAutoPageSize(56, 320, { minPageSize: 1, measureRows: true, fitContainer: true });
+    const capacity = render(Hook);
+    capacity.containerRef(surface); capacity.headerRef(header); capacity.footerRef(footer);
+    render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 7, 'A horizontal scrollbar cannot hide the eighth row');
+    viewport.offsetHeight = viewport.clientHeight;
+    resized();
+    assert.equal(render(Hook).pageSize, 8, 'The footer is not subtracted twice');
+    surface.clientHeight = 44 + 9 * 57 + 10; resized();
+    assert.equal(render(Hook).pageSize, 9);
+  } finally {
+    cleanup?.(); captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
+
+test('desktop row measurements remain stable across pages and reset for width or filter changes', () => {
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  let cleanup, contentHeight = 32;
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: '12px', paddingBottom: '12px' });
+  try {
+    const surface = { clientHeight: 600, clientWidth: 1000,
+      querySelectorAll: () => [{ children: [{ getBoundingClientRect: () => ({ height: contentHeight }) }] }] };
+    const header = { getBoundingClientRect: () => ({ height: 44 }) };
+    const Hook = () => ui.useAutoPageSize(56, 320, { minPageSize: 1, measureRows: true, fitContainer: true });
+    const capacity = render(Hook); capacity.containerRef(surface); capacity.headerRef(header);
+    render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 9);
+    contentHeight = 70; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 5);
+    contentHeight = 32; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 5, 'Returning to shorter rows cannot create a sizing loop');
+    render(Hook).resetMeasurement(); render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 9);
+    contentHeight = 70; render(Hook).remeasure();
+    surface.clientWidth = 1200; contentHeight = 32; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 9);
+  } finally {
+    cleanup?.(); captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
+
+test('Orders, Customers and Sales History opt into natural row measurement without changing mobile size', () => {
+  for (const Component of [ui.OrdersTable, ui.StaffOrdersTable, ui.CustomerTable, ui.AdminSalesHistory, ui.StaffSalesHistory]) {
+    states = []; refs = [];
+    const table = elements(render(Component, { data: [], columns: [], rowKey: row => row.id }), node => node.type === ui.EnhancedTable)[0];
+    assert.equal(table.props.measureRenderedRows, true, Component.name);
+    assert.equal(table.props.responsivePageSize, true, Component.name);
+    assert.equal(table.props.pageSize, 5, 'Mobile fallback remains unchanged');
+  }
+  states = []; refs = [];
+  assert.equal(elements(render(ui.StaffInventoryTable, { data: [], columns: [], rowKey: row => row.id }), node => node.type === ui.EnhancedTable)[0].props.measureRenderedRows, undefined);
+});
+
+test('natural row measurement recovers an extra complete row without borrowing footer or scrollbar space', () => {
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  let cleanup, rowHeight = 52, hasRows = false;
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  // Cell estimates can exceed the actual native table row; use its border box.
+  global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: '12px', paddingBottom: '12px' });
+  try {
+    window.innerHeight = 768;
+    window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+    const viewport = { offsetHeight: 304, clientHeight: 304 };
+    const surface = { clientHeight: 304, clientWidth: 1000,
+      querySelector: () => ({ parentElement: viewport }),
+      querySelectorAll: selector => selector === 'tbody tr'
+        ? hasRows ? [{ getBoundingClientRect: () => ({ height: rowHeight }) }] : []
+        : [{ children: [{ getBoundingClientRect: () => ({ height: 36 }) }] }] };
+    const header = { getBoundingClientRect: () => ({ height: 44 }) };
+    const footer = { getBoundingClientRect: () => ({ height: 45 }) };
+    const Hook = () => ui.useAutoPageSize(56, 320, { measureRows: true, fitContainer: true, measureRenderedRows: true });
+    const capacity = render(Hook); capacity.containerRef(surface); capacity.headerRef(header); capacity.footerRef(footer);
+    render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 4, 'The estimate is used only until rows mount');
+    hasRows = true; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 5, 'Five actual 52px rows fit after the 44px header');
+    surface.clientHeight = 303; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 4, 'A row that would clip by 1px is excluded');
+    surface.clientHeight = 304; viewport.offsetHeight = 321; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 4, 'Horizontal scrollbar clearance is retained');
+    viewport.offsetHeight = 304; surface.clientHeight = 44 + 9 * 52; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 9, 'Capacity remains dynamic on larger surfaces');
+    surface.clientHeight = 304; rowHeight = 70; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 3, 'Wrapped or taller action rows remain fully visible');
+    rowHeight = 52; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 3, 'Page changes cannot cause repeated capacity oscillation');
+    render(Hook).resetMeasurement(); render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 5, 'Filtering can reclaim the shorter row height');
   } finally {
     cleanup?.(); captureLayoutEffects = false;
     global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;

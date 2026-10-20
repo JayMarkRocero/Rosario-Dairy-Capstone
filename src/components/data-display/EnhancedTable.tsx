@@ -22,6 +22,7 @@ interface Props<T> {
   pageSize?:        number;
   autoPageSize?:    boolean;
   responsivePageSize?: boolean;
+  measureRenderedRows?: boolean;
   pageCapacity?: AutoPageCapacity;
   searchable?:      boolean;
   searchKeys?:      (row: T) => string[];
@@ -51,14 +52,14 @@ function alignmentClasses(align: Column<unknown>["align"]) {
 type SortDir = "asc" | "desc" | null;
 
 export function EnhancedTable<T>({
-  columns, data, rowKey, pageSize: requestedPageSize = 10, autoPageSize = false, responsivePageSize = false, pageCapacity,
+  columns, data, rowKey, pageSize: requestedPageSize = 10, autoPageSize = false, responsivePageSize = false, measureRenderedRows = false, pageCapacity,
   searchable = true, searchKeys, searchPlaceholder = "Search…",
   onRowClick, extraControls, emptyTitle = "No records found",
   emptyDesc = "Try adjusting your search or add a new record.", loading,
   showExport = true, showCount = true, fillHeight = false, contentHeight = false, reserveTableHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
   mobileTable = false, renderMobileRow,
 }: Props<T>) {
-  const defaultCapacity = useAutoPageSize(responsivePageSize ? Math.max(56, rowHeight) : rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 1, maxPageSize: 5, measureRows: true, viewportBased: true, naturalFit: true } : {});
+  const defaultCapacity = useAutoPageSize(responsivePageSize ? Math.max(56, rowHeight) : rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 1, measureRows: true, fitContainer: true, measurementKey: data, measureRenderedRows } : {});
   const capacity = responsivePageSize ? defaultCapacity : pageCapacity ?? defaultCapacity;
   autoPageSize = autoPageSize || !!pageCapacity;
   const [desktopTable, setDesktopTable] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches);
@@ -120,6 +121,7 @@ export function EnhancedTable<T>({
   useLayoutEffect(() => { if (adaptive) capacity.remeasure?.(); }, [adaptive, sorted, safePage, pageSize]);
 
   const handleSort = (col: Column<T>) => {
+    if (responsivePageSize) capacity.resetMeasurement?.();
     if (!col.sortKey) return;
     if (sortCol !== col.key) { setSortCol(col.key); setSortDir("asc"); }
     else if (sortDir === "asc") setSortDir("desc");
@@ -127,7 +129,7 @@ export function EnhancedTable<T>({
     setPage(1);
   };
 
-  const handleSearch = (v: string) => { setSearch(v); setPage(1); };
+  const handleSearch = (v: string) => { if (responsivePageSize) capacity.resetMeasurement?.(); setSearch(v); setPage(1); };
 
   if (loading) {
     return (
@@ -155,7 +157,7 @@ export function EnhancedTable<T>({
   }
 
   const emptyState = contentHeight
-    ? <div className="min-h-[300px] flex items-center justify-center"><EmptyState title={emptyTitle} description={emptyDesc} /></div>
+    ? <div className={adaptive ? "flex items-center justify-center py-8" : "min-h-[300px] flex items-center justify-center"}><EmptyState title={emptyTitle} description={emptyDesc} /></div>
     : <EmptyState title={emptyTitle} description={emptyDesc} />;
   const tableScrollBody = scrollBody && desktopTable;
   const tableDisableScroll = disableScroll && desktopTable;
@@ -259,7 +261,7 @@ export function EnhancedTable<T>({
           {emptyState}
         </div>}
         <div
-          className={`w-full ${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${contentHeight ? "h-auto" : ""} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
+          className={`w-full ${adaptive ? "flex-1 min-h-0 overflow-y-hidden" : ""} ${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${contentHeight ? "h-auto" : ""} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           <table className={`w-full text-left border-collapse ${contentHeight ? "h-auto" : ""} table-fixed text-sm text-slate-700 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
@@ -320,7 +322,7 @@ export function EnhancedTable<T>({
 
       {/* Pagination */}
       {(totalPages > 1 || adaptive || contentHeight && sorted.length > 0) && (
-        <div ref={adaptive ? capacity.footerRef : undefined} className={contentHeight ? `flex items-center justify-between mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 px-1 gap-2 shrink-0` : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
+        <div ref={adaptive ? capacity.footerRef : undefined} className={contentHeight ? `flex items-center justify-between ${adaptive ? "mt-auto" : "mt-4"} pt-3 border-t border-slate-100 dark:border-slate-700 px-1 gap-2 shrink-0` : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
           <span className={contentHeight ? "text-xs whitespace-nowrap" : "text-xs order-2 sm:order-1"} style={{ color: C.muted }}>
             {contentHeight ? `Page ${safePage} of ${totalPages}` : <>
             <span className="hidden sm:inline">Page {safePage} of {totalPages}</span>

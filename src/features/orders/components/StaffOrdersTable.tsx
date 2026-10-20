@@ -7,6 +7,6 @@ type Props = ComponentProps<typeof EnhancedTable<OrderListItem>> & { errorConten
 
 export function StaffOrdersTable({ errorContent, ...props }: Props) {
   return <div className={TABLE_CARD_CLASS_NAME}>
-    {errorContent ?? <EnhancedTable {...props} responsivePageSize contentHeight reserveTableHeight={false} autoPageSize={false} pageCapacity={undefined} pageSize={5} rowHeight={56} />}
+    {errorContent ?? <EnhancedTable {...props} responsivePageSize measureRenderedRows contentHeight reserveTableHeight={false} autoPageSize={false} pageCapacity={undefined} pageSize={5} rowHeight={56} />}
   </div>;
 }
