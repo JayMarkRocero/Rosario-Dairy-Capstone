@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { X } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 
@@ -25,6 +25,7 @@ interface Props {
 }
 
 export function Modal({ open, onClose, title, subtitle, size = "md", children, footer, hideClose, busy = false }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [rendered, setRendered] = useState(false);
   const [visible,  setVisible]  = useState(false);
 
@@ -42,7 +43,12 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
 
   // Close on ESC
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && open && !busy) onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !open || busy) return;
+      const dialogs = typeof document !== "undefined" ? document.querySelectorAll?.('[data-modal-open="true"]') : null;
+      if (dialogs?.length && dialogs[dialogs.length - 1] !== dialogRef.current) return;
+      onClose();
+    };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [open, onClose, busy]);
@@ -67,6 +73,8 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
 
       {/* Panel */}
       <div
+        ref={dialogRef}
+        data-modal-open={open ? "true" : "false"}
         role="dialog"
         aria-modal="true"
         aria-busy={busy}

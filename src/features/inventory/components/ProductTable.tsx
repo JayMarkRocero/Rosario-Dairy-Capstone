@@ -41,8 +41,8 @@ export function ProductTable(props: Props) {
   };
   const saveBatch = async () => {
     if (!editBatch || submissionLock.current) return;
-    const parsedPrice = Number(editDraft.price);
-    if (!editDraft.price.trim() || !Number.isFinite(parsedPrice) || parsedPrice < 0) { toast.error('Enter a valid nonnegative unit price.'); return; }
+    const parsedPrice = editDraft.price.trim() ? Number(editDraft.price) : null;
+    if (parsedPrice !== null && (!Number.isFinite(parsedPrice) || parsedPrice < 0)) { toast.error('Enter a valid nonnegative inventory cost.'); return; }
     submissionLock.current = true; setSaving(true);
     try {
       const update = editBatch.kind === 'product' ? inventoryService.updateProductBatch : inventoryService.updateIngredientBatch;
@@ -78,7 +78,7 @@ export function ProductTable(props: Props) {
     </Modal>
     <Modal open={!!editBatch} busy={saving} onClose={() => { if (!submissionLock.current) setEditBatch(null); }} title="Edit batch" subtitle={editBatch?.batch} size="sm">
       <div className="space-y-4">
-        <label className="block text-sm">Unit price<input type="number" min="0" step="0.01" value={editDraft.price} disabled={saving} onChange={event => setEditDraft({ ...editDraft, price: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
+        <label className="block text-sm">Inventory unit cost (optional)<input type="number" min="0" step="0.01" value={editDraft.price} disabled={saving} onChange={event => setEditDraft({ ...editDraft, price: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
         <label className="block text-sm">Notes<textarea value={editDraft.notes} disabled={saving} onChange={event => setEditDraft({ ...editDraft, notes: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 p-2" /></label>
         <button type="button" disabled={saving} onClick={() => void saveBatch()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50">{saving ? 'Saving?' : 'Save batch'}</button>
       </div>

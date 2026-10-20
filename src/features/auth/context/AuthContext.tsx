@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
-import { ApiError, getApiErrorMessage, getRefreshToken, setRefreshToken, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
+import { ApiError, getSessionGeneration, getApiErrorMessage, getRefreshToken, setRefreshToken, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
 import { toast } from "sonner";
 import { authService } from "@/features/auth/api/auth.service";
 
@@ -76,19 +76,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [clearSession]);
 
   const login = useCallback(async (username: string, password: string) => {
-    sessionCheck.current += 1;
+    const attempt = ++sessionCheck.current;
+    const origin = getSessionGeneration();
     setAuthError(null);
     const tokens = await authService.login({ username, password });
+    if (attempt !== sessionCheck.current || origin !== getSessionGeneration()) throw new ApiError(409, "Sign-in was replaced by another session.");
     setAccessToken(tokens.access);
     setRefreshToken(tokens.refresh);
+    const loginSession = getSessionGeneration();
     try {
       const currentUser = await authService.getCurrentUser();
+      if (loginSession !== getSessionGeneration()) throw new ApiError(409, "Session changed.");
       setUser(currentUser);
       setSessionExpired(false);
       return currentUser;
     } catch (error) {
-      setAccessToken(null);
-      setRefreshToken(null);
+      if (loginSession === getSessionGeneration()) { setAccessToken(null); setRefreshToken(null); }
       throw error;
     }
   }, []);

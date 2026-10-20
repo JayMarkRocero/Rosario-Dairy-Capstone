@@ -32,6 +32,7 @@ const compiled = buildSync({
     export { EmptyState } from './src/components/EmptyState';
     export { ProductTable } from './src/features/inventory/components/ProductTable';
     export { Card } from './src/components/data-display/Card';
+    export { Modal } from './src/components/overlays/Modal';
     export { useAutoPageSize, calculatePageSize, calculateViewportPageSize, calculateFittedPageSize, calculateNaturalPageSize } from './src/hooks/useAutoPageSize';
     export { TableCard, TABLE_CARD_CLASS_NAME } from './src/components/data-display/TableCard';
     export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
@@ -55,6 +56,13 @@ const compiled = buildSync({
     export { CustomerTable } from './src/features/customers/components/CustomerTable';
     export { StaffOrders } from './src/features/orders/pages/StaffOrders';
     export { StaffPOS } from './src/features/pos/pages/StaffPOS';
+    export { SaleComposer } from './src/features/sales/components/SaleComposer';
+    export { SaleLineEditor } from './src/features/sales/components/SaleLineEditor';
+    export { CustomerHistory } from './src/features/customers/components/CustomerHistory';
+    export { PaymentUpdateControl } from './src/features/sales/components/PaymentUpdateControl';
+    export { InventoryOutflows } from './src/features/inventory/components/InventoryOutflows';
+    export { SalesEncoding } from './src/features/sales/pages/SalesEncoding';
+    export * from './src/features/sales/utils/manualPricing';
     export { StaffKPICards } from './src/features/dashboard/components/staff/StaffKPICards';
     export { MobileCategoryCard } from './src/features/inventory/components/MobileCategoryCard';
     export { MobileInventoryCard } from './src/features/inventory/components/MobileInventoryCard';
@@ -244,7 +252,7 @@ test('mobile sales cards keep full transaction details available and open the se
 });
 
 test('admin and staff Sales History use mobile cards without a sort selector and preserve five-item pagination', () => {
-  const sales = Array.from({ length: 6 }, (_, index) => ({ receipt: `TXN-${index}`, customer: 'Customer', cashier: 'Cashier', date: '2026-10-11', payment: 'Cash', total: 120 }));
+  const sales = Array.from({ length: 6 }, (_, index) => ({ transaction: { id: index + 1 }, receipt: `SI-${index}`, customer: 'Customer', cashier: 'Cashier', date: '2026-10-11', payment: 'Cash', total: 120 }));
   for (const [Page, key] of [[ui.AdminSalesHistory, 'sales:history:'], [ui.StaffSalesHistory, 'sales:mine:7']]) {
     ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, sales, ['sales']);
     states = []; refs = [];
@@ -957,136 +965,100 @@ test('report download blocks double clicks and permits retry after failure', asy
   await second;
 });
 
-test('order form blocks excessive discounts and duplicate submissions', async () => {
-  const product = { id:385, name:'Milk', price:50, stock:19, expiry:'2099-10-17', low:false };
-  render(ui.CreateOrderModal, {open:true,onClose(){},onCreated(){}});
-  states[0] = [{id:906,name:'Audit'}]; states[1] = [product]; states[2] = '906'; states[3] = {385:1}; states[5] = '100';
+
+async function composerFixture(mode = 'checkout', role = 'staff') {
+  authState.user = { id: 7, username: 'audit', email: 'audit@example.com', role };
+  const product = { id: 385, name: 'Milk', unit: 'unit', is_active: true, total_stock: '19', low_stock_threshold: 0, category: { name: 'Dairy', is_active: true, is_visible_to_staff: true } };
+  ui.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data:
+    config.url === '/inventory/products/' ? [product] : config.url === '/inventory/product-batches/' ? [{ id: 1, product, status: 'available', remaining_quantity: '19', expiration_date: '2099-10-17', unit_price: null, batch_number: 'B1' }] : config.url === '/sales/customers/' ? [{ id: 906, name: 'Customer', is_active: true, created_at: '2026-10-01' }] : [] });
+  render(ui.SaleComposer, { mode, onSuccess() {} });
+  effects[0](); await settle();
+  const props = { mode, onSuccess() {} };
+  let tree = render(ui.SaleComposer, props);
+  const add = elements(tree, node => node.type === 'button' && elements(node, child => child.props.children === 'Milk').length)[0];
+  add.props.onClick();
+  tree = render(ui.SaleComposer, props);
+  const line = elements(tree, node => node.type === ui.SaleLineEditor)[0];
+  assert.equal(line.props.line.unitPrice, '', 'New sale prices always start blank');
+  const changeLine = changes => {
+    const current = elements(render(ui.SaleComposer, props), node => node.type === ui.SaleLineEditor)[0];
+    current.props.onChange({ ...current.props.line, ...changes });
+  };
+  const field = label => elements(render(ui.SaleComposer, props), node => node.props['aria-label'] === label)[0];
+  const submit = () => elements(render(ui.SaleComposer, props), node => node.type?.name === 'Btn' && ['Complete Transaction', 'Submit & Fulfill', 'Save sales entry', 'Saving...'].includes(node.props.children))[0].props.onClick();
+  return { props, changeLine, field, submit };
+}
+
+test('order form validates per-line discounts and blocks duplicate pending submissions', async () => {
+  const form = await composerFixture('order', 'admin');
+  const picker = elements(render(ui.SaleComposer, form.props), node => node.type?.name === 'CustomerPicker')[0];
+  picker.props.onChange('906');
+  form.changeLine({ unitPrice: '50', discountType: 'fixed', discountValue: '60' });
+  form.field('Amount tendered').props.onChange({ target: { value: '100' } });
   let requests = 0, reject;
   ui.http.defaults.adapter = () => { requests++; return new Promise((_, fail) => { reject = fail; }); };
-  states[11] = 'fixed'; states[12] = '60';
-  let tree = render(ui.CreateOrderModal, {open:true,onClose(){},onCreated(){}});
-  const submit = root => elements(root.props.footer, node => typeof node.props.onClick === 'function').at(-1);
-  await submit(tree).props.onClick();
-  assert.equal(requests, 0);
-  states[12] = '0';
-  tree = render(ui.CreateOrderModal, {open:true,onClose(){},onCreated(){}});
-  const first = submit(tree).props.onClick();
-  await Promise.resolve(); await Promise.resolve();
-  await submit(tree).props.onClick();
-  assert.equal(requests, 1);
-  reject(new Error('Simulated order outage')); await first;
+  await form.submit(); assert.equal(requests, 0);
+  form.changeLine({ discountValue: '0' });
+  const first = form.submit(); await settle();
+  await form.submit(); assert.equal(requests, 1);
+  reject(new Error('Simulated outage')); await first;
   assert.equal(refs[0].current, false);
 });
 
-test('POS rounds line totals, discounts and change before validating exact cash payments', () => {
-  authState.user.role = 'admin';
-  for (const [cart, discountType, discountValue, cash, subtotal, total, change] of [
-    [[{ price: 0.1, qty: 3 }], 'none', '0', '0.30', 0.3, 0.3, 0],
-    [[{ price: 0.1, qty: 1 }, { price: 0.2, qty: 1 }], 'fixed', '0.1', '0.20', 0.3, 0.2, 0],
-    [[{ price: 2.99, qty: 3 }], 'percent', '12.5', '7.85', 8.97, 7.85, 0],
-    [[{ price: 0.1, qty: 3 }], 'none', '0', '0.31', 0.3, 0.3, 0.01],
-    [[{ price: 1.99, qty: 0.33 }, { price: 1.99, qty: 0.33 }], 'none', '0', '1.32', 1.32, 1.32, 0],
-  ]) {
-    states = []; refs = []; effects = [];
-    render(ui.StaffPOS);
-    states[3] = cart.map((item, index) => ({ id: index + 1, name: 'Milk', stock: 20, ...item }));
-    states[7] = cash; states[9] = discountType; states[10] = discountValue;
-    const tree = render(ui.StaffPOS);
-    const summary = elements(tree, node => typeof node.props.onComplete === 'function')[0];
-    assert.equal(summary.props.subtotal, subtotal);
-    assert.equal(summary.props.total, total);
-    assert.equal(summary.props.change, change);
-    summary.props.onComplete();
-    assert.equal(states[12], true, 'Cash equal to the rounded total opens the receipt');
-    const preview = elements(render(ui.StaffPOS), node => typeof node.props.onConfirm === 'function')[0];
-    assert.equal(preview.props.total, total);
-    assert.equal(preview.props.change, change);
-  }
-  assert.equal(toastErrors.length, 0);
+test('manual line totals and item discounts use decimal half-up rounding', () => {
+  const line = (price, quantity, discountType = 'none', discountValue = '0') => ({ productId: 1, name: 'Milk', stock: 20, unitPrice: price, quantity, discountType, discountValue });
+  assert.equal(ui.priceSale([line('0.1', '3')], false).total, 30n);
+  assert.equal(ui.priceSale([line('2.99', '3', 'percent', '12.5')], true).total, 785n);
+  assert.equal(ui.priceSale([line('1.99', '0.33')], false).total, 66n);
+  assert.equal(ui.validateTender('0.30', 30n), '0.30');
 });
 
-test('POS rejects one-cent underpayment and invalid cash even after rounding', () => {
-  render(ui.StaffPOS);
-  states[3] = [{ id: 1, name: 'Milk', stock: 20, price: 0.1, qty: 3 }];
-  for (const cash of ['0.29', '', 'NaN', 'Infinity']) {
-    states[7] = cash;
-    const summary = elements(render(ui.StaffPOS), node => typeof node.props.onComplete === 'function')[0];
-    summary.props.onComplete();
-    assert.equal(states[12], false);
-    assert.equal(toastErrors.at(-1)[0], 'Cash received must be at least the total amount.');
+test('POS blocks underpayment and nonfinite cash without sending requests', async () => {
+  const form = await composerFixture(); form.changeLine({ unitPrice: '0.10', quantity: '3' });
+  let requests = 0; ui.http.defaults.adapter = async () => { requests++; throw new Error('Should not reach network'); };
+  for (const value of ['0.29', '', 'NaN', 'Infinity']) {
+    form.field('Amount tendered').props.onChange({ target: { value } });
+    await form.submit();
+    assert.equal(requests, 0);
   }
 });
 
-test('POS sends the rounded cash amount in the checkout payload', async () => {
-  render(ui.StaffPOS);
-  states[0] = [{ id: 1, name: 'Milk', stock: 20, price: 0.1, expiry: '2099-01-01', cat: 'Dairy' }];
-  states[3] = [{ id: 1, name: 'Milk', stock: 20, price: 0.1, qty: 3 }];
-  states[7] = '0.30000000000000004';
-  elements(render(ui.StaffPOS), node => typeof node.props.onComplete === 'function')[0].props.onComplete();
-  let payload;
-  ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); throw new AxiosError('Simulated outage'); };
-  elements(render(ui.StaffPOS), node => typeof node.props.onConfirm === 'function')[0].props.onConfirm();
-  await settle();
-  assert.equal(payload.amount_tendered, '0.3');
-  assert.deepEqual(payload.items, [{ product_id: 1, quantity: '3' }]);
-  assert.equal(refs[0].current, false);
+test('POS sends explicit canonical prices, quantities and tender without invoice discounts', async () => {
+  const form = await composerFixture(); form.changeLine({ unitPrice: '0.10', quantity: '3' });
+  form.field('Amount tendered').props.onChange({ target: { value: '0.30' } });
+  let payload; ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); throw new AxiosError('Simulated outage'); };
+  await form.submit();
+  assert.equal(payload.amount_tendered, '0.30');
+  assert.deepEqual(payload.items, [{ product_id: 385, quantity: '3.00', unit_price: '0.10', discount_type: 'none', discount_value: '0.00' }]);
+  assert.equal('discount_type' in payload, false);
 });
 
 for (const role of ['staff', 'admin']) {
-  test(`POS ${role} discount controls, totals and checkout payload follow backend permissions`, async () => {
-    authState.user.role = role;
-    render(ui.StaffPOS);
-    states[0] = [{ id: 1, name: 'Milk', price: 100, stock: 10, expiry: '2099-01-01', cat: 'Dairy' }];
-    states[3] = [{ id: 1, name: 'Milk', price: 100, qty: 1, stock: 10 }];
-    states[7] = '75'; states[9] = 'percent'; states[10] = '25'; states[11] = true; states[16] = true;
-    const summaries = elements(render(ui.StaffPOS), node => typeof node.props.onComplete === 'function');
-    assert.equal(summaries.length, 2, 'Desktop panel and mobile sheet use the same permission');
-    for (const summary of summaries) {
-      assert.equal(summary.props.canDiscount, role === 'admin');
-      assert.equal(summary.props.total, role === 'admin' ? 75 : 100);
-      const contents = summary.type(summary.props);
-      assert.equal(elements(contents, node => node.type === 'input' && node.props.placeholder === 'Discount value').length, role === 'admin' ? 1 : 0);
-      assert.equal(elements(contents, node => node.props.children === '+ Apply Discount').length, 0);
-    }
-    if (role === 'staff') {
-      summaries[0].props.onComplete();
-      assert.equal(states[12], false, 'A hidden stale discount cannot permit underpayment');
-      assert.equal(toastErrors.at(-1)[0], 'Cash received must be at least the total amount.');
-      states[7] = '100';
-    }
-    elements(render(ui.StaffPOS), node => typeof node.props.onComplete === 'function')[0].props.onComplete();
-    let payload;
-    ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); throw new AxiosError('Simulated checkout outage'); };
-    elements(render(ui.StaffPOS), node => typeof node.props.onConfirm === 'function')[0].props.onConfirm();
-    await settle();
-    assert.equal(payload.discount_type, role === 'admin' ? 'percent' : 'none');
-    assert.equal(payload.discount_value, role === 'admin' ? '25' : '0');
-    assert.equal(payload.amount_tendered, role === 'admin' ? '75' : '100');
+  test(`shared sale editor enforces ${role} line-discount permissions and payloads`, async () => {
+    const form = await composerFixture('checkout', role);
+    form.changeLine({ unitPrice: '100', discountType: 'percent', discountValue: '25' });
+    const node = elements(render(ui.SaleComposer, form.props), item => item.type === ui.SaleLineEditor)[0];
+    assert.equal(node.props.canDiscount, role === 'admin');
+    const fields = render(ui.SaleLineEditor, node.props);
+    assert.equal(elements(fields, item => item.props['aria-label'] === 'Discount type for Milk').length, role === 'admin' ? 1 : 0);
+    form.field('Amount tendered').props.onChange({ target: { value: role === 'admin' ? '75' : '100' } });
+    let payload; ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); throw new AxiosError('Simulated outage'); };
+    await form.submit();
+    assert.equal(payload.items[0].discount_type, role === 'admin' ? 'percent' : 'none');
+    assert.equal(payload.items[0].discount_value, role === 'admin' ? '25.00' : '0.00');
+    assert.equal('discount_value' in payload, false);
   });
 }
 
-test('POS confirmation sends only one request while checkout is pending', async () => {
-  render(ui.StaffPOS);
-  states[0] = [{id:385,name:'Milk',price:50,stock:19,expiry:'2099-10-17',low:false,cat:'Dairy'}];
-  states[2] = false;
-  states[3] = [{id:385,name:'Milk',price:50,stock:19,qty:1}];
-  let tree = render(ui.StaffPOS);
-  // Locate the actual confirmation handler through the preview after opening it.
-  states[7] = '100';
-  states[12] = true;
-  tree = render(ui.StaffPOS);
-  const preview = elements(tree, node => typeof node.props.onConfirm === 'function')[0];
-  assert.ok(preview, 'Checkout preview is open');
+test('POS keeps a synchronous submission lock and unlocks after a network failure', async () => {
+  const form = await composerFixture(); form.changeLine({ unitPrice: '50' });
+  form.field('Amount tendered').props.onChange({ target: { value: '100' } });
   let requests = 0, reject;
   ui.http.defaults.adapter = () => { requests++; return new Promise((_, fail) => { reject = fail; }); };
-  preview.props.onConfirm(); preview.props.onConfirm();
-  await Promise.resolve(); await Promise.resolve();
-  assert.equal(requests, 1);
-  reject(new Error('Simulated checkout outage'));
-  await new Promise(resolve => setImmediate(resolve));
+  const first = form.submit(); await settle(); await form.submit(); assert.equal(requests, 1);
+  reject(new Error('Simulated outage')); await first;
   assert.equal(refs[0].current, false);
 });
-
 
 test('categories, customers and users render cached lists before effects and refresh silently after invalidation', async () => {
   authState.user.email = 'audit@example.com';
@@ -2202,4 +2174,103 @@ test('catalog density changes discard stale tall-row measurements and reclaim a 
     cleanup?.(); captureLayoutEffects = false;
     global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
   }
+});
+
+
+test('encoding reuses its UUID on network retries and blocks changed ambiguous submissions', async () => {
+  const form = await composerFixture('encoding'); form.changeLine({ unitPrice: '12' });
+  const payloads = [];
+  ui.http.defaults.adapter = async config => { payloads.push(JSON.parse(config.data)); throw new AxiosError('Timed out', 'ECONNABORTED'); };
+  await form.submit(); await form.submit();
+  assert.equal(payloads.length, 2); assert.equal(payloads[0].request_id, payloads[1].request_id);
+  assert.match(payloads[0].request_id, /^[0-9a-f-]{36}$/);
+  assert.equal(payloads[0].payment_status, 'pending'); assert.equal(payloads[0].amount_tendered, null);
+  assert.equal('handled_by' in payloads[0], false, 'The handler always comes from server authentication');
+  form.changeLine({ quantity: '2' }); await form.submit();
+  assert.equal(payloads.length, 2, 'An ambiguous previous request cannot silently become a different transaction');
+  assert.match(toastErrors.at(-1)[0], /already attempted/i);
+});
+
+test('encoding allows corrections after a definite HTTP 400 and generates a new UUID for the corrected entry', async () => {
+  const form = await composerFixture('encoding'); form.changeLine({ unitPrice: '12' });
+  const payloads = [];
+  ui.http.defaults.adapter = async config => {
+    payloads.push(JSON.parse(config.data));
+    throw new AxiosError('Invalid', undefined, config, undefined, { status: 400, data: { error: 'Stock changed' }, config, headers: {} });
+  };
+  await form.submit(); form.changeLine({ quantity: '2' }); await form.submit();
+  assert.equal(payloads.length, 2); assert.notEqual(payloads[0].request_id, payloads[1].request_id);
+  assert.equal(payloads[1].items[0].quantity, '2.00');
+});
+
+test('customer history resets pagination for a different customer and never renders another customer cache', () => {
+  const customer = id => ({ id, name: `Customer ${id}` });
+  const transaction = id => ({ id, transaction_number: `SI${id}`, created_at: '2026-10-01T04:00:00Z', payment_method: 'cash', payment_status: 'paid', total_amount: '10', handled_by: { id: 7, username: 'staff' } });
+  const put = (id, page, rows, count) => ui.writeDataCache(`${ui.dataCacheEpoch()}:customers:history:${id}:${page}:false`, { count, results: rows }, ['customers', 'sales']);
+  put(1, 1, [transaction(11)], 21); put(1, 2, [transaction(12)], 21); put(2, 1, [transaction(21)], 1);
+  let tree = render(ui.CustomerHistory, { customer: customer(1), onClose() {} });
+  elements(tree, node => node.type?.name === 'Btn' && node.props.children === 'Next')[0].props.onClick();
+  tree = render(ui.CustomerHistory, { customer: customer(1), onClose() {} });
+  assert.ok(elements(tree, node => node.props.children === 'SI12').length || JSON.stringify(tree).includes('SI12'));
+  tree = render(ui.CustomerHistory, { customer: customer(2), onClose() {} });
+  assert.ok(JSON.stringify(tree).includes('SI21')); assert.ok(!JSON.stringify(tree).includes('SI12'));
+  assert.ok(JSON.stringify(tree).includes('Page '));
+  put(1, 2, [transaction(99)], 21);
+  assert.ok(!JSON.stringify(render(ui.CustomerHistory, { customer: customer(2), onClose() {} })).includes('SI99'));
+});
+
+test('outflows require an explicit cost and distinguish expired stock from promotional samples', async () => {
+  const batch = { id: 1, key: 'product-1', kind: 'product', name: 'Milk', batch: 'B1', stock: 2, unit: 'unit', cost: null, expiry: '2000-01-01' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:outflow-batches`, [batch], ['inventory']);
+  let tree = render(ui.InventoryOutflows);
+  elements(tree, node => node.type?.name === 'Btn' && node.props.children === 'Stock outflows')[0].props.onClick();
+  const field = label => elements(render(ui.InventoryOutflows), node => node.props['aria-label'] === label)[0];
+  field('Outflow batch').props.onChange({ target: { value: 'product-1' } });
+  assert.equal(field('Outflow unit cost').props.value, '', 'An unknown cost never defaults to zero');
+  field('Outflow reason').props.onChange({ target: { value: 'free_taste' } });
+  field('Outflow quantity').props.onChange({ target: { value: '1' } });
+  field('Outflow unit cost').props.onChange({ target: { value: '0' } });
+  let requests = 0; ui.http.defaults.adapter = async () => { requests++; throw new Error('Should not submit'); };
+  tree = render(ui.InventoryOutflows);
+  await elements(tree, node => node.type?.name === 'Btn' && node.props.children === 'Record and deduct stock')[0].props.onClick();
+  assert.equal(requests, 0); assert.match(toastErrors.at(-1)[0], /Expired stock/);
+});
+
+
+test('payment controls validate tender, persist only payment fields and prevent duplicate PATCH requests', async () => {
+  const transaction = { id: 31, is_manually_encoded: true, is_voided: false, payment_status: 'pending', payment_method: 'cash', total_amount: '12.00', amount_tendered: null };
+  let updated, calls = 0, complete;
+  const props = { transaction, onUpdated: value => { updated = value; } };
+  let tree = render(ui.PaymentUpdateControl, props);
+  elements(tree, node => node.type?.name === 'Btn' && node.props.children === 'Update payment')[0].props.onClick();
+  const field = label => elements(render(ui.PaymentUpdateControl, props), node => node.props['aria-label'] === label)[0];
+  field('Updated payment status').props.onChange({ target: { value: 'paid' } });
+  field('Updated amount tendered').props.onChange({ target: { value: '11.99' } });
+  const save = () => elements(render(ui.PaymentUpdateControl, props), node => node.props.title === 'Update payment')[0].props.footer.props.onClick();
+  ui.http.defaults.adapter = config => {
+    calls++; assert.equal(config.method, 'patch'); assert.equal(config.url, '/sales/encoding/31/payment/');
+    assert.deepEqual(JSON.parse(config.data), { payment_status: 'paid', payment_method: 'cash', amount_tendered: '12.00' });
+    return new Promise(resolve => { complete = () => resolve({ status: 200, config, headers: {}, data: { ...transaction, payment_status: 'paid', amount_tendered: '12.00' } }); });
+  };
+  await save(); assert.equal(calls, 0);
+  field('Updated amount tendered').props.onChange({ target: { value: '12' } });
+  const pending = save(); await settle(); await save(); assert.equal(calls, 1);
+  complete(); await pending; assert.equal(updated.payment_status, 'paid');
+});
+
+test('Escape dismisses only the topmost nested modal without altering its visual classes', () => {
+  const originalDocument = global.document;
+  let closed = 0;
+  try {
+    const ownDialog = {}, nestedDialog = {};
+    let dialogs = [ownDialog, nestedDialog];
+    global.document = { querySelectorAll: () => dialogs };
+    render(ui.Modal, { open: true, title: 'Parent', children: null, onClose: () => closed++ });
+    refs[0].current = ownDialog;
+    const cleanup = effects[1]();
+    const escape = new Event('keydown'); Object.defineProperty(escape, 'key', { value: 'Escape' });
+    window.dispatchEvent(escape); assert.equal(closed, 0);
+    dialogs = [ownDialog]; window.dispatchEvent(escape); assert.equal(closed, 1);
+    cleanup?.();
+  } finally { global.document = originalDocument; }
 });

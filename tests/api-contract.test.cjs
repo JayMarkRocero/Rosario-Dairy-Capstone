@@ -14,6 +14,10 @@ const compiled = buildSync({
     export * from './src/lib/dataCache';
     export * from './src/hooks/useAutoPageSize';
     export * from './src/features/pos/api/checkout.service';
+    export * from './src/features/sales/utils/manualPricing';
+    export * from './src/features/sales/api/encoding.service';
+    export * from './src/features/inventory/api/outflows.service';
+    export * from './src/features/customers/api/customers.service';
     export * from './src/features/orders/api/orders.service';
     export * from './src/features/sales/api/sales.service';
     export * from './src/features/inventory/utils/expiry';
@@ -147,7 +151,7 @@ test('orders map compact nested and flat product names without requiring a produ
     responseData = { count: 1, next: null, results: [{ ...base, items: [line] }] };
     const [order] = await api.ordersService.getAll();
     assert.equal(order.staffId, 7);
-    assert.deepEqual(order.items, [{ product: name, quantity: 2, unitPrice: 5, subtotal: 10 }]);
+    assert.deepEqual(order.items, [{ product: name, quantity: 2, unitPrice: 5, subtotal: 10, netAmount: null }]);
     assert.equal((await api.ordersService.getRecent())[0].items[0].product, name);
   }
   assert.equal(api.mapOrder({ ...base, transaction: { ...base.transaction, source_reference: 'imported' }, items: [] }).staffId, null);
@@ -480,8 +484,8 @@ test('forecast periods request separate evaluations and explain withheld estimat
 
 test('checkout sends decimal strings and refreshes reports after committing', async () => {
   responseData = { id: 7, subtotal: '43.00', total_amount: '43.00', change_due: '7.00' };
-  const result = await api.checkoutService.submit({ customerId: null, items: [{ productId: 1, quantity: 2.5 }], paymentMethod: 'Cash', discountType: 'fixed', discountValue: 1.5, amountTendered: 50 });
-  assert.deepEqual(JSON.parse(calls[0].data), { customer_id: null, items: [{ product_id: 1, quantity: '2.5' }], payment_method: 'cash', discount_type: 'fixed', discount_value: '1.5', amount_tendered: '50' });
+  const result = await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80', discount_type: 'fixed', discount_value: '1.50' }], payment_method: 'cash', amount_tendered: '50.00' });
+  assert.deepEqual(JSON.parse(calls[0].data), { customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80', discount_type: 'fixed', discount_value: '1.50' }], payment_method: 'cash', amount_tendered: '50.00' });
   assert.equal(calls[1].url, '/api/reports/refresh/');
   assert.equal(result.totalAmount, 43);
   assert.equal(result.changeDue, 7);
@@ -493,17 +497,17 @@ test('a report refresh failure never rejects an already completed checkout', asy
     if (config.url === '/api/reports/refresh/') throw new AxiosError('Offline');
     return { data: { id: 7, subtotal: '43', total_amount: '43', change_due: null }, status: 200, config, headers: {} };
   };
-  const result = await api.checkoutService.submit({ items: [{ productId: 1, quantity: 1 }], paymentMethod: 'GCash', discountType: 'none', discountValue: 0 });
+  const result = await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '1', unit_price: '43' }], payment_method: 'online' });
   assert.equal(result.id, 7);
-  assert.equal(JSON.parse(calls[0].data).amount_tendered, '0');
+  assert.equal(JSON.parse(calls[0].data).amount_tendered, undefined);
 });
 
 test('order creation rejects missing customers and refreshes only after a successful save', async () => {
   await assert.rejects(api.ordersService.createOrder({ customer_id: 0, items: [] }), { status: 400 });
   assert.equal(calls.length, 0);
-  await api.ordersService.createOrder({ customer_id: 3, items: [{ product_id: 2, quantity: 1.5 }] });
+  await api.ordersService.createOrder({ customer_id: 3, items: [{ product_id: 2, quantity: '1.5', unit_price: '20.00' }] });
   assert.equal(calls[0].url, '/sales/orders/');
-  assert.equal(JSON.parse(calls[0].data).items[0].quantity, '1.5');
+  assert.equal(JSON.parse(calls[0].data).items[0].quantity, '1.50');
   assert.equal(calls[1].url, '/api/reports/refresh/');
 });
 
@@ -563,7 +567,7 @@ test('auto-pagination subtracts measured chrome and floors partial rows', () => 
 
 test('nested low-stock rows are unwrapped for products and ingredients', async () => {
   responseData = [{ product: { id: 1, name: 'Milk', category: { name: 'Dairy' }, unit_price: '20.00' }, remaining_quantity: '2.50' }];
-  assert.deepEqual(await api.inventoryService.getLowStock(), [{ id: 1, name: 'Milk', cat: 'Dairy', price: 20, stock: 2.5, expiry: '', low: true }]);
+  assert.deepEqual(await api.inventoryService.getLowStock(), [{ id: 1, name: 'Milk', cat: 'Dairy', inventoryValue: null, stock: 2.5, expiry: '', low: true }]);
   responseData = [{ ingredient: { id: 2, name: 'Raw milk' }, remaining_quantity: '3.25' }];
   assert.deepEqual(await api.inventoryService.getLowStockIngredients(), [{ id: 2, name: 'Raw milk', total_stock: '3.25' }]);
 });
@@ -762,18 +766,19 @@ function receiptFixture(payment = 'cash', itemCount = 1) {
   return {
     receipt: 'TXN-000007', customer: payment === 'cash' ? 'Walk-in' : 'Customer', cashier: 'staff', payment: payment === 'cash' ? 'Cash' : 'Online', total: 25,
     transaction: { id: 7, created_at: '2026-09-15T01:00:00Z', payment_method: payment, subtotal: '30.00', discount_amount: '5.00', total_amount: '25.00', amount_tendered: '30.00', change_due: '5.00', delivery_status: null,
-      items: Array.from({ length: itemCount }, (_, id) => ({ id, quantity: '1.50', unit_price: '20.00', product_batch: { batch_number: 'PRD-0001', product: { name: 'Fresh Milk', variant: '1 L' } } })) },
+      items: Array.from({ length: itemCount }, (_, id) => ({ id, quantity: '1.50', unit_price: '20.00', subtotal: '30.00', discount_amount: '5.00', total_amount: '25.00', product_batch: { batch_number: 'PRD-0001', product: { name: 'Fresh Milk', variant: '1 L' } } })) },
   };
 }
 
 test('receipt details preserve itemized API values without inventing order metadata', () => {
   const receipt = api.receiptDetails(receiptFixture());
   assert.equal(receipt.title, 'Official Sales Receipt');
-  assert.equal(receipt.items[0].subtotal, 'PHP 30.00');
+  assert.equal(receipt.items[0].subtotal, 'PHP 25.00');
   assert.deepEqual(receipt.totals.at(-1), ['Change', 'PHP 5.00']);
   const voucher = api.receiptDetails(receiptFixture('online'));
-  assert.equal(voucher.title, 'Sales Invoice & Fulfillment Voucher');
-  for (const label of ['Order #', 'Fulfillment Type', 'Payment Status']) assert.equal(voucher.fields.find(field => field[0] === label)[1], 'Not provided');
+  assert.equal(voucher.title, 'Official Sales Receipt');
+  assert.equal(voucher.fields.find(field => field[0] === 'Payment Status')[1], 'Not recorded');
+  for (const label of ['Order #', 'Fulfillment Type']) assert.equal(voucher.fields.some(field => field[0] === label), false);
   assert.equal(api.receiptMoney(null), 'Not provided');
   assert.equal(api.receiptMoney('0'), 'PHP 0.00');
 });
@@ -811,7 +816,7 @@ test('POS catalog retains variants so different package sizes can be distinguish
   });
   const products = await api.inventoryService.getAll();
   assert.deepEqual(products.map(p => p.name), ['Fresh Milk 1000ml', 'Fresh Milk 300ml']);
-  assert.deepEqual(products.map(p => p.price), [138, 45]);
+  assert.ok(products.every(product => !('price' in product)), 'Catalog prices cannot seed selling prices');
 });
 
 
@@ -841,7 +846,7 @@ test('catalog expiry prefers a valid positive-stock batch over expired and empty
   ] });
   const rows = await api.inventoryService.getAll(true);
   assert.equal(rows[0].expiry, iso(9));
-  assert.equal(rows[0].price, 50);
+  assert.equal(rows[0].inventoryValue, null, 'Missing batch cost remains unknown');
   assert.equal(rows[0].stock, 19);
   assert.equal(rows[0].low, false);
   assert.equal(api.isExpiredProduct(rows[0]), false);
@@ -859,8 +864,8 @@ test('published forecast requires ready status and finite nonplaceholder values'
 });
 
 test('checkout retains authoritative returned prices for the saved receipt', async () => {
-  responseData = { id: 42, handled_by:{id:2,username:'Cashier'}, created_at:'2026-10-08T03:00:00Z', payment_method:'cash', subtotal:'60.00', discount_amount:'0.00', total_amount:'60.00', amount_tendered:'100.00', change_due:'40.00', items:[{ id:1, quantity:'1', unit_price:'60.00', product_name_snapshot:'Milk', product_batch:{batch_number:'B1',product:{name:'Milk'}} }] };
-  const result = await api.checkoutService.submit({ items:[{productId:385,quantity:1}],paymentMethod:'Cash',discountType:'none',discountValue:0,amountTendered:100 });
+  responseData = { id: 42, handled_by:{id:2,username:'Cashier'}, created_at:'2026-10-08T03:00:00Z', payment_method:'cash', subtotal:'60.00', discount_amount:'0.00', total_amount:'60.00', amount_tendered:'100.00', change_due:'40.00', items:[{ id:1, quantity:'1', unit_price:'60.00', subtotal:'60.00', total_amount:'60.00', discount_amount:'0.00', product_name_snapshot:'Milk', product_batch:{batch_number:'B1',product:{name:'Milk'}} }] };
+  const result = await api.checkoutService.submit({ customer_id: null, items:[{product_id:385,quantity:'1',unit_price:'60'}],payment_method:'cash',amount_tendered:'100' });
   const receipt = api.receiptDetails(api.toSale(result.transaction));
   assert.equal(receipt.items[0].price, 'PHP 60.00');
   assert.equal(receipt.items[0].subtotal, 'PHP 60.00');
@@ -1218,7 +1223,7 @@ test('a delayed inbox action cannot save synthetic acknowledgements into a diffe
   const pending = api.notificationsService.update('read', [item, { id: 'server', revision: 'a'.repeat(64) }]);
   await new Promise(resolve => setImmediate(resolve));
   api.setAccessToken(notificationToken(8));
-  complete(); await pending;
+  complete(); await assert.rejects(pending, { status: 409 });
   assert.equal(localStorage.getItem(syntheticStorageKey(7)), null);
   assert.equal(localStorage.getItem(syntheticStorageKey(8)), null);
   expiredFeedAdapter();
@@ -1334,4 +1339,176 @@ test('blocked token storage supports session requests and logout without revivin
     Object.defineProperty(global, 'localStorage', { configurable: true, writable: true, value: original });
     api.setAccessToken(null); api.setRefreshToken(null);
   }
+});
+
+
+test('manual pricing requires an explicit price per item, allows zero and rounds each line half up', () => {
+  const draft = { productId: 1, name: 'Milk', stock: 100, quantity: '3', unitPrice: '', discountType: 'none', discountValue: '0' };
+  for (const unitPrice of ['', 'NaN', 'Infinity', '-1', '1.001', '100000000']) assert.throws(() => api.priceLine({ ...draft, unitPrice }, false));
+  assert.equal(api.priceLine({ ...draft, unitPrice: '0' }, false).total, 0n);
+  assert.equal(api.priceLine({ ...draft, unitPrice: '2.99', discountType: 'percent', discountValue: '12.5' }, true).total, 785n);
+  assert.equal(api.priceLine({ ...draft, quantity: '2', unitPrice: '150', discountType: 'fixed', discountValue: '50' }, true).total, 25000n);
+  assert.equal(api.priceLine({ ...draft, unitPrice: '100', discountType: 'percent', discountValue: '50' }, false).discount, 0n);
+  assert.throws(() => api.priceSale([{ ...draft, unitPrice: '1' }, { ...draft, unitPrice: '1' }], true), /duplicate/i);
+});
+
+test('item prices and discounts are submitted without catalog or invoice-level price defaults', async () => {
+  responseData = { id: 1, subtotal: '10', total_amount: '9', change_due: '1' };
+  await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '1', unit_price: '10', discount_type: 'fixed', discount_value: '1' }], payment_method: 'cash', amount_tendered: '10', discount_type: 'fixed', discount_value: '999' });
+  const payload = JSON.parse(calls[0].data);
+  assert.equal('discount_type' in payload, false);
+  assert.equal('discount_value' in payload, false);
+  assert.deepEqual(payload.items[0], { product_id: 1, quantity: '1.00', unit_price: '10.00', discount_type: 'fixed', discount_value: '1.00' });
+  calls = [];
+  await assert.rejects(api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '1' }], payment_method: 'online' }), /price/i);
+  assert.equal(calls.length, 0, 'No request is sent when a selling price is missing');
+});
+
+test('product writes omit removed prices even from legacy callers and null batch costs stay null', async () => {
+  responseData = { id: 1 };
+  await api.inventoryService.updateProduct(1, { name: 'Milk', categoryId: 1, price: 100, unit_price: 100 });
+  assert.deepEqual(JSON.parse(calls[0].data), { name: 'Milk', category_id: 1 });
+  calls = [];
+  await api.inventoryService.createProduct({ name: 'Milk', categoryId: 1, stock: 2, expiry: '2099-01-01', price: 100 });
+  assert.equal('unit_price' in JSON.parse(calls[0].data), false);
+  assert.equal('unit_price' in JSON.parse(calls[1].data), false);
+  const product = { id: 1, name: 'Milk', unit: 'unit', is_active: true, category: { name: 'Dairy', is_active: true, is_visible_to_staff: true }, unit_price: '999' };
+  api.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data: config.url === '/inventory/product-batches/' ? [{ id: 2, product, status: 'available', remaining_quantity: '1', initial_quantity: '1', unit_price: null, expiration_date: '2000-01-01' }] : [] });
+  assert.equal((await api.inventoryService.getExpiredBatches())[0].unitCost, null, 'A removed product price is never a cost fallback');
+});
+
+test('encoding, payment and customer-history services use the documented methods and field names', async () => {
+  const payload = { request_id: '12640ab5-3b27-40d9-80f8-376bd456fbe9', transaction_date: '2026-10-01', customer_id: null, si_number: 'SI0608', note: '', payment_method: 'cash', payment_status: 'pending', amount_tendered: null, items: [{ product_id: 1, quantity: '1.00', unit_price: '12.00', discount_type: 'none', discount_value: '0.00' }] };
+  responseData = { id: 3, payment_status: 'pending' };
+  await api.encodingService.create(payload);
+  assert.equal(calls[0].url, '/sales/encoding/'); assert.equal(calls[0].method, 'post'); assert.deepEqual(JSON.parse(calls[0].data), payload);
+  await api.encodingService.updatePayment(3, { payment_status: 'paid', payment_method: 'cash', amount_tendered: '20.00' });
+  assert.equal(calls[1].url, '/sales/encoding/3/payment/'); assert.equal(calls[1].method, 'patch');
+  assert.deepEqual(Object.keys(JSON.parse(calls[1].data)).sort(), ['amount_tendered', 'payment_method', 'payment_status']);
+  responseData = { count: 0, next: null, previous: null, results: [] };
+  const history = await api.customersService.getTransactions(42, 2, true);
+  assert.equal(calls[2].url, '/sales/customers/42/transactions/');
+  assert.deepEqual(calls[2].params, { page: 2, page_size: 10, include_voided: true }); assert.equal(history.count, 0);
+});
+
+test('encoding and payment writes invalidate every dependent frontend cache group', async () => {
+  for (const path of ['/sales/encoding/', '/sales/encoding/3/payment/']) {
+    const groups = ['sales', 'orders', 'customers', 'inventory', 'dashboard', 'reports'];
+    groups.forEach(group => api.writeDataCache(`handoff-${group}`, [1], [group]));
+    await api.http.request({ method: path.endsWith('/payment/') ? 'patch' : 'post', url: path, data: {} });
+    groups.forEach(group => assert.equal(api.readDataCache(`handoff-${group}`).updatedAt, 0, group));
+  }
+});
+
+test('stock outflows preserve reason, batch kind and explicit cost and support date filters', async () => {
+  for (const adjustment_type of ['spoilage', 'complimentary', 'free_taste']) {
+    await api.outflowsService.create({ ingredient_batch_id: 2, adjustment_type, quantity: '2.00', unit_cost: '0.00', reason: 'Tasting event' });
+    const payload = JSON.parse(calls.at(-1).data);
+    assert.equal(calls.at(-1).url, '/inventory/stock-adjustments/');
+    assert.equal(payload.adjustment_type, adjustment_type); assert.equal(payload.ingredient_batch_id, 2);
+    assert.equal('product_batch_id' in payload, false); assert.equal(payload.unit_cost, '0.00');
+  }
+  responseData = [];
+  await api.outflowsService.list({ adjustment_type: 'free_taste', start_date: '2026-10-01', end_date: '2026-10-20' });
+  assert.deepEqual(calls.at(-1).params, { adjustment_type: 'free_taste', start_date: '2026-10-01', end_date: '2026-10-20' });
+});
+
+test('receipts group FEFO fragments by original line and use recorded net totals without repeating fixed discounts', () => {
+  const sale = receiptFixture();
+  sale.transaction.items = [
+    { ...sale.transaction.items[0], id: 1, line_number: 1, quantity: '1', subtotal: '100', discount_amount: '10', total_amount: '90' },
+    { ...sale.transaction.items[0], id: 2, line_number: 1, quantity: '2', subtotal: '200', discount_amount: '20', total_amount: '180' },
+  ];
+  const receipt = api.receiptDetails(sale);
+  assert.equal(receipt.items.length, 1); assert.equal(receipt.items[0].quantity, '3');
+  assert.equal(receipt.items[0].gross, 'PHP 300.00'); assert.equal(receipt.items[0].discount, 'PHP 30.00'); assert.equal(receipt.items[0].subtotal, 'PHP 270.00');
+  sale.transaction.items[0].total_amount = null;
+  assert.equal(api.receiptDetails(sale).items[0].subtotal, 'Not provided', 'Missing historical net totals are not replaced with gross amounts');
+});
+
+test('missing and duplicate SI numbers retain recorded display values with numeric transaction identity', () => {
+  const base = { handled_by: { id: 7, username: 'Staff' }, created_at: '2026-10-01T04:00:00Z', payment_method: 'cash', total_amount: '10', source_invoice_number: '' };
+  assert.equal(api.toSale({ ...base, id: 1, transaction_number: null }).receipt, 'Not recorded');
+  assert.equal(api.toSale({ ...base, id: 2, transaction_number: 'SI0608' }).receipt, 'SI0608');
+});
+
+for (const replaceSession of [false, true]) {
+  test(`a late protected 401 after ${replaceSession ? 'another login' : 'logout'} cannot clear or expire the current session`, async () => {
+    api.setAccessToken('old-access'); api.setRefreshToken('old-refresh');
+    let reject, unauthorized = 0, refreshes = 0;
+    const remove = api.onUnauthorized(() => unauthorized++);
+    api.http.defaults.adapter = config => {
+      if (config.url === '/accounts/refresh/') refreshes++;
+      return new Promise((_, fail) => { reject = () => fail(new AxiosError('Expired', undefined, config, undefined, { status: 401, data: {}, config, headers: {} })); });
+    };
+    const request = api.http.get('/sales/transactions/');
+    await new Promise(resolve => setImmediate(resolve));
+    api.setAccessToken(null); api.setRefreshToken(null);
+    if (replaceSession) { api.setAccessToken('new-access'); api.setRefreshToken('new-refresh'); }
+    reject(); await assert.rejects(request);
+    assert.equal(unauthorized, 0); assert.equal(refreshes, 0);
+    assert.equal(api.getAccessToken(), replaceSession ? 'new-access' : null);
+    remove();
+  });
+}
+
+test('a refresh that finishes after logout cannot restore tokens or emit session-expired notifications', async () => {
+  api.setAccessToken('old'); api.setRefreshToken('refresh');
+  let completeRefresh, unauthorized = 0;
+  const remove = api.onUnauthorized(() => unauthorized++);
+  api.http.defaults.adapter = config => {
+    if (config.url === '/accounts/refresh/') return new Promise(resolve => { completeRefresh = () => resolve({ status: 200, data: { access: 'late-access', refresh: 'late-refresh' }, config, headers: {} }); });
+    return Promise.reject(new AxiosError('Expired', undefined, config, undefined, { status: 401, data: {}, config, headers: {} }));
+  };
+  const request = api.http.get('/sales/transactions/');
+  await new Promise(resolve => setImmediate(resolve));
+  api.setAccessToken(null); api.setRefreshToken(null);
+  completeRefresh(); await assert.rejects(request);
+  assert.equal(api.getAccessToken(), null); assert.equal(api.getRefreshToken(), null); assert.equal(unauthorized, 0); remove();
+});
+
+
+test('optional inventory costs are written only to batches and explicit zero is preserved', async () => {
+  responseData = { id: 7 };
+  await api.inventoryService.createProduct({ name: 'Milk', categoryId: 1, stock: 1, expiry: '2099-01-01', batchCost: '0' });
+  assert.equal('unit_price' in JSON.parse(calls[0].data), false);
+  assert.equal(JSON.parse(calls[1].data).unit_price, 0);
+  calls = [];
+  await api.inventoryService.restockProduct(7, { quantity: 2, expirationDate: '2099-01-01', unitCost: '' });
+  assert.equal('unit_price' in JSON.parse(calls[0].data), false);
+  await assert.rejects(api.inventoryService.createProduct({ name: 'Milk', categoryId: 1, stock: 1, expiry: '2099-01-01', batchCost: '-1' }), /cost/i);
+  assert.equal(calls.length, 1, 'Invalid inventory costs are rejected before product creation');
+});
+
+test('display currency remains a peso sign rather than an encoding placeholder', () => {
+  assert.equal(api.formatCents(217000n), '\u20b12,170.00');
+});
+
+
+test('request session identity is captured synchronously before immediate logout', async () => {
+  api.setAccessToken('old'); api.setRefreshToken('refresh');
+  const origin = api.getSessionGeneration();
+  let captured, complete;
+  api.http.defaults.adapter = config => {
+    captured = config.sessionGeneration;
+    return new Promise(resolve => { complete = () => resolve({ status: 200, data: [], config, headers: {} }); });
+  };
+  const request = api.http.get('/sales/transactions/');
+  api.setAccessToken(null); api.setRefreshToken(null);
+  assert.equal(captured, origin);
+  complete(); await assert.rejects(request, { status: 409 });
+});
+
+
+test('new stock-changing flows refresh mounted alert feeds only after successful writes', async () => {
+  let updates = 0;
+  const listener = () => updates++;
+  window.addEventListener(api.INVENTORY_UPDATED, listener);
+  await api.http.post('/sales/encoding/', {});
+  await api.http.post('/inventory/stock-adjustments/', {});
+  assert.equal(updates, 2);
+  responseStatus = 400;
+  await assert.rejects(api.http.post('/inventory/stock-adjustments/', {}));
+  assert.equal(updates, 2);
+  window.removeEventListener(api.INVENTORY_UPDATED, listener);
 });

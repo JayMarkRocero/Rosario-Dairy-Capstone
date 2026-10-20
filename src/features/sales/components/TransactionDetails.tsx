@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toSale } from "@/features/sales/api/sales.service";
 import { PaymentUpdateControl } from "./PaymentUpdateControl";
 import type { Sale } from "@/features/sales/api/sales.service";
@@ -10,6 +10,7 @@ export function TransactionDetails({ sale, onClose }: {
   sale: Sale | null; onClose: () => void;
 }) {
   const [updated, setUpdated] = useState<Sale | null>(null);
+  useEffect(() => setUpdated(null), [sale]);
   if (!sale) return null;
   const current = updated?.transaction.id === sale.transaction.id ? updated : sale;
   const receipt = receiptDetails(current);

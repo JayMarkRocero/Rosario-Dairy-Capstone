@@ -33,6 +33,7 @@ export function priceLine(line: SaleLineDraft, canDiscount: boolean) {
 export function priceSale(lines: SaleLineDraft[], canDiscount: boolean) {
   if (!lines.length) throw new Error("Add at least one product.");
   if (new Set(lines.map(line => line.productId)).size !== lines.length) throw new Error("Combine duplicate products into one line.");
+  if (lines.some(line => !Number.isSafeInteger(line.productId) || line.productId <= 0)) throw new Error("Select valid products.");
   const priced = lines.map(line => priceLine(line, canDiscount));
   const subtotal = priced.reduce((sum, line) => sum + line.gross, 0n);
   const discount = priced.reduce((sum, line) => sum + line.discount, 0n);
@@ -43,7 +44,7 @@ export function validateTender(value: string, total: bigint) {
   if (tender < total) throw new Error("Amount tendered must cover the total.");
   return decimalString(tender);
 }
-export const formatCents = (value: bigint) => `?${decimalString(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+export const formatCents = (value: bigint) => `₱${decimalString(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 export function businessDate(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
   const get = (type: string) => parts.find(part => part.type === type)!.value;
@@ -54,4 +55,12 @@ export function normalizeSaleItems(items: CheckoutItemPayload[]): CheckoutItemPa
   return priceSale(items.map(item => ({ productId: item.product_id, name: `Product ${item.product_id}`, stock: Infinity,
     quantity: String(item.quantity), unitPrice: item.unit_price == null ? "" : String(item.unit_price),
     discountType: item.discount_type ?? "none", discountValue: String(item.discount_value ?? "0") })), true).items;
+}
+
+export function newEncodingRequestId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

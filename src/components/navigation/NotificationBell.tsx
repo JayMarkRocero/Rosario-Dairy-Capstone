@@ -1,3 +1,4 @@
+import { INVENTORY_UPDATED } from '@/lib/dataCache';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Bell, AlertTriangle, Package, ClipboardList, CheckCircle, Check, X, RotateCcw } from 'lucide-react';
 import { C } from '@/styles/tokens/colors';
@@ -41,11 +42,13 @@ export function NotificationBell({ staff = false }: { staff?: boolean } = {}) {
     const update = () => { void refresh(); };
     window.addEventListener(SETTINGS_UPDATED, update);
     window.addEventListener(REPORTS_UPDATED, update);
+    window.addEventListener(INVENTORY_UPDATED, update);
     window.addEventListener('focus', update);
     return () => {
       mounted.current = false; generation.current += 1;
       window.removeEventListener(SETTINGS_UPDATED, update);
       window.removeEventListener(REPORTS_UPDATED, update);
+      window.removeEventListener(INVENTORY_UPDATED, update);
       window.removeEventListener('focus', update);
     };
   }, [refresh]);

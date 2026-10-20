@@ -55,7 +55,7 @@ export function StaffSalesHistory() {
 
   const columns: Column<Sale>[] = [
     { key:"receipt", header:"SI Number", align:"left", width:"18%",
-      render: s => <span className="font-mono text-xs whitespace-nowrap" style={{ color: C.muted }}>{s.receipt}</span> },
+      render: s => <span className="block truncate font-mono text-xs whitespace-nowrap" style={{ color: C.muted }} title={s.receipt}>{s.receipt}</span> },
     { key:"customer", header:"Customer", align:"left", width:"26%",
       render: s => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{s.customer}</span> },
     { key:"date", header:"Date", align:"center", width:"18%",

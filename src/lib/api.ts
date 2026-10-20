@@ -1,5 +1,5 @@
 import axios, { AxiosError } from "axios";
-import { clearDataCache, invalidateDataCache } from "./dataCache";
+import { clearDataCache, invalidateDataCache, INVENTORY_UPDATED } from "./dataCache";
 
 const REFRESH_TOKEN_KEY = "rosario_refresh_token";
 
@@ -125,7 +125,7 @@ axiosInstance.interceptors.request.use((config) => {
   if (token && !config.headers.Authorization && !PUBLIC_AUTH_PATHS.includes(config.url ?? "")) config.headers.Authorization = `Bearer ${token}`;
 
   return config;
-});
+}, undefined, { synchronous: true });
 
 function extractErrorMessage(data: unknown, fallback: string): string {
   if (!data || typeof data !== "object") return fallback;
@@ -168,6 +168,7 @@ axiosInstance.interceptors.response.use(
       else if (path.startsWith("/sales/customers/")) invalidateDataCache(["customers", "reports"]);
       else if (path.startsWith("/accounts/users/") || ["/accounts/register/", "/accounts/user/", "/accounts/admin-reset-password/"].includes(path)) invalidateDataCache(["users"]);
       else if (path.startsWith("/settings/")) invalidateDataCache(["settings", "inventory", "dashboard", "reports"]);
+      if (typeof window !== "undefined" && (path.startsWith("/sales/encoding/") || path.startsWith("/inventory/stock-adjustments/"))) window.dispatchEvent(new Event(INVENTORY_UPDATED));
     }
     return response;
   },

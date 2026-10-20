@@ -30,7 +30,7 @@ export function receiptDetails(sale: Sale) {
   return {
     title: transaction.source_reference ? "Historical Sales Record" : transaction.is_manually_encoded ? "Encoded Sales Record" : "Official Sales Receipt",
     note: transaction.source_note || "", fields,
-    items: [...groups.entries()].map(([id, items]) => {
+    items: [...groups.entries()].sort(([, a], [, b]) => a[0].line_number == null || b[0].line_number == null ? 0 : a[0].line_number - b[0].line_number).map(([id, items]) => {
       const item = items[0];
       const name = item.product_name_snapshot || item.product_batch.product.name;
       const variant = item.product_name_snapshot != null ? item.product_variant_snapshot : item.product_batch.product.variant;

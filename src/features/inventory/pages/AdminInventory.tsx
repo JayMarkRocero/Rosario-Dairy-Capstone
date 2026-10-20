@@ -27,9 +27,9 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 interface FormState {
-  name: string; cat: string; stock: string; expiry: string;
+  name: string; cat: string; stock: string; expiry: string; batchCost: string;
 }
-const EMPTY_FORM: FormState = { name:"", cat:"", stock:"", expiry:"" };
+const EMPTY_FORM: FormState = { name:"", cat:"", stock:"", expiry:"", batchCost:"" };
 const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -74,6 +74,10 @@ function ProductForm({ form, onChange, categories, mode }: {
         </select>
       </Field>
       {mode === "add" && <>
+        <Field label="Initial batch inventory cost (optional)">
+          <input aria-label="Initial batch inventory cost" className={inputClass} style={inputStyle} type="number" min="0" step="0.01" value={form.batchCost} onChange={set("batchCost")} placeholder="Leave blank if unknown"/>
+          <p className="mt-1 text-xs text-slate-500">Inventory cost only. Selling prices are entered separately on every sale.</p>
+        </Field>
         <Field label="Stock Quantity">
           <input className={inputClass} style={inputStyle} type="number" min="0.01" step="0.01"
             value={form.stock} onChange={set("stock")} placeholder="0"/>
@@ -169,7 +173,7 @@ export function AdminInventory() {
   const [viewOpen,    setViewOpen]   = useState(false);
   const [restockOpen, setRestockOpen] = useState(false);
   const [restockQuery, setRestockQuery] = useState("");
-  const [restockForm, setRestockForm] = useState({ quantity:"", expiry:"" });
+  const [restockForm, setRestockForm] = useState({ quantity:"", expiry:"", unitCost:"" });
   const [selected,    setSelected]   = useState<InventoryItem | null>(null);
   const [form,        setForm]       = useState<FormState>(EMPTY_FORM);
   const [loading,     setLoading]    = useState(false);
@@ -211,7 +215,7 @@ export function AdminInventory() {
   const openEdit = (p: InventoryItem) => {
     setSelected(p);
     const matchedCat = categories.find(c => c.name === p.cat);
-    setForm({ name:p.name, cat: matchedCat ? String(matchedCat.id) : "", stock:String(p.stock), expiry: p.expiry || "" });
+    setForm({ name:p.name, cat: matchedCat ? String(matchedCat.id) : "", stock:String(p.stock), expiry: p.expiry || "", batchCost:"" });
     setEditOpen(true);
   };
   const openDelete = (p: InventoryItem) => { setSelected(p); setDeleteOpen(true); };
@@ -219,7 +223,7 @@ export function AdminInventory() {
   const openRestock = () => {
     setSelected(null);
     setRestockQuery("");
-    setRestockForm({ quantity:"", expiry:"" });
+    setRestockForm({ quantity:"", expiry:"", unitCost:"" });
     setRestockOpen(true);
   };
 
@@ -241,7 +245,7 @@ export function AdminInventory() {
     submissionLock.current = true;
     setLoading(true);
     try {
-      await inventoryService.restockProduct(selected.id, { quantity, expirationDate: restockForm.expiry });
+      await inventoryService.restockProduct(selected.id, { quantity, expirationDate: restockForm.expiry, unitCost: restockForm.unitCost });
       toast.success(`${selected.name} restocked.`);
       setRestockOpen(false);
       loadItems();
@@ -272,6 +276,7 @@ export function AdminInventory() {
         categoryId: Number(form.cat),
         stock: Number(form.stock),
         expiry: form.expiry,
+        batchCost: form.batchCost,
       })
         .then(() => {
           toast.success("Product added successfully!");
@@ -500,6 +505,7 @@ export function AdminInventory() {
               </div>}
             </div>
           </Field>
+          <Field label="Batch inventory cost (optional)"><input aria-label="Restock batch inventory cost" className={inputClass} style={inputStyle} type="number" min="0" step="0.01" placeholder="Leave blank if unknown" value={restockForm.unitCost} onChange={event => setRestockForm({...restockForm, unitCost:event.target.value})}/></Field>
           {selected && <div className="text-xs" style={{color:C.muted}}>{selected.cat} · {selected.stock} currently in stock</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Quantity to add"><input className={inputClass} style={inputStyle} type="number" min="0.01" step="0.01"

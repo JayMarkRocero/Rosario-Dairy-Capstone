@@ -43,13 +43,14 @@ export interface OrderListLine extends Omit<OrderItem, "product"> {
 
 export interface OrderListResponse extends Omit<Order, "items" | "transaction"> {
   items: OrderListLine[];
-  transaction: Pick<DjangoTransaction, "transaction_number" | "id" | "subtotal" | "discount_amount" | "total_amount" |
+  transaction: Pick<DjangoTransaction, "transaction_number" | "transaction_date" | "payment_status" | "payment_updated_at" | "payment_updated_by" | "encoded_at" | "is_manually_encoded" | "encoding_request_id" | "id" | "subtotal" | "discount_amount" | "total_amount" |
     "payment_method" | "amount_tendered" | "change_due" | "source_reference" | "source_invoice_number">;
 }
 
 export type DisplayOrderStatus = "Fulfilled" | "Cancelled";
 
 export interface OrderItemDisplay {
+  netAmount?: number | null;
   product: string;
   quantity: number;
   unitPrice: number;
@@ -72,6 +73,7 @@ export interface OrderListItem {
   subtotal: number;
   discountAmount: number;
   paymentMethod: string;
+  paymentStatus?: "paid" | "pending" | "unknown";
   amountTendered: number | null;
   changeDue: number | null;
   items: OrderItemDisplay[];

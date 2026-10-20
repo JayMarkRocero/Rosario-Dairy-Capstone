@@ -33,7 +33,7 @@ export function AdminSalesHistory() {
 
   const columns: Column<Sale>[] = [
     { key:"receipt", header:"SI Number", align:"left", width:"15%", sortKey: r => r.receipt,
-      render: r => <span className="font-mono text-xs whitespace-nowrap" style={{ color: C.muted }}>{r.receipt}</span> },
+      render: r => <span className="block truncate font-mono text-xs whitespace-nowrap" style={{ color: C.muted }} title={r.receipt}>{r.receipt}</span> },
     { key:"customer", header:"Customer", align:"left", width:"22%", sortKey: r => r.customer,
       render: r => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{r.customer}</span> },
     { key:"cashier", header:"Cashier", align:"center", width:"14%", sortKey: r => r.cashier,

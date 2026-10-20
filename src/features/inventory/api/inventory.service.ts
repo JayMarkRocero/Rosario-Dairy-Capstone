@@ -1,3 +1,4 @@
+import { businessDate, decimalUnits } from "@/features/sales/utils/manualPricing";
 import { dataCacheEpoch, fetchDataCache, invalidateDataCache } from "@/lib/dataCache";
 import { REPORTS_UPDATED } from "@/features/reports/api/reports.service";
 import http, {
@@ -273,7 +274,9 @@ export const inventoryService = {
     categoryId: number;
     stock: number;
     expiry: string;
+    batchCost?: string;
   }): Promise<void> => {
+    if (input.batchCost?.trim()) decimalUnits(input.batchCost, "Batch inventory cost");
     const productPayload: CreateProductPayload = {
       name: input.name,
       variant: null,
@@ -287,7 +290,8 @@ export const inventoryService = {
       product_id: product.id,
       quantity: input.stock,
       expiration_date: input.expiry,
-      date_received: new Date().toISOString().slice(0, 10),
+      date_received: businessDate(),
+      ...(input.batchCost?.trim() ? { unit_price: Number(input.batchCost) } : {}),
     };
     await http.post<DjangoProductBatch>("/inventory/product-batches/", batchPayload);
   },
@@ -354,11 +358,13 @@ export const inventoryService = {
     return data;
   },
 
-  restockProduct: async (productId: number, input: { quantity: number; expirationDate: string }): Promise<DjangoProductBatch> => {
+  restockProduct: async (productId: number, input: { quantity: number; expirationDate: string; unitCost?: string }): Promise<DjangoProductBatch> => {
+    if (input.unitCost?.trim()) decimalUnits(input.unitCost, "Batch inventory cost");
     const { data } = await http.post<DjangoProductBatch>("/inventory/product-batches/", {
       product_id: productId,
       quantity: input.quantity,
       expiration_date: input.expirationDate,
+      ...(input.unitCost?.trim() ? { unit_price: Number(input.unitCost) } : {}),
     });
     return data;
   },

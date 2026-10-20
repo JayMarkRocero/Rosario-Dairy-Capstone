@@ -1,4 +1,4 @@
-import { normalizeSaleItems } from "@/features/sales/utils/manualPricing";
+import { businessDate, normalizeSaleItems } from "@/features/sales/utils/manualPricing";
 import { reportsService } from "@/features/reports/api/reports.service";
 import http, { ApiError, getAllPages, type PaginatedResponse } from "@/lib/api";
 import type { CreateOrderPayload, Order, OrderListLine, OrderListResponse, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
@@ -59,11 +59,12 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
     status: toDisplayStatus(o.status),
     staff: o.transaction.source_reference ? "Not recorded" : o.handled_by.username,
     staffId: o.transaction.source_reference ? null : o.handled_by.id,
-    date: o.created_at.slice(0, 10),
+    date: o.transaction.transaction_date || (Number.isFinite(new Date(o.created_at).getTime()) ? businessDate(new Date(o.created_at)) : ""),
     total,
     subtotal: parseFloat(o.transaction.subtotal),
     discountAmount: parseFloat(o.transaction.discount_amount),
     paymentMethod: o.transaction.payment_method,
+    paymentStatus: o.transaction.payment_status,
     amountTendered: o.transaction.amount_tendered ? parseFloat(o.transaction.amount_tendered) : null,
     changeDue: o.transaction.change_due ? parseFloat(o.transaction.change_due) : null,
     warning: o.warning,
@@ -71,7 +72,8 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
       product: orderProductName(item),
       quantity: parseFloat(item.quantity),
       unitPrice: parseFloat(item.unit_price),
-      subtotal: Number(item.total_amount ?? item.subtotal),
+      subtotal: Number(item.subtotal),
+      netAmount: item.total_amount == null ? null : Number(item.total_amount),
     })),
   };
 }

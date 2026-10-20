@@ -1,3 +1,4 @@
+import { PaymentStatusBadge } from "@/features/sales/components/PaymentStatusBadge";
 import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";
 import { OrdersTable } from "@/features/orders/components/OrdersTable";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
@@ -50,7 +51,7 @@ export function AdminOrders() {
   };
 
   const columns: Column<OrderListItem>[] = [
-    { key:"id", header:"Order / Invoice", align:"left", width:"12%", render:o=><span className="font-mono text-xs" style={{color:C.muted}}>{o.invoiceNumber || `#${o.id}`}</span> },
+    { key:"id", header:"SI Number", align:"left", width:"12%", render:o=><span className="block truncate font-mono text-xs" title={o.invoiceNumber || "Not recorded"} style={{color:C.muted}}>{o.invoiceNumber || "Not recorded"}</span> },
     { key:"customer", header:"Customer", align:"left", width:"22%", sortKey:o=>o.customer, render:o=><span className="font-medium text-sm">{o.customer}</span> },
     { key:"status", header:"Status", align:"center", width:"14%", render:o=><StatusBadge status={o.status}/> },
     { key:"staff", header:"Staff", align:"center", width:"14%", render:o=><span className="text-xs" style={{color:C.muted}}>{o.staff}</span> },
@@ -76,9 +77,9 @@ export function AdminOrders() {
       footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn>{selected?.status==="Fulfilled"&&!selected.isHistorical&&<Btn variant="secondary" onClick={()=>setCancelOpen(true)}>Cancel Order</Btn>}</>}>
       {selected&&<div className="space-y-5">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>
-        <StatusBadge status={selected.status}/>
+        <StatusBadge status={selected.status}/> <PaymentStatusBadge status={selected.paymentStatus}/>
         {selected.warning&&<div className="p-3 rounded-xl text-sm" style={{backgroundColor:C.orange+"12",color:C.orange}}>{selected.warning}</div>}
-        <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>{selected.items.map((item,i)=><div key={i} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:justify-between sm:gap-3"><span className="min-w-0 break-words">{item.product}</span><span className="shrink-0" style={{color:C.muted}}>{item.quantity} pcs — ₱{item.subtotal.toLocaleString()}</span></div>)}</div>
+        <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>{selected.items.map((item,i)=><div key={i} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:justify-between sm:gap-3"><span className="min-w-0 break-words">{item.product}</span><span className="shrink-0" style={{color:C.muted}}>{item.quantity} pcs — {item.netAmount == null ? `Gross PHP ${item.subtotal.toLocaleString()} (net not recorded)` : `Net PHP ${item.netAmount.toLocaleString()}`}</span></div>)}</div>
         <div className="space-y-1 p-4 rounded-2xl text-sm" style={{backgroundColor:C.navy+"08"}}><div className="flex justify-between"><span>Subtotal</span><span>₱{selected.subtotal.toLocaleString()}</span></div><div className="flex justify-between"><span>Discount</span><span>−₱{selected.discountAmount.toLocaleString()}</span></div><div className="flex justify-between font-bold text-base"><span>Total</span><span style={{color:C.blue}}>₱{selected.total.toLocaleString()}</span></div><div className="text-xs" style={{color:C.muted}}>Payment: {selected.paymentMethod}</div></div>
       </div>}
     </Drawer>

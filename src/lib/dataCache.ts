@@ -1,3 +1,4 @@
+export const INVENTORY_UPDATED = "rosario:inventory-updated";
 export const DEFAULT_STALE_TIME = 3 * 60 * 1000;
 export type CacheGroup = "dashboard" | "orders" | "sales" | "inventory" | "categories" | "customers" | "reports" | "users" | "settings";
 export interface CacheSnapshot<T> { data?: T; error?: unknown; updatedAt: number; }
