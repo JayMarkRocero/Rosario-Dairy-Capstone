@@ -1,3 +1,4 @@
+import { InventoryOutflows } from "@/features/inventory/components/InventoryOutflows";
 import { ProductTable } from "@/features/inventory/components/ProductTable";
 import { TableCard } from "@/components/data-display/TableCard";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
@@ -26,9 +27,9 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 interface FormState {
-  name: string; cat: string; price: string; stock: string; expiry: string;
+  name: string; cat: string; stock: string; expiry: string;
 }
-const EMPTY_FORM: FormState = { name:"", cat:"", price:"", stock:"", expiry:"" };
+const EMPTY_FORM: FormState = { name:"", cat:"", stock:"", expiry:"" };
 const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -72,10 +73,6 @@ function ProductForm({ form, onChange, categories, mode }: {
           {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </Field>
-      <Field label="Unit Price (₱)">
-        <input className={inputClass} style={inputStyle} type="number" value={form.price}
-          onChange={set("price")} placeholder="0.00"/>
-      </Field>
       {mode === "add" && <>
         <Field label="Stock Quantity">
           <input className={inputClass} style={inputStyle} type="number" min="0.01" step="0.01"
@@ -103,7 +100,6 @@ function ProductDetail({ p }: { p: InventoryItem }) {
     { label:"Product ID",    value:`PRD-${String(p.id).padStart(3,"0")}` },
     { label:"Name",          value: p.name     },
     { label:"Category",      value: p.cat      },
-    { label:"Unit Price",    value:`₱${p.price}` },
     { label:"Stock Qty",     value: p.stock    },
     { label:"Expiry Date",   value: p.expiry   },
     { label:"FEFO Status",   value: statusLabel },
@@ -207,7 +203,7 @@ export function AdminInventory() {
     const lowStock = items.filter(i => getInventoryWarnings(i).lowStock).length;
     const expired = items.filter(i => getStatus(i) === "Expired").length;
     const nearExpiry = items.filter(i => getInventoryWarnings(i).nearExpiry).length;
-    const totalValue = items.reduce((sum, i) => sum + (i.price * i.stock), 0);
+    const totalValue = items.some(i => i.inventoryValue == null) ? null : items.reduce((sum, i) => sum + i.inventoryValue!, 0);
 
     return { totalProducts, lowStock, expired, nearExpiry, totalValue };
   }, [items]);
@@ -215,7 +211,7 @@ export function AdminInventory() {
   const openEdit = (p: InventoryItem) => {
     setSelected(p);
     const matchedCat = categories.find(c => c.name === p.cat);
-    setForm({ name:p.name, cat: matchedCat ? String(matchedCat.id) : "", price:String(p.price), stock:String(p.stock), expiry: p.expiry || "" });
+    setForm({ name:p.name, cat: matchedCat ? String(matchedCat.id) : "", stock:String(p.stock), expiry: p.expiry || "" });
     setEditOpen(true);
   };
   const openDelete = (p: InventoryItem) => { setSelected(p); setDeleteOpen(true); };
@@ -257,11 +253,11 @@ export function AdminInventory() {
   };
 
   const handleSave = (mode: "add"|"edit") => {
-    if (!form.name.trim() || !form.price || !form.cat || (mode === "add" && !form.stock)) {
+    if (!form.name.trim() || !form.cat || (mode === "add" && !form.stock)) {
       toast.error("Please fill in all required fields."); return;
     }
-    if (!Number.isFinite(Number(form.price)) || Number(form.price) < 0 || !Number.isInteger(Number(form.cat)) || Number(form.cat) <= 0) {
-      toast.error("Enter a valid price and category."); return;
+    if (!Number.isInteger(Number(form.cat)) || Number(form.cat) <= 0) {
+      toast.error("Select a valid category."); return;
     }
     if (mode === "add" && (!Number.isFinite(Number(form.stock)) || Number(form.stock) <= 0 || calendarDaysUntilExpiry(form.expiry) == null || form.expiry < today())) {
       toast.error("Enter positive stock and a valid expiry date."); return;
@@ -274,7 +270,6 @@ export function AdminInventory() {
       inventoryService.createProduct({
         name: form.name,
         categoryId: Number(form.cat),
-        price: Number(form.price),
         stock: Number(form.stock),
         expiry: form.expiry,
       })
@@ -291,7 +286,6 @@ export function AdminInventory() {
       inventoryService.updateProduct(selected.id, {
         name: form.name,
         categoryId: Number(form.cat),
-        price: Number(form.price),
       })
         .then(() => {
           toast.success("Product updated successfully!");
@@ -347,11 +341,6 @@ export function AdminInventory() {
         <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1"
           >{r.cat}</span>
       ),
-    },
-    {
-      key:"price", header:"Price", align:"center", width:"11%",
-      sortKey: r => r.price,
-      render: r => <span className="font-medium text-sm" style={{color:C.text}}>₱{r.price}</span>,
     },
     {
       key:"stock", header:"Stock", align:"center", width:"10%",
@@ -422,6 +411,7 @@ export function AdminInventory() {
           <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Expiry-Based Inventory</h2>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 [&_button]:w-full md:mt-0 md:flex md:shrink-0 md:[&_button]:w-auto">
+          <InventoryOutflows/>
           <div>
             <Btn variant="primary" size="sm" icon={<PackagePlus size={13}/>} fullWidth onClick={openRestock}>
               Restock
@@ -442,7 +432,7 @@ export function AdminInventory() {
           { label:"Low Stock",       value:String(stats.lowStock),      color:C.orange },
           { label:"Near Expiry",     value:String(stats.nearExpiry),    color:"#f59e0b" },
           { label:"Expired",         value:String(stats.expired),       color:C.red    },
-          { label:"Total Value",     value:`₱${stats.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, color:C.green  },
+          { label:"Total Value",     value:stats.totalValue == null ? "Cost not recorded" : `₱${stats.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, color:C.green  },
         ].map(s => (
           <div key={s.label} className={s.label === "Total Value" ? "min-w-0 col-span-2 sm:col-span-1" : "min-w-0"}>
             <SummaryCard compact mobileCompact label={s.label} value={query.error ? "Unavailable" : s.value} color={s.color} />

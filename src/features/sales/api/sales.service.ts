@@ -33,7 +33,7 @@ function manilaDate(timestamp: string): string {
 
 export function toSale(t: DjangoTransaction): Sale {
   return {
-    receipt: t.source_invoice_number || `TXN-${String(t.id).padStart(6, "0")}`,
+    receipt: (t.transaction_number ?? t.source_invoice_number) || "Not recorded",
     customer: transactionCustomerName(t),
     cashier: t.source_reference ? "Not recorded" : t.handled_by.username,
     date: manilaDate(t.created_at),
@@ -49,10 +49,10 @@ export const salesService = {
     const sales = await salesService.getAll({ handledBy: userId });
     return sales.filter(sale => sale.transaction.handled_by.id === userId);
   },
-  getAll: async (filters?: { startDate?: string; endDate?: string; handledBy?: number }): Promise<Sale[]> => {
+  getAll: async (filters?: { startDate?: string; endDate?: string; handledBy?: number; customerId?: number; paymentStatus?: "pending" | "paid" | "unknown"; includeVoided?: boolean }): Promise<Sale[]> => {
     const transactions = await getAllPages<DjangoTransaction>("/sales/transactions/", {
       start_date: filters?.startDate, end_date: filters?.endDate,
-      handled_by: filters?.handledBy,
+      handled_by: filters?.handledBy, customer_id: filters?.customerId, payment_status: filters?.paymentStatus, include_voided: filters?.includeVoided,
       page_size: 200,
     });
 

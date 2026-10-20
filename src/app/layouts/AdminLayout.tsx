@@ -1,3 +1,4 @@
+import { SalesEncoding } from "@/features/sales/pages/SalesEncoding";
 import { useState } from "react";
 import { TopBar } from "@/components/navigation/TopBar";
 import { AdminSidebar } from "@/app/navigation/AdminSidebar";
@@ -16,6 +17,7 @@ import type { AdminPage } from "@/app/navigation/AdminSidebar";
 import { useAuth } from "@/features/auth/context/AuthContext";
 
 const PAGE_TITLES: Record<AdminPage, string> = {
+  encoding: "Sales Encoding",
   dashboard:  "Dashboard",
   inventory:  "Inventory",
   categories: "Categories",
@@ -54,7 +56,8 @@ export function AdminLayout({ onLogout }: Props) {
             onMenuClick={() => setSidebarOpen(true)}
           />
         </div>
-        <main className={`flex-1 min-h-0 overflow-y-auto ${["orders", "customers", "sales", "users", "inventory", "categories"].includes(page) ? "md:overflow-hidden" : ""} ${page === "orders" || page === "customers" || page === "sales" || page === "users" || page === "inventory" ? "flex items-start" : page === "categories" ? "flex items-start" : ""}`}>
+        <main className={`flex-1 min-h-0 overflow-y-auto ${["orders", "customers", "sales", "users", "inventory", "categories", "encoding"].includes(page) ? "md:overflow-hidden" : ""} ${page === "orders" || page === "customers" || page === "sales" || page === "users" || page === "inventory" ? "flex items-start" : page === "categories" ? "flex items-start" : ""}`}>
+          {page === "encoding" && <SalesEncoding />}
           {page === "dashboard"  && <AdminDashboard />}
           {page === "inventory"  && <AdminInventory />}
           {page === "categories" && <AdminCategories />}

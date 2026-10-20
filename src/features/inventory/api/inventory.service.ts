@@ -29,7 +29,7 @@ export interface ExpiredInventoryBatch {
   /** Original serializer response for null-safe batch details, without catalog fallbacks. */
   source?: DjangoProductBatch | DjangoIngredientBatch;
   itemId: number;
-  id: number; status: string; unitCost: string; initialQuantity: number;
+  id: number; status: string; unitCost: string | null; initialQuantity: number;
   dateReceived: string; grade: string | null; notes: string | null;
   key: string; kind: 'product' | 'ingredient'; name: string; category: string;
   batch: string; quantity: number; unit: string; expiry: string;
@@ -71,7 +71,7 @@ export const inventoryService = {
         batch.product.is_active && batch.product.category.is_active && batch.product.category.is_visible_to_staff))
         .map(batch => ({ source: batch, key: `product-${batch.id}`, kind: 'product' as const,
           name: [batch.product.name, batch.product.variant].filter(Boolean).join(' '), category: batch.product.category.name,
-          id: batch.id, itemId: batch.product.id, status: batch.status, unitCost: batch.unit_price ?? batch.product.unit_price,
+          id: batch.id, itemId: batch.product.id, status: batch.status, unitCost: batch.unit_price,
           initialQuantity: Number(batch.initial_quantity), dateReceived: batch.date_received, grade: batch.grade, notes: batch.notes,
           batch: batch.batch_number, quantity: Number(batch.remaining_quantity), unit: batch.product.unit, expiry: batch.expiration_date })),
       ...ingredients.data.filter(hasExpiredStock).map(batch => ({ source: batch, key: `ingredient-${batch.id}`, kind: 'ingredient' as const,
@@ -90,7 +90,7 @@ export const inventoryService = {
       ? { ...item, expiry: '', nearestBatch: undefined, expiryStatus: undefined } : item);
     return [...rows, ...batches.map(batch => ({
       catalogKey: `expired-${batch.key}`, id: batch.itemId, name: batch.name, cat: batch.category,
-      price: Number(batch.unitCost), stock: batch.quantity, expiry: batch.expiry, unit: batch.unit,
+      inventoryValue: batch.unitCost == null ? null : Number(batch.unitCost) * batch.quantity, stock: batch.quantity, expiry: batch.expiry, unit: batch.unit,
       low: false, expiredBatch: batch,
     }))].sort((a, b) => {
       const aExpired = isExpiredProduct(a), bExpired = isExpiredProduct(b);
@@ -110,7 +110,7 @@ export const inventoryService = {
       invalidateDataCache(['inventory']);
       throw new Error('Batch stock has changed. Close this confirmation, refresh the inventory, and confirm the current quantity.');
     }
-    const unitCost = batch.unit_price ?? ('product' in batch ? batch.product.unit_price : batch.ingredient.unit_price);
+    const unitCost = 'product' in batch ? batch.unit_price : batch.unit_price ?? batch.ingredient.unit_price;
     if (unitCost == null || !Number.isFinite(Number(unitCost)) || Number(unitCost) < 0) {
       throw new Error('A valid batch unit cost is required to record this write-off.');
     }
@@ -149,7 +149,7 @@ export const inventoryService = {
         id: p.id,
         name: [p.name, p.variant].filter(Boolean).join(" "),
         cat: p.category.name,
-        price: parseFloat(p.unit_price),
+        inventoryValue: eligibleBatches.some(batch => batch.unit_price == null) ? null : eligibleBatches.reduce((sum, batch) => sum + Number(batch.unit_price) * Number(batch.remaining_quantity), 0),
         stock,
         unit: p.unit,
         expiry: nearestExpiry,
@@ -252,7 +252,7 @@ export const inventoryService = {
     const products = await inventoryService.getLowStockProducts();
     return products.map(product => ({
       id: product.id, name: product.name, cat: product.category.name,
-      price: Number(product.unit_price), stock: Number(product.total_stock), expiry: "", low: true,
+      inventoryValue: null, stock: Number(product.total_stock), expiry: "", low: true,
     }));
   },
 
@@ -271,7 +271,6 @@ export const inventoryService = {
   createProduct: async (input: {
     name: string;
     categoryId: number;
-    price: number;
     stock: number;
     expiry: string;
   }): Promise<void> => {
@@ -279,7 +278,6 @@ export const inventoryService = {
       name: input.name,
       variant: null,
       unit: "unit",
-      unit_price: input.price,
       shelf_life: 30,
       category_id: input.categoryId,
     };
@@ -328,16 +326,15 @@ export const inventoryService = {
     await http.post<DjangoCategory>(`/inventory/categories/${categoryId}/reactivate/`, {});
   },
 
-  // Note: only updates Product-level fields (name, price, category).
+  // Note: only updates Product-level fields (name, category).
   // Stock and expiry live on ProductBatch and are read-only via this endpoint —
   // changing stock needs a dedicated stock-adjustment flow (separate feature).
   updateProduct: async (
     productId: number,
-    input: { name: string; categoryId: number; price: number }
+    input: { name: string; categoryId: number }
   ): Promise<void> => {
     const productPayload: UpdateProductPayload = {
       name: input.name,
-      unit_price: String(input.price),
       category_id: input.categoryId,
     };
     await http.patch<DjangoProduct>(`/inventory/products/${productId}/`, productPayload);

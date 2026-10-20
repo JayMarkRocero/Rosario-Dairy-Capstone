@@ -38,6 +38,9 @@ function notifyUnauthorized() {
 // Keep a session usable when browser policy blocks token persistence.
 // Failed removals also override any old persisted token until the next write.
 const sessionTokens = new Map<string, string | null>();
+let sessionGeneration = 0;
+export const getSessionGeneration = () => sessionGeneration;
+type SessionRequest = { sessionGeneration?: number; retried?: boolean };
 
 function readToken(key: string): string | null {
   if (sessionTokens.has(key)) return sessionTokens.get(key) ?? null;
@@ -56,7 +59,7 @@ function writeToken(key: string, token: string | null) {
 }
 
 export function setAccessToken(token: string | null, refreshingSession = false) {
-  if (!refreshingSession && token !== getAccessToken()) clearDataCache();
+  if (!refreshingSession && token !== getAccessToken()) { sessionGeneration += 1; clearDataCache(); }
   writeToken(ACCESS_TOKEN_KEY, token);
 }
 
@@ -65,7 +68,7 @@ export function getAccessToken(): string | null {
 }
 
 export function setRefreshToken(token: string | null) {
-  if (!token) clearDataCache();
+  if (!token) { if (getRefreshToken()) sessionGeneration += 1; clearDataCache(); }
   writeToken(REFRESH_TOKEN_KEY, token);
 }
 
@@ -76,22 +79,25 @@ export function getRefreshToken(): string | null {
 const PUBLIC_AUTH_PATHS = ["/accounts/login/", "/accounts/forgot-password/", "/accounts/reset-password/", "/accounts/refresh/"];
 
 let refreshRequest: Promise<string> | null = null;
+let refreshGeneration = -1;
 export function refreshAccessToken(): Promise<string> {
-  if (refreshRequest) return refreshRequest;
+  const generation = sessionGeneration;
+  if (refreshRequest && refreshGeneration === generation) return refreshRequest;
+  refreshGeneration = generation;
   const refresh = getRefreshToken();
   if (!refresh) return Promise.reject(new ApiError(401, "Please log in again."));
   refreshRequest = axiosInstance.post<{ access: string; refresh?: string }>("/accounts/refresh/", { refresh })
     .then(({ data }) => {
-      if (getRefreshToken() !== refresh) throw new ApiError(401, "Session changed. Please log in again.");
+      if (sessionGeneration !== generation || getRefreshToken() !== refresh) throw new ApiError(401, "Session changed. Please log in again.");
       if (!data.access) throw new ApiError(401, "Unable to refresh your session.");
       setAccessToken(data.access, true);
       if (data.refresh) setRefreshToken(data.refresh);
       return data.access;
-    }).finally(() => { refreshRequest = null; });
+    }).finally(() => { if (refreshGeneration === generation) refreshRequest = null; });
   return refreshRequest;
 }
 
-export interface PaginatedResponse<T> { count: number; results: T[]; next?: string | null }
+export interface PaginatedResponse<T> { count: number; results: T[]; previous?: string | null; next?: string | null }
 export async function getAllPages<T>(url: string, params?: Record<string, unknown>): Promise<T[]> {
   const rows: T[] = [];
   let page = 1;
@@ -113,6 +119,7 @@ function appendTrailingSlash(url: string): string {
 
 axiosInstance.interceptors.request.use((config) => {
   if (config.url) config.url = appendTrailingSlash(config.url);
+  (config as typeof config & SessionRequest).sessionGeneration ??= sessionGeneration;
 
   const token = getAccessToken();
   if (token && !config.headers.Authorization && !PUBLIC_AUTH_PATHS.includes(config.url ?? "")) config.headers.Authorization = `Bearer ${token}`;
@@ -147,10 +154,14 @@ export function getApiErrorMessage(error: unknown, fallback = "Something went wr
 
 axiosInstance.interceptors.response.use(
   (response) => {
+    const origin = (response.config as typeof response.config & SessionRequest).sessionGeneration;
+    if (origin !== undefined && origin !== sessionGeneration && !PUBLIC_AUTH_PATHS.includes(response.config.url ?? "") && response.config.url !== "/accounts/logout/") {
+      return Promise.reject(new ApiError(409, "This request belongs to a previous session."));
+    }
     const method = response.config.method?.toLowerCase();
     const path = response.config.url ?? "";
     if (method && !["get", "head", "options"].includes(method)) {
-      if (path.startsWith("/sales/orders/")) invalidateDataCache(["orders", "sales", "dashboard", "inventory", "reports", "customers"]);
+      if (path.startsWith("/sales/encoding/") || path.startsWith("/sales/orders/")) invalidateDataCache(["orders", "sales", "dashboard", "inventory", "reports", "customers"]);
       else if (path.startsWith("/sales/checkout/") || path.startsWith("/sales/transactions/")) invalidateDataCache(["sales", "dashboard", "inventory", "reports", "customers"]);
       else if (path.startsWith("/inventory/categories/")) invalidateDataCache(["categories", "inventory", "reports", "dashboard"]);
       else if (path.startsWith("/inventory/")) invalidateDataCache(["inventory", "categories", "dashboard", "reports"]);
@@ -166,11 +177,16 @@ axiosInstance.interceptors.response.use(
     const status = error.response.status;
     const requestUrl = error.config?.url ?? "";
     const isPublicAuthRequest = PUBLIC_AUTH_PATHS.includes(requestUrl);
-    const config = error.config as (typeof error.config & { retried?: boolean });
+    const config = error.config as (typeof error.config & SessionRequest);
+    const activeSession = () => config?.sessionGeneration === undefined || config.sessionGeneration === sessionGeneration;
+    if (!isPublicAuthRequest && requestUrl !== "/accounts/logout/" && !activeSession()) {
+      return Promise.reject(new ApiError(status, "This request belongs to a previous session."));
+    }
     if (status === 401 && !isPublicAuthRequest && requestUrl !== "/accounts/logout/" && config && !config.retried && getRefreshToken()) {
       config.retried = true;
       try {
         const token = await refreshAccessToken();
+        if (!activeSession()) throw new ApiError(409, "Session changed.");
         config.headers.Authorization = `Bearer ${token}`;
         return axiosInstance.request(config);
       } catch (refreshError) {
@@ -191,7 +207,7 @@ axiosInstance.interceptors.response.use(
     }
     let message = extractErrorMessage(data, fallback);
 
-    if (status === 401 && !isPublicAuthRequest && requestUrl !== "/accounts/logout/") {
+    if (status === 401 && !isPublicAuthRequest && requestUrl !== "/accounts/logout/" && activeSession() && (getAccessToken() || getRefreshToken())) {
       setAccessToken(null);
       setRefreshToken(null);
       notifyUnauthorized();
@@ -248,7 +264,6 @@ export interface DjangoProduct {
   name: string;
   variant: string | null;
   unit: string;
-  unit_price: string;
   shelf_life: number;
   readonly low_stock_threshold: number;
   is_active: boolean;
@@ -279,7 +294,6 @@ export interface CreateProductPayload {
   name: string;
   variant: string | null;
   unit: string;
-  unit_price: string | number;
   shelf_life: number;
   category_id: number;
 }
@@ -451,20 +465,20 @@ export interface CreateCustomerPayload {
 export type UpdateCustomerPayload = Partial<CreateCustomerPayload>;
 
 export interface CheckoutItemPayload {
-  product_id: number;
-  quantity: string;
+  product_id: number; quantity: string; unit_price: string;
+  discount_type?: "none" | "percent" | "fixed"; discount_value?: string;
 }
-
 export interface CheckoutPayload {
-  customer_id: number | null;
-  items: CheckoutItemPayload[];
-  payment_method: "cash" | "online";
-  discount_type: "none" | "percent" | "fixed";
-  discount_value: string;
-  amount_tendered: string;
+  customer_id: number | null; items: CheckoutItemPayload[]; payment_method: "cash" | "online"; amount_tendered?: string | null;
 }
 
 export interface DjangoTransactionItem {
+  line_number?: number | null;
+  discount_type?: "none" | "percent" | "fixed";
+  discount_value?: string;
+  discount_amount?: string;
+  subtotal?: string | null;
+  total_amount?: string | null;
   id: number;
   product_batch: DjangoProductBatch;
   quantity: string | number;
@@ -479,6 +493,14 @@ export interface DjangoTransactionItem {
 }
 
 export interface DjangoTransaction {
+  transaction_number?: string | null;
+  transaction_date?: string | null;
+  is_manually_encoded?: boolean;
+  encoded_at?: string | null;
+  encoding_request_id?: string | null;
+  payment_status?: "pending" | "paid" | "unknown";
+  payment_updated_at?: string | null;
+  payment_updated_by?: number | null;
   id: number;
   handled_by: DjangoUserSummary;
   order?: { customer?: DjangoCustomer | null } | null;

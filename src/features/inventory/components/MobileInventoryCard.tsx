@@ -15,7 +15,6 @@ interface Props {
 export function MobileInventoryCard({ product, busy, deleteDisabled = false, onEdit, onDelete }: Props) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = `inventory-${product.catalogKey || `product-${product.id}`}-details`;
-  const money = product.price.toLocaleString("en-PH", { maximumFractionDigits: 2 });
 
   return <article className="w-full min-w-0 p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-sm">
     <button type="button" aria-expanded={expanded} aria-controls={expanded ? detailsId : undefined}
@@ -30,7 +29,6 @@ export function MobileInventoryCard({ product, busy, deleteDisabled = false, onE
         </span>
       </span>
       <span className="flex max-w-[45%] shrink-0 items-center gap-2">
-        <span className="min-w-0 break-words font-bold text-gray-900">₱{money}</span>
         {expanded ? <ChevronUp size={18} className="shrink-0 text-slate-500" aria-hidden="true" /> : <ChevronDown size={18} className="shrink-0 text-slate-500" aria-hidden="true" />}
       </span>
     </button>

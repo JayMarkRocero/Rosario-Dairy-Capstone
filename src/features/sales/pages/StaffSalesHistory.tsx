@@ -54,7 +54,7 @@ export function StaffSalesHistory() {
   }, [myRecords]);
 
   const columns: Column<Sale>[] = [
-    { key:"receipt", header:"Receipt #", align:"left", width:"18%",
+    { key:"receipt", header:"SI Number", align:"left", width:"18%",
       render: s => <span className="font-mono text-xs whitespace-nowrap" style={{ color: C.muted }}>{s.receipt}</span> },
     { key:"customer", header:"Customer", align:"left", width:"26%",
       render: s => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{s.customer}</span> },
@@ -93,7 +93,7 @@ export function StaffSalesHistory() {
         <SummaryCard compact label="Total Transactions" subtitle="Your lifetime transactions processed" value={summary.totalTransactions} color={C.green}/>
       </div>
       <TableCard className="viewport-table-card">
-        <EnhancedTable responsivePageSize measureRenderedRows autoPageSize={false} pageCapacity={undefined} contentHeight reserveTableHeight={false} pageSize={5} rowHeight={52} columns={columns} data={filteredRecords} rowKey={s=>s.receipt} renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected} />} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search receipt or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
+        <EnhancedTable responsivePageSize measureRenderedRows autoPageSize={false} pageCapacity={undefined} contentHeight reserveTableHeight={false} pageSize={5} rowHeight={52} columns={columns} data={filteredRecords} rowKey={s=>s.transaction.id} renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected} />} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search SI number or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
           extraControls={<div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-row"><select aria-label="Payment method" value={payment} onChange={e=>setPayment(e.target.value)} className={`${filterSelectClass} w-full min-w-0 md:w-auto`}>{paymentOptions.map(p=><option key={p} value={p}>{p === "All" ? "All Payment Methods" : p}</option>)}</select><input aria-label="Transaction date" type="date" value={date} onChange={e=>setDate(e.target.value)} className={`${filterSelectClass} w-full min-w-0 md:w-auto`}/></div>}/>
       </TableCard>
       <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>

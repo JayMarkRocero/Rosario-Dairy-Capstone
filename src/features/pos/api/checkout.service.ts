@@ -1,44 +1,8 @@
-import { reportsService } from "@/features/reports/api/reports.service";
+import { normalizeSaleItems } from "@/features/sales/utils/manualPricing";
 import http, { type CheckoutPayload, type DjangoTransaction } from "@/lib/api";
-
-export interface CheckoutCartItem {
-  productId: number;
-  quantity: number;
-}
-
-export interface CheckoutResult {
-  transaction: DjangoTransaction;
-  id: number;
-  subtotal: number;
-  totalAmount: number;
-  changeDue: number | null;
-}
-
 export const checkoutService = {
-  submit: async (input: {
-    customerId?: number | null;
-    items: CheckoutCartItem[];
-    paymentMethod: "Cash" | "GCash";
-    discountType: "none" | "percent" | "fixed";
-    discountValue: number;
-    amountTendered?: number;
-  }): Promise<CheckoutResult> => {
-    const payload: CheckoutPayload = {
-      customer_id: input.customerId ?? null,
-      items: input.items.map(i => ({ product_id: i.productId, quantity: String(i.quantity) })),
-      payment_method: input.paymentMethod === "Cash" ? "cash" : "online",
-      discount_type: input.discountType,
-      discount_value: String(input.discountValue),
-      amount_tendered: String(input.amountTendered ?? 0),
-    };
-    const { data: txn } = await http.post<DjangoTransaction>("/sales/checkout/", payload);
-    await reportsService.refreshAfterMutation();
-    return {
-      transaction: txn,
-      id: txn.id,
-      subtotal: parseFloat(txn.subtotal),
-      totalAmount: parseFloat(txn.total_amount),
-      changeDue: txn.change_due ? parseFloat(txn.change_due) : null,
-    };
+  submit: async (payload: CheckoutPayload) => {
+    const { data: transaction } = await http.post<DjangoTransaction>("/sales/checkout/", { customer_id: payload.customer_id, payment_method: payload.payment_method, amount_tendered: payload.amount_tendered, items: normalizeSaleItems(payload.items) });
+    return { transaction, id: transaction.id, subtotal: Number(transaction.subtotal), totalAmount: Number(transaction.total_amount), changeDue: transaction.change_due == null ? null : Number(transaction.change_due) };
   },
 };

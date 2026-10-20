@@ -39,6 +39,7 @@ const NAV_ITEMS = [
   { id: "orders",    label: "Orders",        icon: ClipboardList   },
   { id: "inventory", label: "Inventory",     icon: Package         },
   { id: "sales",     label: "Sales History", icon: BarChart2       },
+  { id: "encoding", label: "Sales Encoding", icon: ClipboardList },
   { id: "settings",  label: "Settings",      icon: Settings        },
 ] as const;
 

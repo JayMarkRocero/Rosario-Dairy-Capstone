@@ -1,3 +1,4 @@
+import { InventoryOutflows } from "@/features/inventory/components/InventoryOutflows";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { StaffInventoryTable } from "@/features/inventory/components/StaffInventoryTable";
 import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
@@ -61,9 +62,6 @@ export function StaffInventory() {
           </span>
         </div>
       ) },
-    { key:"price", header:"Price", align:"center", width:"13%",
-      sortKey: p => p.price,
-      render: p => <span className="font-medium text-xs tabular-nums whitespace-normal break-all" style={{ color: C.text }}>₱{p.price.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> },
     { key:"stock", header:"Stock", align:"center", width:"12%",
       render: p => <InventoryStockValue product={p} /> },
     { key:"expiry", header:"Expiry", align:"center", width:"15%",
@@ -81,7 +79,7 @@ export function StaffInventory() {
     <div className="records-page staff-inventory-page px-4 sm:px-6 pt-2 flex flex-col gap-3 max-w-[1400px] mx-auto w-full">
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Products and stock levels</h2>
-        <span className="text-xs" style={{color:C.muted}}>Product catalog and batch details</span>
+        <InventoryOutflows/>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">{[
         ["Products", items.length, C.blue], ["Low stock", items.filter(p=>getInventoryWarnings(p).lowStock).length, C.orange],

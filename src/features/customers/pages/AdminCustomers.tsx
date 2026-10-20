@@ -1,3 +1,4 @@
+import { CustomerHistory } from "@/features/customers/components/CustomerHistory";
 import { CustomerTable } from "@/features/customers/components/CustomerTable";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { MobileCustomerCard } from "@/features/customers/components/MobileCustomerCard";
@@ -69,6 +70,7 @@ export function AdminCustomers() {
   const [addOpen,    setAddOpen]    = useState(false);
   const [editOpen,   setEditOpen]   = useState(false);
   const [viewOpen,   setViewOpen]   = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selected,   setSelected]   = useState<Customer | null>(null);
   const [form,       setForm]       = useState<FormState>(EMPTY);
@@ -227,9 +229,10 @@ export function AdminCustomers() {
         <CustomerForm form={form} onChange={setForm}/>
       </Modal>
 
+      <CustomerHistory customer={historyOpen ? selected : null} onClose={() => setHistoryOpen(false)}/>
       <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Customer Profile"
         subtitle={selected?.name} size="md"
-        footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn>
+        footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn><Btn variant="secondary" onClick={()=>{setViewOpen(false);setHistoryOpen(true);}}>Purchase history</Btn>
           {selected?.isActive && <Btn variant="primary" onClick={()=>{setViewOpen(false);selected&&openEdit(selected);}}>Edit</Btn>}</>}>
         {selected&&(
           <div className="space-y-5">

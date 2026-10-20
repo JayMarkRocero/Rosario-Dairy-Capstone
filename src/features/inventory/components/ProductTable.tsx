@@ -18,7 +18,7 @@ export function ProductTable(props: Props) {
   const [productDetails, setProductDetails] = useState<InventoryItem | null>(null);
   const [editBatch, setEditBatch] = useState<ExpiredInventoryBatch | null>(null);
   const [editDraft, setEditDraft] = useState({ price: '', notes: '' });
-  const openBatchEdit = (item: ExpiredInventoryBatch) => { setEditBatch(item); setEditDraft({ price: item.unitCost, notes: item.notes || '' }); };
+  const openBatchEdit = (item: ExpiredInventoryBatch) => { setEditBatch(item); setEditDraft({ price: item.unitCost ?? "", notes: item.notes || '' }); };
   const [details, setDetails] = useState<ExpiredInventoryBatch | null>(null);
   const [disposal, setDisposal] = useState<ExpiredInventoryBatch | null>(null);
   const [saving, setSaving] = useState(false);

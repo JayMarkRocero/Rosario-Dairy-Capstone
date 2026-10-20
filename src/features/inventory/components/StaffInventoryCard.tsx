@@ -13,7 +13,6 @@ export function StaffInventoryCard({ product, onView }: { product: InventoryItem
     </div>
     <dl className="space-y-2 text-xs">
       {[
-        ["Price", `₱${product.price.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
         ["Stock", <InventoryStockValue product={product} />],
         ["Expiry", <InventoryExpiryValue product={product} />],
         ["Status", <InventoryStatusBadge product={product} />],

@@ -1,3 +1,4 @@
+import { normalizeSaleItems } from "@/features/sales/utils/manualPricing";
 import { reportsService } from "@/features/reports/api/reports.service";
 import http, { ApiError, getAllPages, type PaginatedResponse } from "@/lib/api";
 import type { CreateOrderPayload, Order, OrderListLine, OrderListResponse, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
@@ -25,9 +26,8 @@ export const ordersService = {
   createOrder: async (payload: CreateOrderPayload): Promise<Order> => {
     if (!Number.isInteger(payload.customer_id) || payload.customer_id <= 0) throw new ApiError(400, "Select a valid customer.");
     const { data } = await http.post<Order>("/sales/orders/", {
-      ...payload,
-      items: payload.items.map(item => ({ ...item, quantity: String(item.quantity) })),
-      ...(payload.discount_value !== undefined && { discount_value: String(payload.discount_value) }),
+      customer_id: payload.customer_id, payment_method: payload.payment_method,
+      items: normalizeSaleItems(payload.items),
       ...(payload.amount_tendered != null && { amount_tendered: String(payload.amount_tendered) }),
     });
     await reportsService.refreshAfterMutation();
@@ -50,7 +50,7 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
   const total = parseFloat(o.transaction.total_amount);
   return {
     id: o.id,
-    invoiceNumber: o.transaction.source_invoice_number || "",
+    invoiceNumber: o.transaction.transaction_number ?? o.transaction.source_invoice_number ?? "",
     isHistorical: Boolean(o.transaction.source_reference),
     customer: o.customer.name,
     customerId: o.customer.id,
@@ -71,7 +71,7 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
       product: orderProductName(item),
       quantity: parseFloat(item.quantity),
       unitPrice: parseFloat(item.unit_price),
-      subtotal: parseFloat(item.subtotal),
+      subtotal: Number(item.total_amount ?? item.subtotal),
     })),
   };
 }

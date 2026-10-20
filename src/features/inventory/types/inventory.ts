@@ -19,7 +19,7 @@ export interface InventoryItem {
   id: number;
   name: string;
   cat: string;
-  price: number;
+  inventoryValue?: number | null;
   stock: number;
   expiry: string;
   low: boolean;

@@ -32,7 +32,7 @@ export function AdminSalesHistory() {
   }, [records]);
 
   const columns: Column<Sale>[] = [
-    { key:"receipt", header:"Receipt #", align:"left", width:"15%", sortKey: r => r.receipt,
+    { key:"receipt", header:"SI Number", align:"left", width:"15%", sortKey: r => r.receipt,
       render: r => <span className="font-mono text-xs whitespace-nowrap" style={{ color: C.muted }}>{r.receipt}</span> },
     { key:"customer", header:"Customer", align:"left", width:"22%", sortKey: r => r.customer,
       render: r => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{r.customer}</span> },
@@ -100,7 +100,7 @@ export function AdminSalesHistory() {
             rowHeight={52}
             columns={columns}
             data={filteredRecords}
-            rowKey={r => r.receipt}
+            rowKey={r => r.transaction.id}
             renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected} />}
 
             searchable

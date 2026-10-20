@@ -15,7 +15,7 @@ export function FEFOMonitor() {
   const expiredCount = fefoItems.filter(i => i.days < 0 || i.st === "red").length;
   const nearExpiryCount = fefoItems.filter(i => i.days >= 0 && i.st !== "red" && i.st !== "green").length;
   const lowStockCount = items.filter(i => i.low).length;
-  const invValue = items.reduce((sum, i) => sum + i.price * i.stock, 0);
+  const invValue = items.some(i => i.inventoryValue == null) ? null : items.reduce((sum, i) => sum + i.inventoryValue!, 0);
 
   // Ordered by urgency, not category — expired stock is an active problem,
   // not just a warning, so it leads. Each also carries an icon so meaning
@@ -37,7 +37,7 @@ export function FEFOMonitor() {
       emphasis: false,
     },
     {
-      label: "Inv. Value", value: `₱${invValue.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+      label: "Inv. Value", value: invValue == null ? "Cost not recorded" : `₱${(invValue ?? 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
       color: C.green, bg: "var(--status-green)", icon: Wallet,
       emphasis: false,
     },

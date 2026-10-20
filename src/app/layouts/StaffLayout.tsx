@@ -1,3 +1,4 @@
+import { SalesEncoding } from "@/features/sales/pages/SalesEncoding";
 import { useState } from "react";
 import { TopBar } from "@/components/navigation/TopBar";
 import { StaffSidebar } from "@/app/navigation/StaffSidebar";
@@ -13,6 +14,7 @@ import type { StaffPage } from "@/app/navigation/StaffSidebar";
 import { useAuth } from "@/features/auth/context/AuthContext";
 
 const PAGE_TITLES: Record<StaffPage, string> = {
+  encoding: "Sales Encoding",
   dashboard: "Dashboard",
   pos:       "Point of Sale",
   orders:    "Orders",
@@ -48,7 +50,8 @@ export function StaffLayout({ onLogout }: Props) {
           onMenuClick={() => setSidebarOpen(true)}
         />
         </div>
-        <main className={`flex-1 min-h-0 ${page === "settings" ? "overflow-y-auto scroll-pb-12 sm:scroll-pb-8" : `flex ${page === "orders" || page === "sales" || page === "inventory" ? "items-start overflow-y-auto md:overflow-hidden" : page === "pos" ? "overflow-y-auto xl:overflow-hidden" : "overflow-y-auto"}`}`}>
+        <main className={`flex-1 min-h-0 ${page === "settings" ? "overflow-y-auto scroll-pb-12 sm:scroll-pb-8" : `flex ${page === "orders" || page === "sales" || page === "encoding" || page === "inventory" ? "items-start overflow-y-auto md:overflow-hidden" : page === "pos" ? "overflow-y-auto xl:overflow-hidden" : "overflow-y-auto"}`}`}>
+          {page === "encoding" && <SalesEncoding />}
           {page === "dashboard" && <StaffDashboard />}
           {page === "pos"       && <StaffPOS />}
           {page === "orders"    && <StaffOrders />}

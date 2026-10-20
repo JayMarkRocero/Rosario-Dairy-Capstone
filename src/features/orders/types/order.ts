@@ -1,4 +1,4 @@
-import type { DjangoUserSummary, DjangoCustomer, DjangoProduct, DjangoTransaction } from "@/lib/api";
+import type { CheckoutItemPayload, DjangoUserSummary, DjangoCustomer, DjangoProduct, DjangoTransaction } from "@/lib/api";
 
 export type OrderStatus = "fulfilled" | "cancelled";
 
@@ -8,13 +8,15 @@ export interface OrderItem {
   quantity: string;
   unit_price: string;
   subtotal: string;
+  discount_type?: string;
+  discount_value?: string;
+  discount_amount?: string;
+  total_amount?: string | null;
 }
 
 export interface CreateOrderPayload {
   customer_id: number;
-  items: Array<{ product_id: number; quantity: number | string }>;
-  discount_type?: "none" | "percent" | "fixed";
-  discount_value?: number | string;
+  items: CheckoutItemPayload[];
   payment_method?: "cash" | "online";
   amount_tendered?: number | string | null;
 }
@@ -41,7 +43,7 @@ export interface OrderListLine extends Omit<OrderItem, "product"> {
 
 export interface OrderListResponse extends Omit<Order, "items" | "transaction"> {
   items: OrderListLine[];
-  transaction: Pick<DjangoTransaction, "id" | "subtotal" | "discount_amount" | "total_amount" |
+  transaction: Pick<DjangoTransaction, "transaction_number" | "id" | "subtotal" | "discount_amount" | "total_amount" |
     "payment_method" | "amount_tendered" | "change_due" | "source_reference" | "source_invoice_number">;
 }
 

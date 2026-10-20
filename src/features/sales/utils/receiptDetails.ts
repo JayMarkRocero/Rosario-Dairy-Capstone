@@ -1,49 +1,49 @@
-﻿import type { Sale } from "@/features/sales/api/sales.service";
-
+import type { Sale } from "@/features/sales/api/sales.service";
+import type { DjangoTransactionItem } from "@/lib/api";
 export const receiptMoney = (value: string | number | null | undefined) => {
   if (value == null || value === "") return "Not provided";
   const amount = Number(value);
   return Number.isFinite(amount) ? `PHP ${amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Not provided";
 };
-
+const sumRecorded = (items: DjangoTransactionItem[], field: "subtotal" | "total_amount" | "discount_amount" | "source_line_total") =>
+  items.some(item => item[field] == null) ? null : items.reduce((sum, item) => sum + Math.round(Number(item[field]) * 100), 0) / 100;
 export function receiptDetails(sale: Sale) {
   const transaction = sale.transaction;
-  // The response exposes payment method, not the originating sales channel.
-  const voucher = transaction.payment_method === "online";
-  const date = new Date(transaction.created_at);
+  const dateTime = (value?: string | null) => {
+    const date = new Date(value ?? "");
+    return Number.isFinite(date.getTime()) ? date.toLocaleString("en-PH", { timeZone: "Asia/Manila" }) + " (Asia/Manila)" : "Not provided";
+  };
   const fields: [string, string][] = [
-    ["Receipt #", sale.receipt],
-    ["Date / Time", Number.isFinite(date.getTime()) ? date.toLocaleString("en-PH", { timeZone: "Asia/Manila" }) + " (Asia/Manila)" : "Not provided"],
-    ["Cashier", sale.cashier], ["Customer", sale.customer],
-    ["Payment Method", sale.payment],
+    ["SI Number", sale.receipt], ["Date / Time", dateTime(transaction.created_at)],
+    ["Cashier", sale.cashier], ["Customer", sale.customer], ["Payment Method", sale.payment],
+    ["Payment Status", transaction.payment_status === "paid" ? "Paid" : transaction.payment_status === "pending" ? "Pending" : "Not recorded"],
   ];
-  if (voucher) fields.push(["Order #", "Not provided"], ["Fulfillment Type", "Not provided"], ["Payment Status", "Not provided"]);
+  if (transaction.encoded_at) fields.push(["Entered at", dateTime(transaction.encoded_at)]);
+  if (transaction.payment_updated_at) fields.push(["Payment updated", dateTime(transaction.payment_updated_at)]);
   if (transaction.delivery_status) fields.push(["Delivery Status", transaction.delivery_status]);
   if (transaction.is_voided) fields.push(["Transaction Status", "Voided"]);
+  const groups = new Map<string, DjangoTransactionItem[]>();
+  for (const item of transaction.items ?? []) {
+    const key = item.line_number == null ? `item-${item.id}` : `line-${item.line_number}`;
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
   return {
-    title: transaction.source_reference ? "Historical Sales Record" : voucher ? "Sales Invoice & Fulfillment Voucher" : "Official Sales Receipt",
-    note: voucher ? "Online payment recorded. Order source and fulfillment details are not provided in this transaction response." : "",
-    fields,
-    items: (transaction.items ?? []).map(item => {
+    title: transaction.source_reference ? "Historical Sales Record" : transaction.is_manually_encoded ? "Encoded Sales Record" : "Official Sales Receipt",
+    note: transaction.source_note || "", fields,
+    items: [...groups.entries()].map(([id, items]) => {
+      const item = items[0];
       const name = item.product_name_snapshot || item.product_batch.product.name;
-      const variant = item.product_name_snapshot != null
-        ? item.product_variant_snapshot
-        : item.product_batch.product.variant;
-      return {
-        id: item.id,
-        name: [name, variant].filter(Boolean).join(" "),
-        batch: transaction.source_reference ? "Not recorded" : item.product_batch.batch_number,
-        quantity: String(item.quantity),
+      const variant = item.product_name_snapshot != null ? item.product_variant_snapshot : item.product_batch.product.variant;
+      const recordedNet = transaction.source_reference ? sumRecorded(items, "source_line_total") : sumRecorded(items, "total_amount");
+      return { id, name: [name, variant].filter(Boolean).join(" "),
+        batch: transaction.source_reference ? "Not recorded" : [...new Set(items.map(row => row.product_batch.batch_number))].join(", "),
+        quantity: String(items.reduce((sum, row) => sum + Math.round(Number(row.quantity) * 100), 0) / 100),
         price: receiptMoney(transaction.source_reference && item.source_line_total == null ? null : item.unit_price),
-        subtotal: receiptMoney(transaction.source_reference ? item.source_line_total : Number(item.quantity) * Number(item.unit_price)),
+        gross: receiptMoney(sumRecorded(items, "subtotal")), discount: receiptMoney(sumRecorded(items, "discount_amount")),
+        subtotal: receiptMoney(recordedNet),
       };
     }),
-    totals: [
-      ["Subtotal", receiptMoney(transaction.subtotal)],
-      ["Discount", receiptMoney(transaction.discount_amount)],
-      ["Total", receiptMoney(transaction.total_amount)],
-      ["Amount Tendered", receiptMoney(transaction.amount_tendered)],
-      ["Change", receiptMoney(transaction.change_due)],
-    ] as [string, string][],
+    totals: [["Subtotal", receiptMoney(transaction.subtotal)], ["Discount", receiptMoney(transaction.discount_amount)],
+      ["Total", receiptMoney(transaction.total_amount)], ["Amount Tendered", receiptMoney(transaction.amount_tendered)], ["Change", receiptMoney(transaction.change_due)]] as [string, string][],
   };
 }

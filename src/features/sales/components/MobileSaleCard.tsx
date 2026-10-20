@@ -3,7 +3,7 @@ import type { Sale } from "@/features/sales/api/sales.service";
 
 export function MobileSaleCard({ sale, onView }: { sale: Sale; onView: (sale: Sale) => void }) {
   const details = [
-    ["RECEIPT #", sale.receipt],
+    ["SI NUMBER", sale.receipt],
     ["CUSTOMER", sale.customer],
     ["CASHIER", sale.cashier],
     ["DATE", sale.date],
