@@ -58,7 +58,7 @@ export function EnhancedTable<T>({
   showExport = true, showCount = true, fillHeight = false, contentHeight = false, reserveTableHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
   mobileTable = false, renderMobileRow,
 }: Props<T>) {
-  const defaultCapacity = useAutoPageSize(rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 4, maxPageSize: 10, measureRows: true } : {});
+  const defaultCapacity = useAutoPageSize(rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 4, maxPageSize: 10, measureRows: true, viewportBased: true } : {});
   const capacity = responsivePageSize ? defaultCapacity : pageCapacity ?? defaultCapacity;
   autoPageSize = autoPageSize || !!pageCapacity;
   const [desktopTable, setDesktopTable] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches);
@@ -167,7 +167,7 @@ export function EnhancedTable<T>({
   const pageButtons = Array.from({ length: Math.min(maxPageButtons, totalPages) }, (_, i) => Math.max(1, Math.min(safePage - 2, totalPages - maxPageButtons + 1)) + i);
 
   return (
-    <div className={`enhanced-table ${adaptive ? "responsive-table flex-1 min-h-0 overflow-hidden" : ""} flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-visible xl:overflow-hidden" : contentHeight ? "h-auto" : "h-auto xl:h-full"}`}>
+    <div className={`enhanced-table ${adaptive ? "responsive-table" : ""} flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-visible xl:overflow-hidden" : contentHeight ? "h-auto" : "h-auto xl:h-full"}`}>
       {/* Controls bar */}
       {showControlsBar && (
         <div className={renderMobileRow ? "flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between mb-2 md:mb-4 shrink-0" : "flex flex-wrap items-center justify-between gap-3 mb-4 flex-shrink-0"}>
@@ -259,25 +259,25 @@ export function EnhancedTable<T>({
           {emptyState}
         </div>}
         <div
-          className={`${adaptive ? "h-full overflow-hidden" : ""} ${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${contentHeight ? adaptive ? "h-full" : "h-auto" : ""} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
-          style={{ WebkitOverflowScrolling: "touch", ...(adaptive ? { overflow: "hidden" } : {}) }}
+          className={`w-full ${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${contentHeight ? "h-auto" : ""} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
+          style={{ WebkitOverflowScrolling: "touch" }}
         >
-          <table className={`${adaptive ? "h-full" : ""} w-full ${contentHeight ? adaptive ? "h-full" : "h-auto" : ""} table-fixed text-sm text-slate-700 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
-            <thead ref={adaptive || autoPageSize ? capacity.headerRef : undefined} className={`${adaptive ? "h-px" : ""} bg-slate-50/80 border-b border-slate-100 ${tableScrollBody ? `block shrink-0 overflow-hidden ${tableDisableScroll ? "" : "[scrollbar-gutter:stable]"}` : ""}`}>
+          <table className={`w-full text-left border-collapse ${contentHeight ? "h-auto" : ""} table-fixed text-sm text-slate-700 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
+            <thead ref={adaptive || autoPageSize ? capacity.headerRef : undefined} className={`bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 ${tableScrollBody ? `block shrink-0 overflow-hidden ${tableDisableScroll ? "" : "[scrollbar-gutter:stable]"}` : ""}`}>
               <tr style={rowStyle}>
                 {columns.map(col => (
                   <th
                     key={col.key}
                     aria-sort={col.sortKey ? sortCol === col.key && sortDir ? sortDir === "asc" ? "ascending" : "descending" : "none" : undefined}
-                    className={`py-3 pl-4 ${alignmentClasses(col.align)} font-semibold text-xs text-slate-500 uppercase tracking-wider select-none whitespace-nowrap ${col.sortKey ? "cursor-pointer hover:bg-gray-100" : ""}`}
+                    className={`py-3 px-4 ${alignmentClasses(col.align)} font-semibold text-xs text-slate-500 uppercase tracking-wider select-none whitespace-nowrap ${col.sortKey ? "cursor-pointer hover:bg-gray-100" : ""}`}
                     style={{ width: tableScrollBody ? undefined : col.width }}
                     onClick={col.sortKey ? () => handleSort(col) : undefined}
                   >
                     <div className={`relative flex items-center ${col.align === "right" ? "justify-end gap-1" : col.align === "center" ? `justify-center ${col.sortKey ? "gap-1" : "gap-2"}` : "justify-start gap-1"}`}>
                       {col.sortKey ? <button type="button" className="text-xs uppercase tracking-wider font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded" aria-label={`Sort by ${col.header}`}>{col.header}</button> : col.header}
                       {col.sortKey && (
-                        <span className={`flex flex-col ${col.align === "right" ? "absolute -right-3.5" : ""}`} style={{ color: sortCol === col.key ? C.blue : C.muted, opacity: sortCol === col.key ? 1 : 0.6 }}>
-                          <ChevronUp   size={10} style={{ opacity: sortCol === col.key && sortDir === "asc"  ? 1 : 0.4, marginBottom: -2 }} />
+                        <span className="flex shrink-0 flex-col" style={{ color: sortCol === col.key ? C.blue : C.muted, opacity: sortCol === col.key ? 1 : 0.6 }}>
+                          <ChevronUp   size={10} style={{ opacity: sortCol === col.key && sortDir === "asc"  ? 1 : 0.4 }} />
                           <ChevronDown size={10} style={{ opacity: sortCol === col.key && sortDir === "desc" ? 1 : 0.4 }} />
                         </span>
                       )}
@@ -298,7 +298,7 @@ export function EnhancedTable<T>({
                   <tr
                     key={rowKey(row)}
                     style={rowStyle}
-                    className={`${contentHeight ? "h-auto" : stretchRows && tableScrollBody ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} shrink-0 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                    className={`${contentHeight ? "h-14" : stretchRows && tableScrollBody ? "min-h-0" : tableDisableScroll && rowHeight === 52 ? "h-[52px]" : "h-14"} shrink-0 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
                     onClick={() => onRowClick?.(row)}
                   >
                     {columns.map(col => (
@@ -320,7 +320,7 @@ export function EnhancedTable<T>({
 
       {/* Pagination */}
       {(totalPages > 1 || adaptive || contentHeight && sorted.length > 0) && (
-        <div className={contentHeight ? `flex items-center justify-between ${adaptive ? "mt-auto" : "mt-4"} pt-3 border-t border-slate-100 px-1 gap-2 shrink-0` : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
+        <div ref={adaptive ? capacity.footerRef : undefined} className={contentHeight ? `flex items-center justify-between mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 px-1 gap-2 shrink-0` : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
           <span className={contentHeight ? "text-xs whitespace-nowrap" : "text-xs order-2 sm:order-1"} style={{ color: C.muted }}>
             {contentHeight ? `Page ${safePage} of ${totalPages}` : <>
             <span className="hidden sm:inline">Page {safePage} of {totalPages}</span>

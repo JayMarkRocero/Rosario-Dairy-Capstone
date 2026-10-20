@@ -48,7 +48,7 @@ export function StaffLayout({ onLogout }: Props) {
           onMenuClick={() => setSidebarOpen(true)}
         />
         </div>
-        <main className={`flex-1 min-h-0 ${page === "settings" ? "overflow-y-auto scroll-pb-12 sm:scroll-pb-8" : `flex ${page === "orders" || page === "sales" || page === "inventory" ? "overflow-y-auto md:overflow-hidden" : page === "pos" ? "overflow-y-auto xl:overflow-hidden" : "overflow-y-auto"}`}`}>
+        <main className={`flex-1 min-h-0 ${page === "settings" ? "overflow-y-auto scroll-pb-12 sm:scroll-pb-8" : `flex ${page === "orders" || page === "sales" || page === "inventory" ? "overflow-y-auto" : page === "pos" ? "overflow-y-auto xl:overflow-hidden" : "overflow-y-auto"}`}`}>
           {page === "dashboard" && <StaffDashboard />}
           {page === "pos"       && <StaffPOS />}
           {page === "orders"    && <StaffOrders />}

@@ -150,40 +150,19 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
   scrollbar-color: var(--border) transparent;
 }
 
-/* Data views grow with their rows; the main application content owns scrolling. */
+/* Cards use native table flow; only the application content scrolls if needed. */
 .records-page {
   height: auto;
-  min-height: 0;
+  min-height: calc(100dvh - 80px);
+  padding: 1rem;
   overflow: visible;
-  padding-bottom: 2rem;
+  justify-content: space-between;
+  row-gap: 1rem;
 }
-
-/* Desktop table capacity is measured inside a stable viewport-sized frame. */
 .table-card .enhanced-table { height: auto; flex: none; }
-@media (min-width: 768px) {
-  .records-page {
-    height: calc(100dvh - 80px);
-    max-height: 100%;
-    min-height: 0;
-    padding: 1.5rem;
-    overflow: hidden;
-    justify-content: space-between;
-  }
-  .table-card > div {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 0%;
-    min-height: 0;
-    overflow: hidden;
-  }
-  .table-card .responsive-table {
-    height: 100%;
-    flex: 1 1 0%;
-    min-height: 0;
-    overflow: hidden;
-  }
-  .responsive-table [data-table-surface] { flex: 1 1 0%; min-height: 0; }
-  .responsive-table table { min-width: 0; }
+.table-card > div { height: auto; flex: none; min-height: 0; }
+@media (min-width: 640px) {
+  .records-page { padding: 1.5rem; }
 }
 
 /* Staff catalog columns fit their proportional widths without horizontal scrolling. */
