@@ -197,3 +197,49 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
 .staff-inventory-page th, .staff-inventory-page td { padding-left: 0.5rem; padding-right: 0.5rem; }
 .staff-inventory-page td { white-space: normal; overflow-wrap: anywhere; }
 .staff-inventory-page td > span { max-width: 100%; flex-wrap: wrap; }
+
+/* Sales Encoding's search, filters and record count share aligned desktop
+   rows. Mobile controls and the measured table surface keep their own flow. */
+@media (min-width: 768px) {
+  .sales-encoding-table [data-table-controls] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .sales-encoding-table [data-table-controls] > :first-child {
+    width: 100%;
+    max-width: none;
+  }
+  .sales-encoding-table [data-table-controls] > :nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+  .sales-encoding-table [data-table-controls] > :last-child {
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+    margin-left: 0;
+  }
+  html.dark .sales-encoding-table .encoding-date-filter {
+    background-color: var(--input-background);
+  }
+  html.dark .sales-encoding-table .encoding-date-filter input[type="date"] {
+    background-color: transparent;
+  }
+}
+
+@media (min-width: 1280px) {
+  .sales-encoding-table [data-table-controls] {
+    grid-template-columns: minmax(12rem, 1fr) auto auto;
+  }
+  .sales-encoding-table [data-table-controls] > :nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+  }
+  .sales-encoding-table [data-table-controls] > :last-child {
+    grid-column: 3;
+  }
+}
