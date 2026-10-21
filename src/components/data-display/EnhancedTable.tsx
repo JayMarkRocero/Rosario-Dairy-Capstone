@@ -172,7 +172,7 @@ export function EnhancedTable<T>({
     <div className={`enhanced-table ${adaptive ? "responsive-table" : ""} flex flex-col ${fillHeight ? "flex-1 min-h-0 overflow-visible xl:overflow-hidden" : contentHeight ? "h-auto" : "h-auto xl:h-full"}`}>
       {/* Controls bar */}
       {showControlsBar && (
-        <div className={renderMobileRow ? "flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between mb-2 md:mb-4 shrink-0" : "flex flex-wrap items-center justify-between gap-3 mb-4 flex-shrink-0"}>
+        <div data-table-controls className={renderMobileRow ? "flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between mb-2 md:mb-4 shrink-0" : "flex flex-wrap items-center justify-between gap-3 mb-4 flex-shrink-0"}>
           {searchable && (
             <div
               className={`${searchContainerClass} ${renderMobileRow ? "w-full min-w-0 md:flex-1 md:max-w-xs" : "w-full sm:flex-1 sm:max-w-xs"} order-1`}

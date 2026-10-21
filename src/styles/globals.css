@@ -174,7 +174,17 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
      aligned with the other data views without changing mobile card spacing. */
   .inventory-table-card .responsive-table tbody td,
   .staff-inventory-page .responsive-table tbody td,
+  .users-page .responsive-table tbody td,
   .category-table-card .responsive-table tbody td { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+
+  /* Reclaim real space for measured rows rather than adding a tolerance that
+     could count a row extending into pagination. Mobile cards keep their gaps. */
+  .inventory-table-card .responsive-table [data-table-controls],
+  .staff-inventory-page .responsive-table [data-table-controls],
+  .users-page .responsive-table [data-table-controls] { margin-bottom: 0.5rem; }
+  .inventory-table-card .responsive-table thead th,
+  .staff-inventory-page .responsive-table thead th,
+  .users-page .responsive-table thead th { padding-top: 0.5rem; padding-bottom: 0.5rem; }
 }
 
 @media (min-width: 768px) and (max-height: 700px) {

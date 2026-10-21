@@ -2177,6 +2177,45 @@ test('catalog density changes discard stale tall-row measurements and reclaim a 
 });
 
 
+test('inventory and user tables reclaim desktop chrome space without borrowing pagination clearance', () => {
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  try {
+    window.innerHeight = 768;
+    window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+    for (const [initialRowHeight, compactRowHeight, initialPadding] of [[53, 53, 8], [49, 49, 8], [57, 53, 10]]) {
+      states = []; refs = []; layoutEffects = [];
+      let cleanup, rowHeight = initialRowHeight, padding = initialPadding, headerHeight = 44;
+      global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: `${padding}px`, paddingBottom: `${padding}px` });
+      // Card allocation already excludes filters and the fixed pagination footer.
+      const surface = { clientHeight: 44 + 5 * compactRowHeight - 16, clientWidth: 1000,
+        querySelectorAll: selector => selector === 'tbody tr'
+          ? [{ getBoundingClientRect: () => ({ height: rowHeight }) }]
+          : [{ children: [{ getBoundingClientRect: () => ({ height: 36 }) }] }] };
+      const header = { getBoundingClientRect: () => ({ height: headerHeight }) };
+      const footer = { getBoundingClientRect: () => ({ height: 45 }) };
+      const Hook = () => ui.useAutoPageSize(56, 320, { measureRows: true, fitContainer: true, measureRenderedRows: true });
+      try {
+        const capacity = render(Hook); capacity.containerRef(surface); capacity.headerRef(header); capacity.footerRef(footer);
+        render(Hook); cleanup = layoutEffects.at(-1)();
+        assert.equal(render(Hook).pageSize, 4);
+        surface.clientHeight += 8; headerHeight -= 8; rowHeight = compactRowHeight; padding = 8;
+        render(Hook).remeasure();
+        assert.equal(render(Hook).pageSize, 5);
+        assert.equal(headerHeight + render(Hook).pageSize * rowHeight, surface.clientHeight);
+        surface.clientHeight -= 1; render(Hook).remeasure();
+        assert.equal(render(Hook).pageSize, 4, 'Never count a partially visible fifth row');
+        surface.clientHeight = headerHeight + 9 * rowHeight; render(Hook).remeasure();
+        assert.equal(render(Hook).pageSize, 9, 'Larger desktops remain dynamically sized');
+      } finally { cleanup?.(); }
+    }
+  } finally {
+    captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
 test('encoding reuses its UUID on network retries and blocks changed ambiguous submissions', async () => {
   const form = await composerFixture('encoding'); form.changeLine({ unitPrice: '12' });
   const payloads = [];
