@@ -84,6 +84,11 @@ html.dark [class*="border-slate-"],
 html.dark [class*="border-gray-"] {
   border-color: var(--border);
 }
+/* Shared filter focus borders must remain visible over dark surface borders. */
+html.dark .filter-control:focus,
+html.dark .filter-control-group:focus-within {
+  border-color: var(--primary);
+}
 html.dark [class~="border-emerald-200/60"],
 html.dark [class~="border-rose-200/60"],
 html.dark [class~="border-amber-200/60"],
@@ -227,6 +232,9 @@ html.dark [class*="hover:bg-slate-50/"]:hover {
   }
   html.dark .sales-encoding-table .encoding-date-filter input[type="date"] {
     background-color: transparent;
+  }
+  html.dark .sales-encoding-table .encoding-date-filter:focus-within {
+    border-color: var(--primary);
   }
 }
 

@@ -1,2 +1,2 @@
-export const filterSelectClass = "h-10 max-w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
-export const searchContainerClass = "flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500";
+export const filterSelectClass = "filter-control h-10 max-w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 text-sm text-slate-700 outline-none transition-all duration-150 focus:border-primary focus:ring-1 focus:ring-primary/20";
+export const searchContainerClass = "filter-control-group flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 transition-all duration-150 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20";

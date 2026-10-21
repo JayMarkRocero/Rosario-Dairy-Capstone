@@ -15,7 +15,7 @@ import { TransactionDetails } from "../components/TransactionDetails";
 import { MobileSaleCard } from "../components/MobileSaleCard";
 import { filterSelectClass } from "@/styles/controlClasses";
 
-const dateFilterClass = "encoding-date-filter text-xs text-slate-500 md:flex md:h-10 md:min-w-0 md:items-center md:gap-2 md:rounded-lg md:border md:border-slate-200 md:bg-slate-50/50 md:px-3 md:focus-within:border-blue-500 md:focus-within:ring-1 md:focus-within:ring-blue-500";
+const dateFilterClass = "encoding-date-filter text-xs text-slate-500 md:flex md:h-10 md:min-w-0 md:items-center md:gap-2 md:rounded-lg md:border md:border-slate-200 md:bg-slate-50/50 md:px-3 md:transition-all md:duration-150 md:focus-within:border-primary md:focus-within:ring-1 md:focus-within:ring-primary/20";
 const dateInputClass = `${filterSelectClass} md:h-full md:w-[8.5rem] md:min-w-0 md:flex-1 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:focus:ring-0`;
 export function SalesEncoding() {
   const [open, setOpen] = useState(false);
@@ -40,7 +40,7 @@ export function SalesEncoding() {
     <TableCard className="sales-encoding-table">{query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })}/> : <EnhancedTable responsivePageSize measureRenderedRows contentHeight data={data} columns={columns} rowKey={sale => sale.transaction.id} pageSize={5} loading={query.loading} searchKeys={sale => [sale.receipt, sale.customer, sale.cashier]} searchPlaceholder="Search SI number, customer or staff" showExport={false} emptyTitle="No encoded sales" emptyDesc="Record a paper invoice using New sales entry." onRowClick={setSelected} renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected}/>} extraControls={
       <div className="flex w-full flex-col gap-2 md:flex-row md:flex-wrap md:items-center xl:w-auto xl:flex-nowrap">
         <select aria-label="Filter encoding payment status" className={`${filterSelectClass} md:min-w-[9.5rem] md:flex-1 xl:w-[9.5rem] xl:flex-none`} value={payment} onChange={e => setPayment(e.target.value)}>
-          <option value="">All payments</option><option value="pending">Pending</option><option value="paid">Paid</option><option value="unknown">Not recorded</option>
+          <option value="">All payments</option><option value="pending">Pending</option><option value="paid">Paid</option>
         </select>
         <div className="contents md:grid md:min-w-0 md:flex-1 md:basis-[24rem] md:grid-cols-2 md:gap-2 xl:flex-none xl:basis-auto">
           <label className={dateFilterClass}>
