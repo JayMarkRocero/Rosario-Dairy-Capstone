@@ -6,6 +6,7 @@ import { DataTable } from "@/components/data-display/DataTable";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { C } from "@/styles/tokens/colors";
 import { ordersService } from "@/features/orders/api/orders.service";
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 
 const RECENT_ORDER_LIMIT = 5;
 
@@ -19,7 +20,7 @@ export function StaffRecentOrders() {
       <div className="flex-shrink-0">
         <SectionHeader title="Recent Orders" subtitle="Today's transactions" />
       </div>
-      {loading ? (
+      {query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} /> : loading ? (
         <EmptyState compact loading title="Gathering recent orders" />
       ) : orders.length === 0 ? (
         <EmptyState compact title="No recent orders" description="New orders will show up here." />

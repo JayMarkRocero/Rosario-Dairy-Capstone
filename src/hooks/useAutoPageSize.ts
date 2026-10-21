@@ -133,14 +133,4 @@ export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSiz
   return { pageSize, containerRef, headerRef, footerRef, remeasure: () => measureRef.current?.(), resetMeasurement: () => { rowMeasurement.current.height = measureRenderedRows ? 0 : rowHeight; } };
 }
 
-// Role-specific estimates apply before the table mounts. Once mounted, its
-// measured flex height already excludes page chrome, avoiding double subtraction.
-export function useAdminAutoPageSize(rowHeight = 52, limits: PageSizeLimits = {}) {
-  return useAutoPageSize(rowHeight, 220, limits);
-}
-
-export function useStaffAutoPageSize(rowHeight = 52, viewportOffset = 130) {
-  return useAutoPageSize(rowHeight, viewportOffset);
-}
-
 export type AutoPageCapacity = ReturnType<typeof useAutoPageSize>;

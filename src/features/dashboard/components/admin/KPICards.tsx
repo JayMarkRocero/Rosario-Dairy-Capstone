@@ -4,6 +4,7 @@ import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { C } from "@/styles/tokens/colors";
 import { isLowStock } from "@/features/inventory/utils/stock";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
+import type { OrderListResponse } from "@/features/orders/types/order";
 
 interface Props {
   /** Override when pending orders are managed outside the current sales API. */
@@ -35,7 +36,7 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
       getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: yesterday, end_date: yesterday }),
       inventoryService.getLowStockProducts(),
       inventoryService.getExpiringProducts(),
-      pendingOrderCount === undefined ? getAllPages<{ status: string }>("/sales/orders/") : Promise.resolve([]),
+      pendingOrderCount === undefined ? getAllPages<OrderListResponse>("/sales/orders/") : Promise.resolve([]),
     ]);
     const total = (rows: DjangoTransaction[]) => rows.reduce((sum, row) => sum + Number(row.total_amount), 0);
     return {
@@ -43,7 +44,7 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
         lowStock: products.filter(product => product.is_active && isLowStock(product.total_stock, product.low_stock_threshold)).length,
         expiringSoon: batches.filter(batch => batch.product.is_active && batch.status === "available"
           && Number(batch.remaining_quantity) > 0 && batch.expiration_date >= today).length,
-        pendingOrders: orders.filter(order => ["pending", "unfulfilled", "processing"].includes(order.status.toLowerCase())).length,
+        pendingOrders: orders.filter(order => order.status === "fulfilled" && order.transaction?.payment_status === "pending").length,
     };
   }, ["dashboard"]);
   const failed = !!error;
@@ -70,7 +71,7 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
       detail: "In-stock dairy batches, including today" },
     { title: "Pending Orders", value: String(pending), icon: ClipboardList, color: C.blue,
       badge: "Needs Action", badgeClass: pending > 0 ? "text-blue-700 bg-blue-50" : neutralBadge,
-      detail: "Unfulfilled or processing orders" },
+      detail: "Fulfilled orders awaiting payment" },
   ];
 
   return (

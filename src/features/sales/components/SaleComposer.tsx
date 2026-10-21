@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Btn } from "@/components/buttons/Btn";
+import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
+import { OverlayPortal } from "@/components/overlays/OverlayPortal";
+import { acknowledgeUnconfirmedSale, hasUnconfirmedSale, UnconfirmedSaleError } from "@/lib/saleSubmission";
 import { Skeleton } from "@/components/EmptyState";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { useAuth } from "@/features/auth/context/AuthContext";
@@ -43,6 +46,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerContact, setNewCustomerContact] = useState({ phone: "", email: "", address: "" });
+  const [reviewOpen, setReviewOpen] = useState(false);
   const lock = useRef(false);
   const attempt = useRef<{ fingerprint: string; payload: EncodingPayload } | null>(null);
   useEffect(() => {
@@ -56,9 +60,14 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   let totals: ReturnType<typeof priceSale> | null = null;
   try { totals = priceSale(lines, canDiscount); } catch { /* Show a draft summary until all lines are complete. */ }
   const selectedCustomer = customers.find(customer => customer.id === Number(customerId));
+  const unconfirmed = mode !== "encoding" && hasUnconfirmedSale(mode);
   const addProduct = (product: InventoryItem) => setLines(current => current.some(line => line.productId === product.id) ? current : [...current, newSaleLine(product)]);
   const submit = async () => {
     if (lock.current) return;
+    if (mode !== "encoding" && hasUnconfirmedSale(mode)) {
+      const message = new UnconfirmedSaleError(mode).message;
+      setFormError(message); toast.error(message); return;
+    }
     setFormError("");
     try {
       const priced = priceSale(lines, canDiscount);
@@ -133,10 +142,17 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
     {formError && <p role="alert" className="text-sm text-red-600">{formError}</p>}
     {attempt.current && !busy && <p className="text-xs text-amber-700">If a request timed out, retry the unchanged entry to avoid duplicate records. Check encoding history before starting another entry.</p>}
     <div className="flex flex-wrap justify-end gap-2">
+      {unconfirmed && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Review previous submission</Btn>}
       {mode === "encoding" && attempt.current && !busy && <Btn variant="secondary" onClick={() => { attempt.current = null; setLines([]); setSi(""); setNote(""); setFormError(""); }}>Start a new entry</Btn>}
-      <Btn variant="primary" disabled={busy || !lines.length} onClick={submit}>{busy ? "Saving..." : mode === "encoding" ? "Save sales entry" : mode === "order" ? "Submit & Fulfill" : "Complete Transaction"}</Btn>
+      <Btn variant="primary" disabled={busy || !lines.length || unconfirmed} onClick={submit}>{busy ? "Saving..." : mode === "encoding" ? "Save sales entry" : mode === "order" ? "Submit & Fulfill" : "Complete Transaction"}</Btn>
     </div>
     {mode === "checkout" && lines.length > 0 && <a href="#sale-cart" className="xl:hidden fixed bottom-4 left-4 right-4 z-30 rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg">View cart · {totals ? formatCents(totals.total) : "Enter prices"}</a>}
     <CustomerHistory customer={historyOpen ? selectedCustomer ?? null : null} onClose={() => setHistoryOpen(false)}/>
+    <OverlayPortal><ConfirmDialog open={reviewOpen} onClose={() => setReviewOpen(false)} variant="warning" title="Have you checked transaction history?"
+      description="An interrupted request may already have recorded the sale and deducted stock. Check Orders and Sales History before continuing. Start a new transaction only after confirming whether the previous one was recorded."
+      confirmLabel="History checked — start new transaction" onConfirm={() => {
+        if (mode !== "encoding") acknowledgeUnconfirmedSale(mode);
+        setReviewOpen(false); setLines([]); setTender(""); setFormError(""); setReload(value => value + 1);
+      }} /></OverlayPortal>
   </div>;
 }

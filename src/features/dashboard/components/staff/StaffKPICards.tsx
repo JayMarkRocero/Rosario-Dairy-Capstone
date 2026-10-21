@@ -21,7 +21,6 @@ function todayStr(): string {
 export function StaffKPICards() {
   const { theme } = useTheme();
   const { user, loading: authLoading } = useAuth();
-  const username = user?.username ?? null;
   const userId = user ? getSessionUserId(user) : null;
   const identityUnavailable = !authLoading && userId === null;
 
@@ -33,7 +32,7 @@ export function StaffKPICards() {
     });
     const request = Promise.resolve().then(() => {
       return Promise.all([
-        salesService.getAll({ startDate: today, endDate: today, handledBy: userId }),
+        salesService.getAll({ startDate: today, endDate: today, handledBy: userId ?? undefined }),
         ordersService.getAll(),
         inventoryService.getAll(true),
       ]);
@@ -47,7 +46,7 @@ export function StaffKPICards() {
   const kpis = useMemo(() => {
     const today = todayStr();
 
-    const mySalesToday = sales.filter(s => s.date === today && s.cashier === username);
+    const mySalesToday = sales.filter(s => s.date === today && s.transaction.handled_by.id === userId);
     const myTotalToday = mySalesToday.reduce((sum, s) => sum + s.total, 0);
 
     const fulfilledOrders = orders.filter(o => o.status === "Fulfilled" && userId !== null && o.staffId === userId);
@@ -76,7 +75,7 @@ export function StaffKPICards() {
         detail: "Active products with available stock",
       },
     ];
-  }, [sales, orders, products, username, userId, theme]);
+  }, [sales, orders, products, userId, theme]);
 
   return (
     <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={authLoading || loading}>

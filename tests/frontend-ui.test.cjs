@@ -64,6 +64,9 @@ const compiled = buildSync({
     export { SalesEncoding } from './src/features/sales/pages/SalesEncoding';
     export * from './src/features/sales/utils/manualPricing';
     export { StaffKPICards } from './src/features/dashboard/components/staff/StaffKPICards';
+    export { KPICards } from './src/features/dashboard/components/admin/KPICards';
+    export { StaffRecentOrders } from './src/features/dashboard/components/staff/StaffRecentOrders';
+    export * from './src/lib/saleSubmission';
     export { MobileCategoryCard } from './src/features/inventory/components/MobileCategoryCard';
     export { MobileInventoryCard } from './src/features/inventory/components/MobileInventoryCard';
     export { EnhancedTable } from './src/components/data-display/EnhancedTable';
@@ -2312,4 +2315,120 @@ test('Escape dismisses only the topmost nested modal without altering its visual
     dialogs = [ownDialog]; window.dispatchEvent(escape); assert.equal(closed, 1);
     cleanup?.();
   } finally { global.document = originalDocument; }
+});
+
+test('staff sales and recent orders keep persistent retry states on failed initial requests', async () => {
+  authState = { user: { id: 7, username: 'staff' }, loading: false };
+  for (const [Page, key] of [[ui.StaffSalesHistory, 'sales:mine:7'], [ui.StaffRecentOrders, 'dashboard:recent-orders:5']]) {
+    states = []; refs = []; effects = [];
+    await ui.fetchDataCache(`${ui.dataCacheEpoch()}:${key}`, () => Promise.reject(new Error('Server offline')), ['sales', 'orders', 'dashboard']).catch(() => {});
+    ui.http.defaults.adapter = async () => { throw new Error('Server offline'); };
+    const failed = render(Page);
+    const cleanup = effects[0]();
+    try {
+    await settle();
+    const error = elements(failed, node => node.type === ui.QueryErrorMessage)[0];
+    assert.ok(error, Page.name);
+    assert.equal(elements(failed, node => node.props.title === 'No recent orders' || node.props.emptyTitle === 'No transactions found').length, 0);
+    let requests = 0;
+    ui.http.defaults.adapter = async config => { requests++; return { status: 200, config, headers: {}, data: { count: 0, next: null, results: [] } }; };
+    await error.props.onRetry(); await settle();
+    assert.ok(requests > 0, 'Retry forces an active request');
+    assert.equal(elements(render(Page), node => node.type === ui.QueryErrorMessage).length, 0);
+    } finally { cleanup?.(); }
+  }
+});
+
+test('staff sales metrics retain their values after a username change by matching immutable account IDs', () => {
+  const today = ui.businessDate();
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-kpis:7:${today}`, [[
+    { date: today, total: 125, cashier: 'previous-name', transaction: { handled_by: { id: 7 } } },
+    { date: today, total: 999, cashier: 'new-name', transaction: { handled_by: { id: 8 } } },
+  ], [], []], ['dashboard']);
+  authState = { user: { id: 7, username: 'new-name' }, loading: false };
+  const cards = staffCards(render(ui.StaffKPICards));
+  assert.ok(cards.find(card => card.props.title === 'My Sales Today').props.value.includes('125'));
+  assert.equal(cards.find(card => card.props.title === 'My Transactions Today').props.value, '1');
+});
+
+test('pending orders KPI counts fulfilled orders awaiting payment and excludes cancelled or unlinked orders', async () => {
+  ui.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data: config.url === '/sales/orders/' ? [
+    { status: 'fulfilled', transaction: { payment_status: 'pending' } },
+    { status: 'fulfilled', transaction: { payment_status: 'paid' } },
+    { status: 'cancelled', transaction: { payment_status: 'pending' } },
+    { status: 'fulfilled', transaction: null },
+    { status: 'fulfilled', transaction: { payment_status: 'unknown' } },
+  ] : [] });
+  render(ui.KPICards);
+  const cleanup = effects.at(-1)();
+  try {
+    await settle();
+    const pending = elements(render(ui.KPICards), node => node.props['aria-label'] === 'Pending Orders')[0];
+    assert.ok(elements(pending, node => node.props.children === '1').length);
+    assert.ok(elements(pending, node => node.props.children === 'Fulfilled orders awaiting payment').length);
+  } finally { cleanup?.(); }
+});
+
+test('cross-tab login and logout replace auth state without writing or blacklisting the other account credentials', async () => {
+  const storage = new Map([['rosario_access_token', 'account-A'], ['rosario_refresh_token', 'refresh-A']]);
+  let writes = 0;
+  global.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => { writes++; storage.set(key, value); }, removeItem: key => { writes++; storage.delete(key); } };
+  const users = { 'Bearer account-A': { id: 7, username: 'A', role: 'admin' }, 'Bearer account-B': { id: 8, username: 'B', role: 'staff' } };
+  const requests = [];
+  ui.http.defaults.adapter = async config => { requests.push(config.url); return { status: 200, config, headers: {}, data: users[config.headers.Authorization] }; };
+  render(ui.AuthProvider); const initCleanup = effects[0](), subscriptionCleanup = effects[1]();
+  try {
+    await settle();
+    assert.equal(render(ui.AuthProvider).props.value.user.id, 7);
+    storage.set('rosario_access_token', 'account-B'); storage.set('rosario_refresh_token', 'refresh-B');
+    const event = new Event('storage'); Object.defineProperty(event, 'key', { value: 'rosario_access_token' });
+    window.dispatchEvent(event);
+    const switching = render(ui.AuthProvider).props.value;
+    assert.equal(switching.user, null); assert.equal(switching.loading, true);
+    effects.at(-2)(); await settle();
+    assert.equal(render(ui.AuthProvider).props.value.user.id, 8);
+    assert.equal(writes, 0);
+    storage.clear(); window.dispatchEvent(event);
+    assert.equal(render(ui.AuthProvider).props.value.user, null);
+    assert.equal(render(ui.AuthProvider).props.value.loading, false);
+    assert.ok(requests.every(url => url === '/accounts/user/'));
+  } finally { initCleanup?.(); subscriptionCleanup?.(); }
+});
+
+test('POS blocks blind retries after an interrupted write and requires history review before a new transaction', async () => {
+  const form = await composerFixture(); form.changeLine({ unitPrice: '50' });
+  form.field('Amount tendered').props.onChange({ target: { value: '100' } });
+  let writes = 0;
+  ui.http.defaults.adapter = async () => { writes++; throw new AxiosError('Request timed out', AxiosError.ECONNABORTED); };
+  await form.submit(); await form.submit();
+  assert.equal(writes, 1);
+  let tree = render(ui.SaleComposer, form.props);
+  const submit = elements(tree, node => node.type?.name === 'Btn' && node.props.children === 'Complete Transaction')[0];
+  assert.equal(submit.props.disabled, true);
+  elements(tree, node => node.type?.name === 'Btn' && node.props.children === 'Review previous submission')[0].props.onClick();
+  tree = render(ui.SaleComposer, form.props);
+  const confirmation = elements(tree, node => node.type?.name === 'ConfirmDialog')[0];
+  assert.equal(confirmation.props.open, true);
+  confirmation.props.onConfirm();
+  assert.equal(ui.hasUnconfirmedSale('checkout'), false);
+  assert.equal(elements(render(ui.SaleComposer, form.props), node => node.type === ui.SaleLineEditor).length, 0, 'The old cart cannot be accidentally resent');
+});
+
+test('logout from stale account UI does not clear or blacklist a newer cross-tab login', async () => {
+  const storage = new Map([['rosario_access_token', 'account-A'], ['rosario_refresh_token', 'refresh-A']]);
+  global.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+  const requests = [];
+  ui.http.defaults.adapter = async config => { requests.push(config.url); return { status: 200, config, headers: {}, data: { id: 7, username: 'A', role: 'admin' } }; };
+  render(ui.AuthProvider); const initCleanup = effects[0](), subscriptionCleanup = effects[1]();
+  try {
+    await settle();
+    const oldAccount = render(ui.AuthProvider).props.value;
+    storage.set('rosario_access_token', 'account-B'); storage.set('rosario_refresh_token', 'refresh-B');
+    oldAccount.logout(); await settle();
+    assert.equal(storage.get('rosario_access_token'), 'account-B');
+    assert.equal(storage.get('rosario_refresh_token'), 'refresh-B');
+    assert.equal(requests.includes('/accounts/logout/'), false);
+    assert.equal(render(ui.AuthProvider).props.value.user, null);
+    assert.equal(render(ui.AuthProvider).props.value.loading, true);
+  } finally { initCleanup?.(); subscriptionCleanup?.(); }
 });

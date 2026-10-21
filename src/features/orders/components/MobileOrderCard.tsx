@@ -14,7 +14,7 @@ export function MobileOrderCard({ order, onView, onCancel, busy = false }: Props
     ["Customer", order.customer],
     ["Staff", order.staff],
     ["Date", order.date],
-    ["Total", `₱${order.total.toLocaleString("en-PH")}`],
+    ["Total", order.total == null ? "Not recorded" : `₱${order.total.toLocaleString("en-PH")}`],
   ];
   const actionClass = "inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50";
 

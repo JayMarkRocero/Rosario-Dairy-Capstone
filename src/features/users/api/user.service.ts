@@ -1,6 +1,7 @@
 import http, { ApiError, type CurrentUser, type DeactivationReason, type RegisterUserPayload, type ResetPasswordPayload, type UpdateUserPayload, type DjangoUserListItem } from "@/lib/api";
 import { DEACTIVATION_OPTIONS } from "@/features/users/types/user";
 import type { SystemUser } from "@/features/users/types/user";
+import { authService, getSessionUserId } from "@/features/auth/api/auth.service";
 
 function toDisplayRole(role: "admin" | "staff"): "Administrator" | "Staff" {
   return role === "admin" ? "Administrator" : "Staff";
@@ -69,6 +70,7 @@ export const userService = {
       lastName?: string;
       phoneNumber?: string;
       address?: string;
+      currentPassword?: string;
     }
   ): Promise<void> => {
     const payload: UpdateUserPayload = {
@@ -80,6 +82,18 @@ export const userService = {
       phone_number: input.phoneNumber,
       address: input.address,
     };
+    if (getSessionUserId() === userId) {
+      const current = await authService.getCurrentUser();
+      delete payload.role;
+      if (input.email.trim().toLowerCase() !== current.email.toLowerCase()) {
+        throw new ApiError(400, "Change your recovery email in Personal Profile so it can be verified.");
+      }
+      delete payload.email;
+      if (payload.username !== current.username) {
+        if (!input.currentPassword) throw new ApiError(400, "Enter your current password to change your username in Personal Profile.");
+        payload.current_password = input.currentPassword;
+      }
+    }
     await http.patch<{ message: string }>(`/accounts/users/${userId}/`, payload);
   },
 

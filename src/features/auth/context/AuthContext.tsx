@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
-import { ApiError, getSessionGeneration, getApiErrorMessage, getRefreshToken, setRefreshToken, getAccessToken, setAccessToken, onUnauthorized, type CurrentUser } from "@/lib/api";
+import { ApiError, getSessionGeneration, getApiErrorMessage, getRefreshToken, setRefreshToken, getAccessToken, setAccessToken, onUnauthorized, onSessionStorageChange, synchronizeSessionStorage, type CurrentUser } from "@/lib/api";
 import { toast } from "sonner";
 import { authService } from "@/features/auth/api/auth.service";
 
@@ -44,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = getAccessToken();
     setAuthError(null);
     if (!token) {
+      setUser(null);
       setRefreshToken(null);
       setLoading(false);
       return;
@@ -72,7 +73,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Any 401 from any API call anywhere in the app routes here.
   useEffect(() => {
-    return onUnauthorized(() => clearSession(true));
+    const removeUnauthorized = onUnauthorized(() => clearSession(true));
+    const removeStorage = onSessionStorageChange(() => {
+      // Storage already contains the other tab's credentials. Never write them
+      // back or blacklist them while discarding the old account's React state.
+      sessionCheck.current += 1;
+      setUser(null);
+      setAuthError(null);
+      setSessionExpired(false);
+      setLoading(!!getAccessToken());
+      setSessionAttempt(attempt => attempt + 1);
+    });
+    return () => { removeUnauthorized(); removeStorage(); };
   }, [clearSession]);
 
   const login = useCallback(async (username: string, password: string) => {
@@ -105,10 +117,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     login,
     setCurrentUser: setUser,
     logout: () => {
+      const origin = getSessionGeneration();
+      synchronizeSessionStorage();
+      if (origin !== getSessionGeneration()) return;
       const refresh = getRefreshToken();
       // Capture authorization before clearing storage; logout still clears locally on failure.
       const request = refresh ? authService.logout(refresh) : Promise.resolve();
-      clearSession(false);
+      if (origin === getSessionGeneration()) clearSession(false);
       void request.catch(error => toast.error(`Signed out locally. ${getApiErrorMessage(error, "Server logout could not be completed.")}`));
     },
     clearSessionExpiredFlag: () => setSessionExpired(false),

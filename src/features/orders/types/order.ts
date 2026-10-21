@@ -26,7 +26,7 @@ export interface Order {
   customer: DjangoCustomer;
   handled_by: DjangoUserSummary;
   status: OrderStatus;
-  transaction: DjangoTransaction;
+  transaction?: DjangoTransaction | null;
   items: OrderItem[];
   warning?: string;
   created_at: string;
@@ -43,8 +43,8 @@ export interface OrderListLine extends Omit<OrderItem, "product"> {
 
 export interface OrderListResponse extends Omit<Order, "items" | "transaction"> {
   items: OrderListLine[];
-  transaction: Pick<DjangoTransaction, "transaction_number" | "transaction_date" | "payment_status" | "payment_updated_at" | "payment_updated_by" | "encoded_at" | "is_manually_encoded" | "encoding_request_id" | "id" | "subtotal" | "discount_amount" | "total_amount" |
-    "payment_method" | "amount_tendered" | "change_due" | "source_reference" | "source_invoice_number">;
+  transaction?: Pick<DjangoTransaction, "transaction_number" | "transaction_date" | "payment_status" | "payment_updated_at" | "payment_updated_by" | "encoded_at" | "is_manually_encoded" | "encoding_request_id" | "id" | "subtotal" | "discount_amount" | "total_amount" |
+    "payment_method" | "amount_tendered" | "change_due" | "source_reference" | "source_invoice_number"> | null;
 }
 
 export type DisplayOrderStatus = "Fulfilled" | "Cancelled";
@@ -69,10 +69,10 @@ export interface OrderListItem {
   staff: string;
   staffId: number | null;
   date: string;
-  total: number;
-  subtotal: number;
-  discountAmount: number;
-  paymentMethod: string;
+  total: number | null;
+  subtotal: number | null;
+  discountAmount: number | null;
+  paymentMethod: string | null;
   paymentStatus?: "paid" | "pending" | "unknown";
   amountTendered: number | null;
   changeDue: number | null;

@@ -12,6 +12,7 @@ const compiled = buildSync({
     export { default as http } from './src/lib/api';
     export * from './src/lib/api';
     export * from './src/lib/dataCache';
+    export * from './src/lib/saleSubmission';
     export * from './src/hooks/useAutoPageSize';
     export * from './src/features/pos/api/checkout.service';
     export * from './src/features/sales/utils/manualPricing';
@@ -505,6 +506,7 @@ test('a report refresh failure never rejects an already completed checkout', asy
 test('order creation rejects missing customers and refreshes only after a successful save', async () => {
   await assert.rejects(api.ordersService.createOrder({ customer_id: 0, items: [] }), { status: 400 });
   assert.equal(calls.length, 0);
+  responseData = { id: 1, transaction: { id: 1 } };
   await api.ordersService.createOrder({ customer_id: 3, items: [{ product_id: 2, quantity: '1.5', unit_price: '20.00' }] });
   assert.equal(calls[0].url, '/sales/orders/');
   assert.equal(JSON.parse(calls[0].data).items[0].quantity, '1.50');
@@ -1511,4 +1513,125 @@ test('new stock-changing flows refresh mounted alert feeds only after successful
   await assert.rejects(api.http.post('/inventory/stock-adjustments/', {}));
   assert.equal(updates, 2);
   window.removeEventListener(api.INVENTORY_UPDATED, listener);
+});
+
+test('self user edits omit role, protect email verification and send the password for username changes', async () => {
+  api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id: 7 })).toString('base64url')}.signature`);
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    return { status: 200, config, headers: {}, data: { id: 7, username: 'before', email: 'admin@example.com' } };
+  };
+  const input = { username: 'after', email: 'admin@example.com', role: 'Administrator', firstName: 'Admin', currentPassword: 'test-password' };
+  await api.userService.updateUser(7, input);
+  const payload = JSON.parse(calls.find(call => call.method === 'patch').data);
+  assert.equal('role' in payload, false);
+  assert.equal('email' in payload, false);
+  assert.equal(payload.current_password, 'test-password');
+  assert.equal(payload.username, 'after');
+  calls = [];
+  await assert.rejects(api.userService.updateUser(7, { ...input, currentPassword: undefined }), /current password/i);
+  assert.equal(calls.some(call => call.method === 'patch'), false);
+  await assert.rejects(api.userService.updateUser(7, { ...input, email: 'other@example.com' }), /verified/i);
+  calls = [];
+  await api.userService.updateUser(8, input);
+  assert.equal(JSON.parse(calls[0].data).role, 'admin', 'Other-user role updates remain available');
+});
+
+test('null order transactions keep every order visible without fabricating financial values', async () => {
+  const base = { customer: { id: 3, name: 'Customer' }, handled_by: { id: 7, username: 'staff' },
+    status: 'fulfilled', created_at: '2026-10-01T04:00:00Z', items: [] };
+  responseData = { count: 3, next: null, results: [
+    { ...base, id: 1, transaction: null }, { ...base, id: 2 },
+    { ...base, id: 3, transaction: { total_amount: '0.00', subtotal: '0.00', discount_amount: '0.00', amount_tendered: '0.00', change_due: '0.00' } },
+  ] };
+  const rows = await api.ordersService.getAll();
+  assert.deepEqual(rows.map(row => row.id), [3, 2, 1]);
+  assert.equal(rows[0].total, 0); assert.equal(rows[0].changeDue, 0);
+  for (const row of rows.slice(1)) {
+    assert.equal(row.total, null); assert.equal(row.subtotal, null); assert.equal(row.discountAmount, null);
+    assert.equal(row.invoiceNumber, ''); assert.equal(row.paymentMethod, null);
+    assert.equal(row.staffId, 7); assert.equal(row.date, '2026-10-01');
+  }
+});
+
+test('initial batch failure reports the existing product and recovery steps without deleting or recreating it', async () => {
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    if (config.url === '/inventory/products/') return { status: 201, config, headers: {}, data: { id: 42, name: 'Milk' } };
+    throw new AxiosError('Rejected', undefined, config, undefined, { status: 400, data: { quantity: ['Too many decimal places.'] }, config });
+  };
+  await assert.rejects(api.inventoryService.createProduct({ name: 'Milk', categoryId: 1, stock: 1.234, expiry: '2099-01-01' }), error => {
+    assert.match(error.message, /ID 42/); assert.match(error.message, /Do not add the product again/);
+    assert.match(error.message, /Restock/); assert.equal(error.status, 400); return true;
+  });
+  assert.deepEqual(calls.map(call => call.url), ['/inventory/products/', '/inventory/product-batches/']);
+});
+
+test('simultaneous checkout calls share one active write and refresh reports once', async () => {
+  let finish;
+  const payload = { customer_id: null, payment_method: 'online', items: [{ product_id: 1, quantity: '1', unit_price: '10' }] };
+  api.http.defaults.adapter = config => {
+    calls.push(config);
+    if (config.url === '/sales/checkout/') return new Promise(resolve => { finish = () => resolve({ status: 201, config, headers: {}, data: { id: 1, subtotal: '10', total_amount: '10', change_due: null } }); });
+    return Promise.resolve({ status: 200, config, headers: {}, data: {} });
+  };
+  const first = api.checkoutService.submit(payload), second = api.checkoutService.submit(payload);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.filter(call => call.url === '/sales/checkout/').length, 1);
+  finish();
+  assert.deepEqual(await first, await second);
+  assert.equal(calls.filter(call => call.url === '/api/reports/refresh/').length, 1);
+});
+
+test('ambiguous writes block checkout and order retries across reloads until explicitly reconciled', async () => {
+  const previous = global.sessionStorage, storage = new Map();
+  global.sessionStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+  try {
+    let writes = 0;
+    const fail = () => { writes++; return Promise.reject(new AxiosError('timeout', AxiosError.ECONNABORTED)); };
+    await assert.rejects(api.submitSaleOnce('checkout', { price: '10' }, fail), api.UnconfirmedSaleError);
+    await assert.rejects(api.submitSaleOnce('checkout', { price: '11' }, fail), api.UnconfirmedSaleError);
+    await assert.rejects(api.submitSaleOnce('order', { price: '10' }, fail), api.UnconfirmedSaleError);
+    api.clearDataCache(); // The storage marker survives losing the in-memory attempt.
+    assert.equal(api.hasUnconfirmedSale('checkout'), true);
+    await assert.rejects(api.submitSaleOnce('checkout', {}, fail), api.UnconfirmedSaleError);
+    assert.equal(writes, 1); assert.equal(storage.size, 1);
+    api.acknowledgeUnconfirmedSale('checkout');
+    assert.equal(await api.submitSaleOnce('checkout', {}, async () => 'recorded'), 'recorded');
+    assert.equal(storage.size, 0);
+    await assert.rejects(api.submitSaleOnce('order', {}, () => Promise.reject(new api.ApiError(400, 'Invalid tender'))), { status: 400 });
+    assert.equal(api.hasUnconfirmedSale('order'), false, 'Definite validation failures remain correctable');
+  } finally { api.acknowledgeUnconfirmedSale('checkout'); global.sessionStorage = previous; }
+});
+
+test('cross-tab token replacement clears cached account data and rejects a late old-session 401', async () => {
+  api.setAccessToken('account-A'); api.setRefreshToken('refresh-A');
+  let changes = 0;
+  const remove = api.onSessionStorageChange(() => changes++);
+  api.writeDataCache('private-account-data', ['account A'], ['sales']);
+  const epoch = api.dataCacheEpoch(), generation = api.getSessionGeneration();
+  let reject;
+  api.http.defaults.adapter = config => new Promise((_, fail) => { reject = () => fail(new AxiosError('Old request', undefined, config, undefined, { status: 401, data: {}, config })); });
+  const old = api.http.get('/sales/transactions/');
+  localStorage.setItem('rosario_access_token', 'account-B'); localStorage.setItem('rosario_refresh_token', 'refresh-B');
+  const event = new Event('storage'); Object.defineProperty(event, 'key', { value: 'rosario_access_token' });
+  window.dispatchEvent(event);
+  assert.equal(changes, 1); assert.ok(api.dataCacheEpoch() > epoch); assert.ok(api.getSessionGeneration() > generation);
+  assert.equal(api.readDataCache('private-account-data').data, undefined);
+  reject(); await assert.rejects(old, /previous session/);
+  assert.equal(api.getAccessToken(), 'account-B'); assert.equal(api.getRefreshToken(), 'refresh-B');
+  remove();
+});
+
+test('an action from a stale tab is stopped before it can be sent with another account token', async () => {
+  api.setAccessToken('account-A'); api.setRefreshToken('refresh-A');
+  const remove = api.onSessionStorageChange(() => {});
+  localStorage.setItem('rosario_access_token', 'account-B'); localStorage.setItem('rosario_refresh_token', 'refresh-B');
+  // The browser storage event has not been dispatched yet.
+  await assert.rejects(api.http.post('/sales/checkout/', {}), error => {
+    assert.equal(error.status, 409); assert.match(error.message, /another tab/); return true;
+  });
+  assert.equal(calls.length, 0);
+  assert.equal(api.getAccessToken(), 'account-B');
+  remove();
 });

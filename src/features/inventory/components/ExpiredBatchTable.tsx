@@ -17,6 +17,7 @@ const itemTitle = (item: ExpiredInventoryBatch) => <div className="flex items-ce
   <div className="min-w-0"><span className="font-medium text-sm text-gray-900 break-words">{item.name}</span><p className="text-xs text-slate-500 mt-0.5">{item.kind === 'product' ? 'Product' : 'Ingredient'}</p></div>
 </div>;
 
+/** @deprecated Active inventory uses ProductTable; retained for regression-test consumers. */
 export function ExpiredBatchTable({ staff = false, category = 'All', extraControls }: {
   staff?: boolean; category?: string; extraControls: ReactNode;
 }) {

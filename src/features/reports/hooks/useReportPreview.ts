@@ -4,6 +4,7 @@ import { getApiErrorMessage } from "@/lib/api";
 import { SETTINGS_UPDATED } from "@/features/settings/api/settings.service";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 
+/** @deprecated Active views use useCachedQuery invalidation; retained for legacy tests. */
 export function useReportVersion() {
   const [version, setVersion] = useState(0);
   useEffect(() => {
@@ -28,9 +29,4 @@ export function reportNumber(report: ReportPreview | null, key: string): number 
   if ((typeof value !== "number" && typeof value !== "string") || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
-}
-
-export function reportRows(report: ReportPreview | null): Record<string, unknown>[] {
-  const rows = report?.rows ?? report?.items;
-  return Array.isArray(rows) ? rows.filter(row => row && typeof row === "object") : [];
 }

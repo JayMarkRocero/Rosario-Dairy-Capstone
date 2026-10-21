@@ -41,6 +41,42 @@ const sessionTokens = new Map<string, string | null>();
 let sessionGeneration = 0;
 export const getSessionGeneration = () => sessionGeneration;
 type SessionRequest = { sessionGeneration?: number; retried?: boolean };
+const sessionStorageListeners = new Set<() => void>();
+let storageWindow: Window | undefined;
+let knownTokens: (string | null)[] = [];
+
+function rememberTokens() { knownTokens = [getAccessToken(), getRefreshToken()]; }
+
+function storageChanged(event: StorageEvent) {
+  if (event.key !== null && ![ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY].includes(event.key)) return;
+  try { if (event.storageArea && event.storageArea !== localStorage) return; } catch { return; }
+  synchronizeSessionStorage();
+}
+
+function ensureSessionStorageSync() {
+  if (typeof window === "undefined" || storageWindow === window) return;
+  storageWindow?.removeEventListener("storage", storageChanged);
+  storageWindow = window;
+  rememberTokens();
+  window.addEventListener("storage", storageChanged);
+}
+
+export function synchronizeSessionStorage() {
+  ensureSessionStorageSync();
+  const tokens = [getAccessToken(), getRefreshToken()];
+  if (!knownTokens.length) { knownTokens = tokens; return; }
+  if (tokens.every((token, index) => token === knownTokens[index])) return;
+  knownTokens = tokens;
+  sessionGeneration += 1;
+  clearDataCache();
+  sessionStorageListeners.forEach(listener => listener());
+}
+
+export function onSessionStorageChange(listener: () => void) {
+  ensureSessionStorageSync();
+  sessionStorageListeners.add(listener);
+  return () => { sessionStorageListeners.delete(listener); };
+}
 
 function readToken(key: string): string | null {
   if (sessionTokens.has(key)) return sessionTokens.get(key) ?? null;
@@ -61,6 +97,7 @@ function writeToken(key: string, token: string | null) {
 export function setAccessToken(token: string | null, refreshingSession = false) {
   if (!refreshingSession && token !== getAccessToken()) { sessionGeneration += 1; clearDataCache(); }
   writeToken(ACCESS_TOKEN_KEY, token);
+  rememberTokens();
 }
 
 export function getAccessToken(): string | null {
@@ -70,6 +107,7 @@ export function getAccessToken(): string | null {
 export function setRefreshToken(token: string | null) {
   if (!token) { if (getRefreshToken()) sessionGeneration += 1; clearDataCache(); }
   writeToken(REFRESH_TOKEN_KEY, token);
+  rememberTokens();
 }
 
 export function getRefreshToken(): string | null {
@@ -118,14 +156,19 @@ function appendTrailingSlash(url: string): string {
 }
 
 axiosInstance.interceptors.request.use((config) => {
+  const origin = sessionGeneration;
+  synchronizeSessionStorage();
   if (config.url) config.url = appendTrailingSlash(config.url);
+  if (origin !== sessionGeneration && !PUBLIC_AUTH_PATHS.includes(config.url ?? "")) {
+    throw new ApiError(409, "Your account changed in another tab. Wait for your session to reload before trying again.");
+  }
   (config as typeof config & SessionRequest).sessionGeneration ??= sessionGeneration;
 
   const token = getAccessToken();
   if (token && !config.headers.Authorization && !PUBLIC_AUTH_PATHS.includes(config.url ?? "")) config.headers.Authorization = `Bearer ${token}`;
 
   return config;
-}, undefined, { synchronous: true });
+}, error => { throw error; }, { synchronous: true });
 
 function extractErrorMessage(data: unknown, fallback: string): string {
   if (!data || typeof data !== "object") return fallback;
@@ -154,6 +197,7 @@ export function getApiErrorMessage(error: unknown, fallback = "Something went wr
 
 axiosInstance.interceptors.response.use(
   (response) => {
+    synchronizeSessionStorage();
     const origin = (response.config as typeof response.config & SessionRequest).sessionGeneration;
     if (origin !== undefined && origin !== sessionGeneration && !PUBLIC_AUTH_PATHS.includes(response.config.url ?? "") && response.config.url !== "/accounts/logout/") {
       return Promise.reject(new ApiError(409, "This request belongs to a previous session."));
@@ -166,13 +210,15 @@ axiosInstance.interceptors.response.use(
       else if (path.startsWith("/inventory/categories/")) invalidateDataCache(["categories", "inventory", "reports", "dashboard"]);
       else if (path.startsWith("/inventory/")) invalidateDataCache(["inventory", "categories", "dashboard", "reports"]);
       else if (path.startsWith("/sales/customers/")) invalidateDataCache(["customers", "reports"]);
-      else if (path.startsWith("/accounts/users/") || ["/accounts/register/", "/accounts/user/", "/accounts/admin-reset-password/"].includes(path)) invalidateDataCache(["users"]);
+      else if (path === "/accounts/user/") invalidateDataCache(["users", "sales", "orders", "dashboard"]);
+      else if (path.startsWith("/accounts/users/") || ["/accounts/register/", "/accounts/admin-reset-password/"].includes(path)) invalidateDataCache(["users"]);
       else if (path.startsWith("/settings/")) invalidateDataCache(["settings", "inventory", "dashboard", "reports"]);
       if (typeof window !== "undefined" && (path.startsWith("/sales/encoding/") || path.startsWith("/inventory/stock-adjustments/"))) window.dispatchEvent(new Event(INVENTORY_UPDATED));
     }
     return response;
   },
   async (error: AxiosError) => {
+    synchronizeSessionStorage();
     if (!error.response) return Promise.reject(error);
 
     const status = error.response.status;
@@ -407,6 +453,7 @@ export interface RegisterUserPayload {
 }
 
 export interface UpdateUserPayload {
+  current_password?: string;
   username?: string;
   role?: "admin" | "staff";
   is_active?: boolean;
@@ -434,26 +481,6 @@ export interface DjangoCustomer {
   updated_at: string;
   transaction_count?: number;
   last_sale?: string | null;
-}
-
-export interface DjangoOrderItem {
-  id: number;
-  product: DjangoProduct;
-  quantity: string;
-  unit_price: string;
-  subtotal: string;
-}
-
-export interface DjangoOrder {
-  id: number;
-  customer: DjangoCustomer;
-  handled_by: DjangoUserSummary;
-  status: "fulfilled" | "cancelled";
-  transaction: DjangoTransaction;
-  items: DjangoOrderItem[];
-  warning?: string;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface CreateCustomerPayload {

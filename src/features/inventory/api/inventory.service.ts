@@ -2,6 +2,7 @@ import { businessDate, decimalUnits } from "@/features/sales/utils/manualPricing
 import { dataCacheEpoch, fetchDataCache, invalidateDataCache } from "@/lib/dataCache";
 import { REPORTS_UPDATED } from "@/features/reports/api/reports.service";
 import http, {
+  ApiError, getApiErrorMessage,
   type CreateCategoryPayload,
   type CreateIngredientBatchPayload,
   type CreateIngredientPayload,
@@ -236,6 +237,7 @@ export const inventoryService = {
     return data.map(({ product, remaining_quantity }) => ({ ...product, total_stock: remaining_quantity }));
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   getLowStockIngredients: async (): Promise<DjangoIngredient[]> => {
     const { data } = await http.get<Array<{ ingredient: DjangoIngredient; remaining_quantity: string }>>("/inventory/low-stock/ingredients/");
     return data.map(({ ingredient, remaining_quantity }) => ({ ...ingredient, total_stock: remaining_quantity }));
@@ -245,10 +247,12 @@ export const inventoryService = {
     return (await http.get<DjangoProductBatch[]>("/inventory/expiring/products/")).data;
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   getExpiringIngredients: async (): Promise<DjangoIngredientBatch[]> => {
     return (await http.get<DjangoIngredientBatch[]>("/inventory/expiring/ingredients/")).data;
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   getLowStock: async (): Promise<InventoryItem[]> => {
     const products = await inventoryService.getLowStockProducts();
     return products.map(product => ({
@@ -257,6 +261,7 @@ export const inventoryService = {
     }));
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   getNearExpiry: async (): Promise<FEFOItem[]> => {
     const batches = await inventoryService.getExpiringProducts();
     return batches.map(batch => {
@@ -293,7 +298,13 @@ export const inventoryService = {
       date_received: businessDate(),
       ...(input.batchCost?.trim() ? { unit_price: Number(input.batchCost) } : {}),
     };
-    await http.post<DjangoProductBatch>("/inventory/product-batches/", batchPayload);
+    try {
+      await http.post<DjangoProductBatch>("/inventory/product-batches/", batchPayload);
+    } catch (error) {
+      throw new ApiError(error instanceof ApiError ? error.status : 0,
+        `Product "${product.name}" (ID ${product.id}) was created, but its initial stock could not be confirmed. Do not add the product again. Refresh Inventory, check its batches, and use Restock on the existing product if the batch is missing. ${getApiErrorMessage(error)}`,
+        error instanceof ApiError ? error.fieldErrors : {});
+    }
   },
 
   createCategory: async (input: { name: string; icon: CategoryIconKey; is_visible_to_staff: boolean }): Promise<void> => {
@@ -349,6 +360,7 @@ export const inventoryService = {
     return data.deletion_type;
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   reactivateProduct: async (productId: number): Promise<void> => {
     await http.post<DjangoProduct>(`/inventory/products/${productId}/reactivate/`, {});
   },
@@ -369,6 +381,7 @@ export const inventoryService = {
     return data;
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   getIngredients: async (includeInactive = false): Promise<DjangoIngredient[]> => fetchDataCache(`${dataCacheEpoch()}:inventory:ingredients:${includeInactive}`, async () => {
     const { data } = await http.get<DjangoIngredient[]>("/inventory/ingredients/", {
       params: includeInactive ? { include_inactive: true } : undefined,
@@ -376,24 +389,29 @@ export const inventoryService = {
     return data;
   }, ["inventory"]),
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   createIngredient: async (payload: CreateIngredientPayload): Promise<DjangoIngredient> => {
     const { data } = await http.post<DjangoIngredient>("/inventory/ingredients/", ingredientPayload(payload));
     return data;
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   updateIngredient: async (ingredientId: number, payload: UpdateIngredientPayload): Promise<DjangoIngredient> => {
     const { data } = await http.patch<DjangoIngredient>(`/inventory/ingredients/${ingredientId}/`, ingredientPayload(payload));
     return data;
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   deactivateIngredient: async (ingredientId: number): Promise<void> => {
     await http.post(`/inventory/ingredients/${ingredientId}/deactivate/`, {});
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   reactivateIngredient: async (ingredientId: number): Promise<void> => {
     await http.post<DjangoIngredient>(`/inventory/ingredients/${ingredientId}/reactivate/`, {});
   },
 
+  /** @deprecated No active UI caller; retained for API contract compatibility. */
   createIngredientBatch: async (payload: CreateIngredientBatchPayload): Promise<DjangoIngredientBatch> => {
     const { data } = await http.post<DjangoIngredientBatch>("/inventory/ingredient-batches/", payload);
     return data;
