@@ -6,6 +6,7 @@ import { useAuth } from "@/features/auth/context/AuthContext";
 import { userService } from "@/features/users/api/user.service";
 import { ApiError, getApiErrorMessage, setAccessToken, setRefreshToken } from "@/lib/api";
 import { authService } from "@/features/auth/api/auth.service";
+import { formInputClass } from "@/styles/controlClasses";
 
 interface ProfileDraft {
   username: string;
@@ -144,19 +145,19 @@ export function PersonalProfileSettings({ compact = false }: { compact?: boolean
               if (key === "email") { pendingEmail.current = value; setVerificationEmail(""); setOtp(""); setNotice(""); }
               setError("");
             }} disabled={saving}
-            className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70`} />
+            className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} ${formInputClass}`} />
         </div>)}
         {(usernameChanged || emailChanged) && <div>
           <label htmlFor="profile-current-password" className="mb-1.5 block text-xs font-semibold">Current password</label>
           <input id="profile-current-password" type="password" autoComplete="current-password" required maxLength={1024}
             value={currentPassword} onChange={event => { setCurrentPassword(event.target.value); setError(""); }} disabled={saving}
-            className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70`} />
+            className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} ${formInputClass}`} />
         </div>}
         {awaitingCode && <div>
           <label htmlFor="profile-email-otp" className="mb-1.5 block text-xs font-semibold">Email verification code</label>
           <input id="profile-email-otp" type="text" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6}
             value={otp} onChange={event => { setOtp(event.target.value); setError(""); }} disabled={saving}
-            className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70`} />
+            className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} ${formInputClass}`} />
           <button type="button" onClick={event => void saveProfile(event, true)} disabled={saving}
             className="mt-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-40">Resend code</button>
         </div>}

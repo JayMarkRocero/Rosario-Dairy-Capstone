@@ -89,6 +89,9 @@ html.dark .filter-control:focus,
 html.dark .filter-control-group:focus-within {
   border-color: var(--primary);
 }
+html.dark .form-control:focus {
+  border-color: var(--color-blue-600);
+}
 html.dark [class~="border-emerald-200/60"],
 html.dark [class~="border-rose-200/60"],
 html.dark [class~="border-amber-200/60"],
@@ -119,6 +122,33 @@ html.dark .hover\:bg-blue-50:hover {
 }
 html.dark [class*="hover:bg-slate-50/"]:hover {
   background-color: var(--surface-raised);
+}
+
+/* The shared Admin/Staff inbox keeps translucent light utilities out of dark surfaces. */
+html.dark .notification-inbox [data-notification-id] {
+  background-color: var(--surface-inset);
+}
+
+html.dark .notification-inbox [data-notification-id][class~="bg-slate-50/60"] {
+  background-color: color-mix(in srgb, var(--accent) 65%, var(--surface-inset));
+}
+
+html.dark .notification-inbox [data-notification-id] .text-slate-700 {
+  color: var(--color-slate-300);
+}
+
+html.dark .notification-inbox .bg-red-100 {
+  background-color: var(--status-red);
+  color: var(--color-red-300);
+}
+
+html.dark .notification-inbox .bg-amber-100 {
+  background-color: var(--status-amber);
+  color: var(--color-amber-200);
+}
+
+html.dark .notification-inbox button:hover:not(:disabled) {
+  color: var(--foreground);
 }
 
 .skeleton {

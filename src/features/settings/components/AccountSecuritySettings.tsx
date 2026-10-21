@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { Card } from "@/components/data-display/Card";
 import { authService } from "@/features/auth/api/auth.service";
 import { setAccessToken, setRefreshToken } from "@/lib/api";
+import { formInputClass } from "@/styles/controlClasses";
 
 export function AccountSecuritySettings({ compact = false }: { compact?: boolean } = {}) {
   const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
@@ -44,7 +45,7 @@ export function AccountSecuritySettings({ compact = false }: { compact?: boolean
           <label htmlFor={`password-${key}`} className="mb-1.5 block text-xs font-semibold">{label}</label>
           <input id={`password-${key}`} type="password" autoComplete={autoComplete} required minLength={key === "current" ? undefined : 8}
             value={passwords[key]} onChange={event => { setPasswords(current => ({ ...current, [key]: event.target.value })); setPasswordError(""); }}
-            disabled={changingPassword} className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70`} />
+            disabled={changingPassword} className={`min-h-11 py-2.5 ${compact ? "sm:min-h-9 sm:py-1.5" : "sm:min-h-10 sm:py-2"} ${formInputClass}`} />
         </div>)}
       </div>
       {passwordError && <p role="alert" className="mt-3 text-xs text-red-600">{passwordError}</p>}

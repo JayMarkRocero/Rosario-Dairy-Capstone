@@ -1,2 +1,3 @@
 export const filterSelectClass = "filter-control h-10 max-w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 text-sm text-slate-700 outline-none transition-all duration-150 focus:border-primary focus:ring-1 focus:ring-primary/20";
 export const searchContainerClass = "filter-control-group flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 transition-all duration-150 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20";
+export const formInputClass = "form-control w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70";

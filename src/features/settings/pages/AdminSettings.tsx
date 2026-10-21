@@ -11,6 +11,7 @@ import { AppearanceSettings } from "@/features/settings/components/AppearanceSet
 import { AccountSecuritySettings } from "@/features/settings/components/AccountSecuritySettings";
 import { PersonalProfileSettings } from "@/features/settings/components/PersonalProfileSettings";
 import { C } from "@/styles/tokens/colors";
+import { formInputClass } from "@/styles/controlClasses";
 
 const liveAlerts: { key: keyof NotificationSettings; label: string; description: string; icon: typeof AlertTriangle }[] = [
   { key: "low_stock_alerts", label: "Low stock", description: "Show an alert when product or ingredient stock is at or below the global threshold.", icon: AlertTriangle },
@@ -207,7 +208,7 @@ export function AdminSettings() {
               disabled={!canManage || saving !== null} placeholder={placeholder} value={draftSystem[key]}
               onChange={event => { setDraft({ ...draft, system: { ...draftSystem, [key]: event.target.value } }); setFieldErrors(current => ({ ...current, [key]: [] })); }}
               aria-invalid={!!fieldErrors[key]?.length}
-              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
+              className={`min-h-11 py-2.5 ${formInputClass}`} />
             {key === "business_name" && <p className="mt-1 text-xs text-slate-500">Leave blank to use “{fallbackName}”.</p>}
             {!!fieldErrors[key]?.length && <p role="alert" className="mt-1 text-xs text-red-600">{fieldErrors[key].join(" ")}</p>}
           </div>)}
@@ -231,7 +232,7 @@ export function AdminSettings() {
               disabled={!canManage || saving !== null} aria-invalid={!!fieldErrors[key]?.length}
               aria-describedby={key === "critical_expiry_threshold" ? "critical-expiry-urgency critical-expiry-help" : undefined}
               onChange={event => { setInventoryDraft(current => current ? { ...current, [key]: event.target.value } : current); setFieldErrors(current => ({ ...current, [key]: [] })); }}
-              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-70" />
+              className={`min-h-11 py-2.5 ${formInputClass}`} />
             {!!fieldErrors[key]?.length && <p role="alert" className="mt-1 text-xs text-red-600">{fieldErrors[key].join(" ")}</p>}
             {key === "critical_expiry_threshold" && <p id="critical-expiry-urgency" className="mt-2 text-xs leading-relaxed text-slate-500">Critical items (within this window) will trigger high-priority red alert badges and top-level notifications to ensure immediate FEFO dispatch.</p>}
           </div>)}
@@ -258,7 +259,7 @@ export function AdminSettings() {
               <input type="checkbox" role="switch" aria-labelledby={`${key}-label`} aria-describedby={`${key}-description`}
                 checked={draft.notifications[key]} onChange={event => setDraft({ ...draft, notifications: { ...draft.notifications, [key]: event.target.checked } })}
                 className="peer sr-only" />
-              <span aria-hidden="true" className="h-6 w-11 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-disabled:cursor-not-allowed"
+              <span aria-hidden="true" className="h-6 w-11 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500/20 peer-disabled:cursor-not-allowed"
                 style={{ backgroundColor: draft.notifications[key] ? "var(--primary)" : "var(--muted)" }} />
               <span aria-hidden="true" className="ui-switch-thumb pointer-events-none absolute left-0.5 top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
             </span>
