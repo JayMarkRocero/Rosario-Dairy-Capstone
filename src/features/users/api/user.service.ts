@@ -30,6 +30,8 @@ export const userService = {
       id: u.id,
       username: u.username,
       name: `${u.first_name} ${u.last_name}`.trim() || u.username,
+      firstName: u.first_name,
+      lastName: u.last_name,
       email: u.email,
       role: toDisplayRole(u.role),
       status: u.is_active ? "Active" : "Inactive",

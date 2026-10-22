@@ -22,6 +22,16 @@ export function StaffInventory() {
 
   const [category, setCategory] = useState("All");
   const [status, setStatus] = useState("All");
+  const stats = useMemo(() => {
+    const products = items.filter(item => item.expiredBatch?.kind !== "ingredient");
+    const countProducts = (predicate: (item: InventoryItem) => boolean) => new Set(products.filter(predicate).map(item => item.id)).size;
+    return {
+      products: countProducts(() => true),
+      lowStock: countProducts(item => getInventoryWarnings(item).lowStock),
+      nearExpiry: countProducts(item => getInventoryWarnings(item).nearExpiry),
+      expired: new Set(items.filter(item => getInventoryWarnings(item).expired).map(item => item.expiredBatch?.key ?? `product-${item.id}`)).size,
+    };
+  }, [items]);
 
   const categories = useMemo(() => {
     const unique = Array.from(new Set(items.map(p => p.cat)));
@@ -82,9 +92,9 @@ export function StaffInventory() {
         <InventoryOutflows/>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">{[
-        ["Products", items.length, C.blue], ["Low stock", items.filter(p=>getInventoryWarnings(p).lowStock).length, C.orange],
-        ["Near expiry", items.filter(p=>getInventoryWarnings(p).nearExpiry).length, C.orange], ["Expired", items.filter(p=>getInventoryWarnings(p).expired).length, C.red],
-      ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
+        ["Products", stats.products, C.blue], ["Low stock", stats.lowStock, C.orange],
+        ["Near expiry", stats.nearExpiry, C.orange], ["Expired", stats.expired, C.red],
+      ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={query.error ? "Unavailable" : itemsLoading ? "—" : value} color={String(color)} />)}</div>
       <StaffInventoryTable errorContent={query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} /> : undefined} contentHeight pageSize={5} rowHeight={52} columns={columns} data={filteredItems} rowKey={p=>p.id} searchable searchKeys={p=>[p.name,p.cat]} searchPlaceholder="Search products…" showExport={false} loading={itemsLoading} emptyTitle="No products found" emptyDesc="No products match your filters."
           extraControls={filterControls}/>
     </div>

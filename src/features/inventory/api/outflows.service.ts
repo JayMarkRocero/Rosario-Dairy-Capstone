@@ -1,4 +1,6 @@
-import http, { type DjangoProductBatch, type DjangoIngredientBatch, type DjangoUserSummary } from "@/lib/api";
+import http, { ApiError, type DjangoProductBatch, type DjangoIngredientBatch, type DjangoUserSummary } from "@/lib/api";
+import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest } from "@/lib/pendingRequest";
+import { newEncodingRequestId } from "@/features/sales/utils/manualPricing";
 export type OutflowType = "spoilage" | "complimentary" | "free_taste" | "expired";
 export const OUTFLOW_TYPES: { value: OutflowType; label: string; description: string }[] = [
   { value: "spoilage", label: "Spoilage", description: "Stock lost because it spoiled. A fully used batch is marked disposed." },
@@ -12,7 +14,10 @@ export interface StockAdjustment {
   adjustment_type: string; quantity: string; unit_cost: string; reason: string | null; adjusted_by: DjangoUserSummary; created_at: string; updated_at: string;
 }
 export interface OutflowPayload { product_batch_id?: number; ingredient_batch_id?: number; adjustment_type: OutflowType; quantity: string; unit_cost: string; reason?: string }
+const active = new Map<string, { fingerprint: string; request: Promise<StockAdjustment> }>();
 export const outflowsService = {
+  pending: () => readPendingRequest<OutflowPayload>("outflow"),
+  clearPending: () => { const pending = outflowsService.pending(); if (pending && !active.has(pending.key)) clearPendingRequest(pending); },
   batches: async (): Promise<OutflowBatch[]> => {
     const [products, ingredients] = await Promise.all([http.get<DjangoProductBatch[]>("/inventory/product-batches/"), http.get<DjangoIngredientBatch[]>("/inventory/ingredient-batches/")]);
     return [
@@ -21,5 +26,21 @@ export const outflowsService = {
     ].sort((a, b) => a.expiry.localeCompare(b.expiry));
   },
   list: async (filters: { adjustment_type?: string; start_date?: string; end_date?: string }) => (await http.get<StockAdjustment[]>("/inventory/stock-adjustments/", { params: filters })).data,
-  create: async (payload: OutflowPayload) => (await http.post<StockAdjustment>("/inventory/stock-adjustments/", payload)).data,
+  create: (payload: OutflowPayload): Promise<StockAdjustment> => {
+    const fingerprint = JSON.stringify(payload), previous = outflowsService.pending();
+    if (previous) {
+      const existing = active.get(previous.key);
+      if (existing?.fingerprint === fingerprint) return existing.request;
+      return Promise.reject(new ApiError(409, "The previous outflow result is unconfirmed. Do not submit it again. Check inventory outflow History before starting another record."));
+    }
+    // The API has no request-id contract: keep the ID locally and fail closed
+    // after ambiguous writes instead of sending an ignored key and retrying.
+    const pending = storePendingRequest("outflow", newEncodingRequestId(), fingerprint, payload);
+    const request = http.post<StockAdjustment>("/inventory/stock-adjustments/", payload)
+      .then(({ data }) => { clearPendingRequest(pending); return data; })
+      .catch(error => { if (isDefiniteRequestFailure(error)) clearPendingRequest(pending); throw error; })
+      .finally(() => { if (active.get(pending.key)?.request === request) active.delete(pending.key); });
+    active.set(pending.key, { fingerprint, request });
+    return request;
+  },
 };

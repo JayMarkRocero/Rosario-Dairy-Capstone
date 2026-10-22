@@ -112,8 +112,8 @@ export const inventoryService = {
       invalidateDataCache(['inventory']);
       throw new Error('Batch stock has changed. Close this confirmation, refresh the inventory, and confirm the current quantity.');
     }
-    const unitCost = 'product' in batch ? batch.unit_price : batch.unit_price ?? batch.ingredient.unit_price;
-    if (unitCost == null || !Number.isFinite(Number(unitCost)) || Number(unitCost) < 0) {
+    const unitCost = ('product' in batch ? batch.unit_price : batch.unit_price ?? batch.ingredient?.unit_price) ?? '0.00';
+    if (!Number.isFinite(Number(unitCost)) || Number(unitCost) < 0) {
       throw new Error('A valid batch unit cost is required to record this write-off.');
     }
     await http.post('/inventory/stock-adjustments/', {

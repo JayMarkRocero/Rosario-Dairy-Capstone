@@ -46,7 +46,7 @@ interface TopBarProps {
   onMenuClick?: () => void;
 }
 
-export function TopBar({ title, userName, role, onLogout, onMenuClick }: TopBarProps) {
+export function TopBar({ title, userName, role, onMenuClick }: TopBarProps) {
   const now     = new Date();
   const dateStr = now.toLocaleDateString("en-PH", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
   const [time, setTime] = useState(now.toLocaleTimeString("en-PH", { hour:"2-digit", minute:"2-digit", second:"2-digit" }));

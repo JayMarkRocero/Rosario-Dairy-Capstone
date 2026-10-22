@@ -1709,3 +1709,120 @@ test('report PDFs use preview dates, isolate both cache bounds, and refresh ever
   assert.notEqual(api.reportCacheKey('preview', 'customer', undefined, first), api.reportCacheKey('pdf', 'customer', undefined, first));
   assert.notEqual(api.reportCacheKey('preview', 'sarima_forecast', 'weekly'), api.reportCacheKey('preview', 'sarima_forecast', 'monthly'));
 });
+
+function reloadServicesForRetry() {
+  const instance = new Module(path.join(root, 'tests', 'reloaded-services.cjs'), module);
+  instance.filename = path.join(root, 'tests', 'reloaded-services.cjs');
+  instance.paths = module.paths;
+  instance._compile(compiled, instance.filename);
+  return instance.exports;
+}
+
+test('encoding retains its original UUID and payload across a full module reload after timeout', async () => {
+  api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id: 704 })).toString('base64url')}.signature`);
+  const payload = { request_id: '550e8400-e29b-41d4-a716-446655440001', transaction_date: '2000-01-01',
+    customer_id: null, payment_method: 'cash', payment_status: 'pending', amount_tendered: null,
+    si_number: 'SI-RETRY', note: 'Paper invoice', items: [{ product_id: 1, quantity: '2', unit_price: '10' }] };
+  const lines = [{ productId: 1, name: 'Milk', stock: 5, quantity: '2', unitPrice: '10', discountType: 'none', discountValue: '0' }];
+  api.http.defaults.adapter = async config => { calls.push(config); throw new AxiosError('Timed out', AxiosError.ECONNABORTED); };
+  await assert.rejects(api.encodingService.create(payload, lines));
+  const saved = api.encodingService.pending();
+  assert.equal(saved.id, payload.request_id);
+  assert.equal(saved.payload.lines[0].name, 'Milk');
+  const reloaded = reloadServicesForRetry();
+  assert.equal(reloaded.encodingService.pending().id, payload.request_id);
+  let retried;
+  reloaded.http.defaults.adapter = async config => { retried = JSON.parse(config.data); return { status: 200, config, headers: {}, data: { id: 88 } }; };
+  await assert.rejects(reloaded.encodingService.create({ ...payload, note: 'Changed' }), /already attempted/);
+  assert.equal(retried, undefined);
+  const sale = await reloaded.encodingService.create({ ...payload, request_id: '550e8400-e29b-41d4-a716-446655440002' });
+  assert.equal(sale.id, 88);
+  assert.equal(retried.request_id, payload.request_id);
+  assert.deepEqual(retried.items, [{ product_id: 1, quantity: '2.00', unit_price: '10.00', discount_type: 'none', discount_value: '0.00' }]);
+  assert.equal(api.encodingService.pending(), null);
+});
+
+test('outflow timeout records survive reload and block another POST until history review', async () => {
+  api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id: 705 })).toString('base64url')}.signature`);
+  const payload = { product_batch_id: 3, adjustment_type: 'spoilage', quantity: '2.00', unit_cost: '0.00', reason: 'Spoiled stock' };
+  let posts = 0;
+  api.http.defaults.adapter = async config => { posts++; assert.deepEqual(JSON.parse(config.data), payload); throw new AxiosError('Timed out', AxiosError.ECONNABORTED); };
+  await assert.rejects(api.outflowsService.create(payload));
+  const saved = api.outflowsService.pending();
+  assert.match(saved.id, /^[0-9a-f-]{36}$/);
+  const reloaded = reloadServicesForRetry();
+  reloaded.http.defaults.adapter = async config => { posts++; return { status: 201, config, headers: {}, data: { id: 9 } }; };
+  assert.equal(reloaded.outflowsService.pending().id, saved.id);
+  await assert.rejects(reloaded.outflowsService.create(payload), /unconfirmed/);
+  await assert.rejects(reloaded.outflowsService.create({ ...payload, quantity: '1.00' }), /unconfirmed/);
+  assert.equal(posts, 1);
+  reloaded.outflowsService.clearPending();
+  await reloaded.outflowsService.create(payload);
+  assert.equal(posts, 2);
+  assert.equal(api.outflowsService.pending(), null);
+});
+
+test('outflows share an active write, clear definite validation failures and preserve account isolation', async () => {
+  const token = id => `header.${Buffer.from(JSON.stringify({ user_id: id })).toString('base64url')}.signature`;
+  api.setAccessToken(token(701));
+  const payload = { product_batch_id: 3, adjustment_type: 'free_taste', quantity: '1.00', unit_cost: '0.00' };
+  let reject, posts = 0;
+  api.http.defaults.adapter = config => { posts++; return new Promise((_, fail) => { reject = error => fail(error ?? new AxiosError('Invalid', undefined, config, undefined, { status: 400, config, headers: {}, data: { detail: 'Invalid quantity' } })); }); };
+  const first = api.outflowsService.create(payload), second = api.outflowsService.create(payload);
+  const failures = Promise.allSettled([first, second]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(posts, 1);
+  reject(); await failures;
+  assert.equal(api.outflowsService.pending(), null);
+  const uncertain = api.outflowsService.create(payload); const rejected = assert.rejects(uncertain);
+  await new Promise(resolve => setImmediate(resolve));
+  reject(new AxiosError('Timed out', AxiosError.ECONNABORTED)); await rejected;
+  const originalId = api.outflowsService.pending().id;
+  api.setAccessToken(token(702));
+  assert.equal(api.outflowsService.pending(), null);
+  api.outflowsService.clearPending();
+  api.setAccessToken(token(701));
+  assert.equal(api.outflowsService.pending().id, originalId);
+  api.outflowsService.clearPending();
+});
+
+test('blocked storage retains outflow guards in memory across component remounts', async () => {
+  api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id: 703 })).toString('base64url')}.signature`);
+  const originalStorage = global.localStorage;
+  try {
+    global.localStorage = { getItem() { throw new Error('Blocked'); }, setItem() { throw new Error('Blocked'); }, removeItem() { throw new Error('Blocked'); } };
+    let posts = 0;
+    api.http.defaults.adapter = async () => { posts++; throw new Error('Offline'); };
+    const payload = { ingredient_batch_id: 4, adjustment_type: 'spoilage', quantity: '1.00', unit_cost: '0.00' };
+    await assert.rejects(api.outflowsService.create(payload));
+    assert.ok(api.outflowsService.pending());
+    await assert.rejects(api.outflowsService.create(payload), /unconfirmed/);
+    assert.equal(posts, 1);
+    api.outflowsService.clearPending();
+    assert.equal(api.outflowsService.pending(), null);
+  } finally { global.localStorage = originalStorage; }
+});
+
+test('expired batch disposal accepts null or zero costs and preserves existing positive costs', async () => {
+  const costs = [null, '0.00', '4.25'];
+  for (const kind of ['product', 'ingredient']) for (const unit_price of costs) {
+    let submitted;
+    api.http.defaults.adapter = async config => {
+      if (config.method === 'post') submitted = JSON.parse(config.data);
+      return { status: 200, config, headers: {}, data: { [kind]: { unit_price: null }, status: 'available', expiration_date: '2000-01-01', remaining_quantity: '2', unit_price, batch_number: 'B1' } };
+    };
+    await api.inventoryService.disposeExpiredBatch({ id: 1, kind, quantity: 2 });
+    assert.equal(submitted.unit_cost, unit_price ?? '0.00');
+    assert.equal(submitted.quantity, '2');
+  }
+});
+
+test('user mapping retains separate multi-word first and last names for edit payloads', async () => {
+  responseData = [{ id: 8, username: 'juan', first_name: 'Juan Miguel', last_name: 'Dela Cruz', email: 'juan@example.com', role: 'staff', is_active: true, deactivation_reason: 'none', last_login: null }];
+  const [user] = await api.userService.getAll();
+  assert.equal(user.firstName, 'Juan Miguel'); assert.equal(user.lastName, 'Dela Cruz');
+  assert.equal(user.name, 'Juan Miguel Dela Cruz');
+  await api.userService.updateUser(8, { username: user.username, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName });
+  assert.equal(JSON.parse(calls.at(-1).data).first_name, 'Juan Miguel');
+  assert.equal(JSON.parse(calls.at(-1).data).last_name, 'Dela Cruz');
+});

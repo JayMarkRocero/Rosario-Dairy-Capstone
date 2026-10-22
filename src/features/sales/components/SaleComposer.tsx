@@ -5,10 +5,11 @@ import { Btn } from "@/components/buttons/Btn";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { OverlayPortal } from "@/components/overlays/OverlayPortal";
 import { acknowledgeUnconfirmedSale, hasUnconfirmedSale, UnconfirmedSaleError } from "@/lib/saleSubmission";
+import { isDefiniteRequestFailure } from "@/lib/pendingRequest";
 import { Skeleton } from "@/components/EmptyState";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { useAuth } from "@/features/auth/context/AuthContext";
-import { ApiError, getApiErrorMessage, type DjangoTransaction } from "@/lib/api";
+import { getApiErrorMessage, type DjangoTransaction } from "@/lib/api";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { isExpiredProduct } from "@/features/inventory/utils/expiry";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
@@ -18,7 +19,7 @@ import { CustomerHistory } from "@/features/customers/components/CustomerHistory
 import type { Customer } from "@/features/customers/types/customer";
 import { checkoutService } from "@/features/pos/api/checkout.service";
 import { ordersService } from "@/features/orders/api/orders.service";
-import { encodingService, type EncodingPayload } from "../api/encoding.service";
+import { encodingFingerprint, encodingService, type EncodingPayload } from "../api/encoding.service";
 import { SaleLineEditor } from "./SaleLineEditor";
 import { businessDate, newEncodingRequestId, formatCents, newSaleLine, priceSale, validateTender, type SaleLineDraft } from "../utils/manualPricing";
 
@@ -27,6 +28,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const { user } = useAuth();
   const isCheckout = mode === "checkout";
   const canDiscount = mode !== "order" && user?.role === "admin";
+  const savedEncoding = mode === "encoding" ? encodingService.pending()?.payload : undefined;
   const [products, setProducts] = useState<InventoryItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,14 +36,14 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const [reload, setReload] = useState(0);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
-  const [customerId, setCustomerId] = useState("");
-  const [lines, setLines] = useState<SaleLineDraft[]>([]);
-  const [method, setMethod] = useState<"cash" | "online">("cash");
-  const [paymentStatus, setPaymentStatus] = useState<"pending" | "paid">(mode === "encoding" ? "pending" : "paid");
-  const [tender, setTender] = useState("");
-  const [date, setDate] = useState(businessDate);
-  const [si, setSi] = useState("");
-  const [note, setNote] = useState("");
+  const [customerId, setCustomerId] = useState(() => savedEncoding?.payload.customer_id == null ? "" : String(savedEncoding.payload.customer_id));
+  const [lines, setLines] = useState<SaleLineDraft[]>(() => savedEncoding?.lines ?? []);
+  const [method, setMethod] = useState<"cash" | "online">(savedEncoding?.payload.payment_method ?? "cash");
+  const [paymentStatus, setPaymentStatus] = useState<"pending" | "paid">(savedEncoding?.payload.payment_status ?? (mode === "encoding" ? "pending" : "paid"));
+  const [tender, setTender] = useState(savedEncoding?.payload.amount_tendered ?? "");
+  const [date, setDate] = useState(() => savedEncoding?.payload.transaction_date ?? businessDate());
+  const [si, setSi] = useState(savedEncoding?.payload.si_number ?? "");
+  const [note, setNote] = useState(savedEncoding?.payload.note ?? "");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -53,7 +55,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const [focusProductId, setFocusProductId] = useState<number | null>(null);
   const [mobilePane, setMobilePane] = useState<"products" | "cart">("products");
   const lock = useRef(false);
-  const attempt = useRef<{ fingerprint: string; payload: EncodingPayload } | null>(null);
+  const attempt = useRef<{ fingerprint: string; payload: EncodingPayload } | null>(savedEncoding ? { fingerprint: encodingFingerprint(savedEncoding.payload), payload: savedEncoding.payload } : null);
   useEffect(() => {
     let active = true;
     setLoading(true); setLoadError(undefined);
@@ -96,17 +98,17 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
       let transaction: DjangoTransaction;
       if (mode === "encoding") {
         const fields = { ...common, transaction_date: date, si_number: si.trim(), note: note.trim(), payment_status: paymentStatus };
-        const fingerprint = JSON.stringify(fields);
+        const fingerprint = encodingFingerprint(fields);
         if (attempt.current && attempt.current.fingerprint !== fingerprint) throw new Error("A submission was already attempted. Retry its original values, or check encoding history before starting a new entry.");
         if (!attempt.current) attempt.current = { fingerprint, payload: { ...fields, request_id: newEncodingRequestId() } };
-        transaction = await encodingService.create(attempt.current.payload);
+        transaction = await encodingService.create(attempt.current.payload, lines);
       } else if (mode === "order") transaction = (await ordersService.createOrder({ ...common, customer_id: selectedCustomer!.id })).transaction;
       else transaction = (await checkoutService.submit(common)).transaction;
       attempt.current = null; setLines([]); setTender(""); setSi(""); setNote("");
       setReload(value => value + 1);
       toast.success(mode === "encoding" ? "Sales entry recorded." : "Transaction completed.");
       onSuccess(transaction);
-    } catch (error) { if (error instanceof ApiError && [400, 401, 403].includes(error.status)) attempt.current = null; const message = getApiErrorMessage(error, "Unable to save this transaction."); setFormError(message); toast.error(message); }
+    } catch (error) { if (isDefiniteRequestFailure(error)) attempt.current = null; const message = getApiErrorMessage(error, "Unable to save this transaction."); setFormError(message); toast.error(message); }
     finally { lock.current = false; setBusy(false); onBusyChange?.(false); }
   };
   const registerCustomer = async () => {
@@ -151,7 +153,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const errorMessage = formError && <p role="alert" className="break-words text-sm text-red-600">{formError}</p>;
   const actions = <div className={`flex flex-wrap justify-end gap-2 ${isCheckout ? "[&_button]:w-full" : ""}`}>
       {unconfirmed && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Review previous submission</Btn>}
-      {mode === "encoding" && attempt.current && !busy && <Btn variant="secondary" onClick={() => { attempt.current = null; setLines([]); setSi(""); setNote(""); setFormError(""); }}>Start a new entry</Btn>}
+      {mode === "encoding" && attempt.current && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Start a new entry</Btn>}
       <Btn variant="primary" disabled={busy || !lines.length || unconfirmed || isCheckout && !checkoutReady} onClick={submit}>{busy ? "Saving..." : mode === "encoding" ? "Save sales entry" : mode === "order" ? "Submit & Fulfill" : "Complete Transaction"}</Btn>
   </div>;
   if (loadError) return <QueryErrorMessage error={loadError} onRetry={() => setReload(value => value + 1)}/>;
@@ -193,14 +195,16 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
         {mode === "encoding" && <label className="block text-xs font-medium text-slate-600">Notes (optional)<textarea aria-label="Encoding notes" maxLength={2000} className={input} placeholder="Reference or reason for this entry" value={note} onChange={e => setNote(e.target.value)}/></label>}
       </fieldset>
       {errorMessage}
-      {attempt.current && !busy && <p className="text-xs text-amber-700">If a request timed out, retry the unchanged entry to avoid duplicate records. Check encoding history before starting another entry.</p>}
+      {attempt.current && !busy && <p className="text-xs text-amber-700">Your previous entry is restored. Retry it unchanged with the same request ID to avoid duplicate records. Check encoding history before starting another entry.</p>}
       {actions}
     </>}
     <CustomerHistory customer={historyOpen ? selectedCustomer ?? null : null} onClose={() => setHistoryOpen(false)}/>
     <OverlayPortal><ConfirmDialog open={reviewOpen} onClose={() => setReviewOpen(false)} variant="warning" title="Have you checked transaction history?"
       description="An interrupted request may already have recorded the sale and deducted stock. Check Orders and Sales History before continuing. Start a new transaction only after confirming whether the previous one was recorded."
       confirmLabel="History checked — start new transaction" onConfirm={() => {
+        if (lock.current) return;
         if (mode !== "encoding") acknowledgeUnconfirmedSale(mode);
+        else { encodingService.clearPending(); attempt.current = null; setSi(""); setNote(""); }
         setReviewOpen(false); setLines([]); setTender(""); setFormError(""); setReload(value => value + 1);
       }} /></OverlayPortal>
     {isCheckout && <OverlayPortal><ConfirmDialog open={clearOpen} loading={busy} onClose={() => { if (!lock.current) setClearOpen(false); }} title="Clear all cart items?"

@@ -28,7 +28,8 @@ const compiled = buildSync({
   stdin: { contents: `
     export { default as http } from './src/lib/api';
     export { AuthProvider } from './src/features/auth/context/AuthContext';
-    export { AppShell } from './src/app/App';
+    export { default as App, AppShell } from './src/app/App';
+    export { AppErrorBoundary } from './src/components/feedback/AppErrorBoundary';
     export { EmptyState } from './src/components/EmptyState';
     export { ProductTable } from './src/features/inventory/components/ProductTable';
     export { Card } from './src/components/data-display/Card';
@@ -111,6 +112,7 @@ function elements(tree, predicate) {
   return [...(predicate(tree) ? [tree] : []), ...elements(tree.props.children, predicate)];
 }
 beforeEach(() => {
+  global.document = undefined;
   captureLayoutEffects = false; layoutEffects = [];
   effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
   ui.clearDataCache();
@@ -2666,4 +2668,156 @@ test('new POS price fields focus without scrolling the page and reveal their row
   assert.equal(heading.props.title, name);
   assert.match(heading.props.className, /truncate/);
   assert.equal(field.props.min, '0.01');
+});
+
+function retainBrowserStorage() {
+  const token = global.localStorage.getItem('rosario_access_token');
+  const values = new Map([['rosario_access_token', token]]);
+  global.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  return values;
+}
+
+test('encoding restores its saved draft after modal remount and requires history confirmation before discarding its retry identity', async () => {
+  retainBrowserStorage();
+  const form = await composerFixture('encoding');
+  form.changeLine({ unitPrice: '12', quantity: '2' });
+  form.field('SI number').props.onChange({ target: { value: 'SI-RESTORE' } });
+  const payloads = [];
+  ui.http.defaults.adapter = async config => {
+    if (config.method === 'post') { payloads.push(JSON.parse(config.data)); throw new AxiosError('Timed out', AxiosError.ECONNABORTED); }
+    return { status: 200, config, headers: {}, data: [] };
+  };
+  await form.submit();
+  effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
+  states = []; refs = []; effects = [];
+  render(ui.SaleComposer, form.props); effects[0](); await settle();
+  let tree = render(ui.SaleComposer, form.props);
+  let line = elements(tree, node => node.type === ui.SaleLineEditor)[0];
+  assert.equal(line.props.line.name, 'Milk'); assert.equal(line.props.line.quantity, '2'); assert.equal(line.props.line.unitPrice, '12');
+  assert.equal(form.field('SI number').props.value, 'SI-RESTORE');
+  await form.submit();
+  assert.equal(payloads.length, 2); assert.equal(payloads[0].request_id, payloads[1].request_id);
+  elements(render(ui.SaleComposer, form.props), node => node.props.children === 'Start a new entry')[0].props.onClick();
+  tree = render(ui.SaleComposer, form.props);
+  const confirmation = elements(tree, node => node.type === ui.ConfirmDialog)[0];
+  assert.equal(confirmation.props.open, true);
+  confirmation.props.onClose();
+  assert.equal(elements(render(ui.SaleComposer, form.props), node => node.type === ui.SaleLineEditor).length, 1);
+  elements(render(ui.SaleComposer, form.props), node => node.props.children === 'Start a new entry')[0].props.onClick();
+  elements(render(ui.SaleComposer, form.props), node => node.type === ui.ConfirmDialog)[0].props.onConfirm();
+  tree = render(ui.SaleComposer, form.props);
+  assert.equal(elements(tree, node => node.type === ui.SaleLineEditor).length, 0);
+  assert.equal(elements(tree, node => node.props.children === 'Start a new entry').length, 0);
+  assert.equal(payloads.length, 2, 'Acknowledging history never resubmits the old invoice');
+});
+
+test('outflow uncertainty remains visible after remount and cannot be cleared without history review', async () => {
+  retainBrowserStorage();
+  const batch = { id: 1, key: 'product-1', kind: 'product', name: 'Milk', batch: 'B1', stock: 5, unit: 'unit', cost: '0.00', expiry: '2099-01-01' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:outflow-batches`, [batch], ['inventory']);
+  const field = label => elements(render(ui.InventoryOutflows), node => node.props['aria-label'] === label)[0];
+  elements(render(ui.InventoryOutflows), node => node.props.children === 'Stock outflows')[0].props.onClick();
+  field('Outflow batch').props.onChange({ target: { value: 'product-1' } });
+  field('Outflow quantity').props.onChange({ target: { value: '1' } });
+  let posts = 0;
+  ui.http.defaults.adapter = async config => {
+    if (config.method === 'post') { posts++; throw new AxiosError('Timed out', AxiosError.ECONNABORTED); }
+    return { status: 200, config, headers: {}, data: [] };
+  };
+  await elements(render(ui.InventoryOutflows), node => node.props.children === 'Record and deduct stock')[0].props.onClick();
+  states = []; refs = []; effects = [];
+  elements(render(ui.InventoryOutflows), node => node.props.children === 'Stock outflows')[0].props.onClick();
+  let tree = render(ui.InventoryOutflows);
+  assert.equal(elements(tree, node => node.props.children === 'Record and deduct stock')[0].props.disabled, true);
+  assert.ok(elements(tree, node => node.props.role === 'alert').length);
+  await elements(tree, node => node.props.children === 'Record and deduct stock')[0].props.onClick();
+  assert.equal(posts, 1);
+  elements(render(ui.InventoryOutflows), node => node.props.children === 'Review history')[0].props.onClick();
+  render(ui.InventoryOutflows); effects.at(-1)(); await settle();
+  tree = render(ui.InventoryOutflows);
+  elements(tree, node => node.props.children === 'History checked — start a new outflow')[0].props.onClick();
+  const confirmation = elements(render(ui.InventoryOutflows), node => node.type === ui.ConfirmDialog)[0];
+  assert.equal(confirmation.props.open, true);
+  confirmation.props.onConfirm();
+  tree = render(ui.InventoryOutflows);
+  assert.equal(elements(tree, node => node.props.children === 'Review history').length, 0);
+  assert.equal(field('Outflow quantity').props.value, '');
+  assert.equal(posts, 1);
+});
+
+test('User Management edits preserve backend multi-word name fields while changing another field', async () => {
+  authState.user = { id: 7, username: 'admin', email: 'admin@example.com', role: 'admin' };
+  const user = { id: 8, username: 'juan', name: 'Juan Miguel Dela Cruz', firstName: 'Juan Miguel', lastName: 'Dela Cruz', email: 'juan@example.com', role: 'Staff', status: 'Active', deactivationReason: 'none', last: 'Never', lastLogin: null, phone: '', address: '' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:users:list`, [user], ['users']);
+  let tree = render(ui.AdminUserManagement);
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  const actions = table.props.columns.find(column => column.key === 'actions').render(user);
+  elements(actions, node => node.props.label === 'Edit')[0].props.onClick();
+  tree = render(ui.AdminUserManagement);
+  const form = elements(tree, node => node.type?.name === 'UserForm' && node.props.title === 'Edit User')[0];
+  assert.equal(form.props.form.firstName, 'Juan Miguel'); assert.equal(form.props.form.lastName, 'Dela Cruz');
+  form.props.onChange({ ...form.props.form, email: 'new@example.com' });
+  let updated;
+  ui.http.defaults.adapter = async config => {
+    if (config.method === 'patch') updated = JSON.parse(config.data);
+    return { status: 200, config, headers: {}, data: config.method === 'get' ? [] : {} };
+  };
+  tree = render(ui.AdminUserManagement);
+  const modal = elements(tree, node => node.type === ui.Modal && node.props.title === 'Edit User')[0];
+  elements(modal.props.footer, node => node.props.children === 'Save Changes')[0].props.onClick();
+  await settle();
+  assert.equal(updated.email, 'new@example.com'); assert.equal(updated.first_name, 'Juan Miguel'); assert.equal(updated.last_name, 'Dela Cruz');
+});
+
+test('staff inventory counts unique products separately from expired product and ingredient batches', () => {
+  const product = { id: 1, name: 'Milk', cat: 'Dairy', stock: 5, expiry: '2099-01-01', low: true };
+  const expired = (kind, id) => ({ ...product, catalogKey: `${kind}-${id}`, stock: 1, low: false, expiry: '2000-01-01', expiredBatch: { kind, id, key: `${kind}-${id}` } });
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:staff`, [product, { ...product, id: 2, low: false }, expired('product', 10), expired('product', 11), expired('ingredient', 10)], ['inventory']);
+  const cards = elements(render(ui.StaffInventory), node => node.type?.name === 'SummaryCard');
+  assert.deepEqual(cards.map(card => [card.props.label, card.props.value]), [['Products', 2], ['Low stock', 1], ['Near expiry', 0], ['Expired', 3]]);
+});
+
+test('staff inventory metrics use loading and failure placeholders and the dashboard recovers through retry', async () => {
+  let tree = render(ui.InventoryAlert);
+  assert.equal(elements(tree, node => node.type === 'span' && node.props.children === 0).length, 0);
+  await assert.rejects(ui.fetchDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-inventory-alerts`, () => Promise.reject(new Error('Offline')), ['dashboard', 'inventory']));
+  states = []; refs = []; effects = [];
+  tree = render(ui.InventoryAlert);
+  const retry = elements(tree, node => node.type === ui.QueryErrorMessage)[0];
+  assert.ok(retry); assert.equal(elements(tree, node => node.type === 'span' && node.props.children === 0).length, 0);
+  const cleanup = effects.at(-1)();
+  ui.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data: [] });
+  await retry.props.onRetry(); await settle();
+  tree = render(ui.InventoryAlert);
+  assert.equal(elements(tree, node => node.type === ui.QueryErrorMessage).length, 0);
+  assert.equal(elements(tree, node => node.type === 'span' && node.props.children === 0).length, 3);
+  cleanup();
+  await assert.rejects(ui.fetchDataCache(`${ui.dataCacheEpoch()}:inventory:staff`, () => Promise.reject(new Error('Offline')), ['inventory']));
+  states = []; refs = []; effects = [];
+  const cards = elements(render(ui.StaffInventory), node => node.type?.name === 'SummaryCard');
+  assert.ok(cards.every(card => card.props.value === 'Unavailable'));
+});
+
+test('staff dashboard available products include sellable low-stock products without counting duplicates', () => {
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-inventory-alerts`, {
+    items: [{ id: 1, stock: 2, low: true }, { id: 1, stock: 2, low: true }, { id: 2, stock: 0, low: true }], lowStock: 2, nearExpiry: 0,
+  }, ['dashboard', 'inventory']);
+  const tree = render(ui.InventoryAlert);
+  const available = elements(tree, node => node.type === 'div' && node.props.className === 'flex items-center justify-between rounded-xl px-3 py-2.5' && elements(node, child => child.props.children === 'Available').length)[0];
+  assert.equal(elements(available, node => node.type === 'span' && node.props.className === 'text-base font-bold tabular-nums')[0].props.children, 1);
+});
+
+test('the global render boundary retains healthy children and offers safe recovery without exposing exception details', () => {
+  assert.equal(render(ui.App).type, ui.AppErrorBoundary);
+  const content = React.createElement('p', null, 'Application');
+  const boundary = new ui.AppErrorBoundary({ children: content });
+  assert.equal(boundary.render(), content);
+  boundary.state = ui.AppErrorBoundary.getDerivedStateFromError(new Error('Sensitive internal stack'));
+  boundary.setState = update => { boundary.state = { ...boundary.state, ...update }; };
+  const fallback = boundary.render();
+  assert.equal(fallback.props.role, 'alert');
+  const empty = elements(fallback, node => node.type === ui.EmptyState)[0];
+  assert.ok(empty); assert.ok(!JSON.stringify(empty.props).includes('Sensitive internal stack'));
+  elements(empty.props.action, node => node.props.children === 'Try again')[0].props.onClick();
+  assert.equal(boundary.render(), content);
 });

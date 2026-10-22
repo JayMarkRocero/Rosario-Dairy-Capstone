@@ -33,6 +33,8 @@ export interface SystemUser {
   id: number;
   username: string;
   name: string;
+  firstName: string;
+  lastName: string;
   role: UserRole;
   email: string;
   status: UserStatus;

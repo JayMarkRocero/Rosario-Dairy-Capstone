@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from "@/features/auth/context/AuthContext";
 import { ThemeProvider, useTheme } from "@/styles/ThemeProvider";
 import { EmptyState, Skeleton } from "@/components/EmptyState";
 import { Btn } from "@/components/buttons/Btn";
+import { AppErrorBoundary } from "@/components/feedback/AppErrorBoundary";
 
 type View = "landing" | "Login";
 
@@ -79,10 +80,10 @@ export function AppShell() {
 
 export default function App() {
   return (
-    <ThemeProvider>
+    <AppErrorBoundary><ThemeProvider>
       <AuthProvider>
         <AppShell />
       </AuthProvider>
-    </ThemeProvider>
+    </ThemeProvider></AppErrorBoundary>
   );
 }

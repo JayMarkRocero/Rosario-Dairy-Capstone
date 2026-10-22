@@ -169,11 +169,10 @@ export function AdminUserManagement() {
 
   const openEdit = (u: SystemUser) => {
   setSelected(u);
-  const [firstName, ...rest] = u.name.split(" ");
   setForm({
     username: u.username ?? "",
-    firstName: firstName ?? "",
-    lastName: rest.join(" "),
+    firstName: u.firstName ?? "",
+    lastName: u.lastName ?? "",
     email: u.email,
     password: "",
     phoneNumber: u.phone !== "—" ? u.phone : "",
