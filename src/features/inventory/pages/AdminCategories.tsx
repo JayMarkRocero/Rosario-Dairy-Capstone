@@ -1,5 +1,6 @@
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { toastApiError } from "@/lib/errorHandling";
+import { ModuleSubheading } from "@/components/navigation/ModuleSubheading";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { useState, useRef } from "react";
 import { Plus, Edit, Trash2, Eye, RotateCcw } from "lucide-react";
@@ -220,6 +221,7 @@ export function AdminCategories() {
   return (
     <div className="records-page flex flex-col h-auto gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
       <div className="flex shrink-0 min-h-10 flex-col items-stretch justify-end gap-3 sm:flex-row sm:items-center">
+        <ModuleSubheading description="Organize products into manageable categories to streamline inventory tracking." />
         <Btn fullWidth variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Category
         </Btn>

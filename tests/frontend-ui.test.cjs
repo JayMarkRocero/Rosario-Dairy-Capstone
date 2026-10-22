@@ -44,6 +44,10 @@ const compiled = buildSync({
     export { StaffLayout } from './src/app/layouts/StaffLayout';
     export { NotificationBell } from './src/components/navigation/NotificationBell';
     export { TopBar } from './src/components/navigation/TopBar';
+    export { ModuleSubheading } from './src/components/navigation/ModuleSubheading';
+    export { AdminDashboard } from './src/features/dashboard/pages/AdminDashboard';
+    export { StaffDashboard } from './src/features/dashboard/pages/StaffDashboard';
+    export { StaffSettings } from './src/features/settings/pages/StaffSettings';
     export { SectionHeader } from './src/components/data-display/SectionHeader';
     export { Btn } from './src/components/buttons/Btn';
     export { ConfirmDialog } from './src/components/feedback/ConfirmDialog';
@@ -193,6 +197,43 @@ test('feature pages omit repeated page headings and retain their create, restock
       assert.ok(elements(tree, node => node.type === ui.Btn && node.props.children === 'Refresh Data').length);
     }
     if (Page === ui.StaffPOS) assert.equal(elements(tree, node => node.type === ui.SaleComposer).length, 1);
+  }
+});
+
+test('only spacious modules add single-paragraph subheadings and retain their existing action rows', () => {
+  authState = { user: { id: 7, username: 'demo', email: 'demo@example.test', role: 'admin' }, loading: false };
+  const pages = [
+    [ui.AdminInventory, 'Track real-time stock levels, monitor batch expirations, and process inventory outflows.', 'block shrink-0 min-h-10 md:flex md:items-center md:justify-end md:gap-3'],
+    [ui.StaffInventory, 'Track real-time stock levels, monitor batch expirations, and process inventory outflows.', 'shrink-0 flex flex-wrap items-center justify-end gap-2'],
+    [ui.AdminOrders, 'Monitor, track, and manage customer order fulfillments.', 'flex shrink-0 min-h-10 items-start justify-end gap-3 sm:items-center'],
+    [ui.StaffOrders, 'Monitor, track, and manage customer order fulfillments.', 'flex shrink-0 justify-end gap-2'],
+    [ui.AdminCategories, 'Organize products into manageable categories to streamline inventory tracking.', 'flex shrink-0 min-h-10 flex-col items-stretch justify-end gap-3 sm:flex-row sm:items-center'],
+    [ui.AdminCustomers, 'View registered customer profiles, transaction histories, and contact information.', 'flex flex-wrap shrink-0 min-h-10 justify-end items-center gap-2'],
+    [ui.SalesEncoding, 'Record manual offline sales invoices and manage pending payment statuses.', 'flex shrink-0 flex-wrap items-center justify-end gap-3'],
+    [ui.AdminReports, 'Generate real-time business intelligence reports and export downloadable PDF analytics.', 'flex flex-col sm:flex-row sm:items-center justify-end gap-3 shrink-0'],
+    [ui.AdminUserManagement, /^Manage system accounts, assign roles(?: \(Admin vs\. Staff\))?,? and control user access\.$/, 'flex flex-wrap shrink-0 min-h-10 items-center justify-end gap-2'],
+  ];
+  for (const [Page, description, rowClass] of pages) {
+    states = []; refs = []; effects = [];
+    const page = render(Page);
+    const row = elements(page, node => node.type === 'div' && React.Children.toArray(node.props.children).some(child => child?.type === ui.ModuleSubheading))[0];
+    assert.ok(row, Page.name);
+    assert.equal(row.props.className, rowClass);
+    const subheading = elements(row, node => node.type === ui.ModuleSubheading)[0];
+    const paragraph = render(ui.ModuleSubheading, subheading.props);
+    assert.equal(paragraph.type, 'p');
+    if (description instanceof RegExp) assert.match(paragraph.props.children, description);
+    else assert.equal(paragraph.props.children, description);
+    assert.equal(paragraph.props.title, paragraph.props.children);
+    assert.match(paragraph.props.className, /text-xs text-slate-500 font-normal mt-1 mb-3/);
+    assert.match(paragraph.props.className, /hidden md:block/);
+    assert.match(paragraph.props.className, /truncate/);
+    assert.equal(elements(paragraph, node => ['h1', 'h2', 'h3', 'strong', 'b'].includes(node.type)).length, 0);
+    assert.equal(elements(page, node => node.type === 'h1' || node.type === 'h2').length, 0);
+  }
+  for (const Page of [ui.AdminSalesHistory, ui.StaffSalesHistory, ui.StaffPOS, ui.AdminDashboard, ui.StaffDashboard, ui.AdminSettings, ui.StaffSettings]) {
+    states = []; refs = []; effects = [];
+    assert.equal(elements(render(Page), node => node.type === ui.ModuleSubheading).length, 0, Page.name);
   }
 });
 

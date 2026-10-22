@@ -1,4 +1,5 @@
 import { PaymentStatusBadge } from "@/features/sales/components/PaymentStatusBadge";
+import { ModuleSubheading } from "@/components/navigation/ModuleSubheading";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { StaffOrdersTable } from "@/features/orders/components/StaffOrdersTable";
 import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";
@@ -47,7 +48,7 @@ export function StaffOrders() {
   ];
 
   return <div className="records-page orders-page h-auto flex flex-col gap-4 p-4 sm:p-6 max-w-[1400px] mx-auto w-full">
-    <div className="flex shrink-0 justify-end gap-2"><Btn variant="primary" icon={<Plus size={14}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
+    <div className="flex shrink-0 justify-end gap-2"><ModuleSubheading description="Monitor, track, and manage customer order fulfillments." /><Btn variant="primary" icon={<Plus size={14}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green], ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>

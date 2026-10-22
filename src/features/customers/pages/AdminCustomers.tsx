@@ -1,4 +1,5 @@
 import { CustomerHistory } from "@/features/customers/components/CustomerHistory";
+import { ModuleSubheading } from "@/components/navigation/ModuleSubheading";
 import { CustomerTable } from "@/features/customers/components/CustomerTable";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { MobileCustomerCard } from "@/features/customers/components/MobileCustomerCard";
@@ -171,6 +172,7 @@ export function AdminCustomers() {
   return (
     <div className="records-page viewport-records-page customers-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
       <div className="flex flex-wrap shrink-0 min-h-10 justify-end items-center gap-2">
+        <ModuleSubheading description="View registered customer profiles, transaction histories, and contact information." />
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Customer
         </Btn>

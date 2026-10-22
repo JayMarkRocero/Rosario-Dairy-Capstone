@@ -1,4 +1,5 @@
 import { toastApiError } from "@/lib/errorHandling";
+import { ModuleSubheading } from "@/components/navigation/ModuleSubheading";
 import { useState, useRef } from "react";
 import { ArrowUpRight, BarChart2, Download, FileText, LoaderCircle, Package, RefreshCw, TrendingUp, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -84,6 +85,7 @@ export function AdminReports() {
 
   return <div className="w-full h-auto lg:h-[calc(100vh-80px)] min-h-0 flex flex-col justify-between gap-3 p-4 sm:p-6 lg:overflow-hidden">
     <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3 shrink-0">
+      <ModuleSubheading description="Generate real-time business intelligence reports and export downloadable PDF analytics." />
       <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
         <ReportDateRangeControl range={range} onApply={setRange} disabled={refreshing || exporting !== null} />
         <Btn variant="primary" size="sm" fullWidth icon={refreshing?<LoaderCircle size={13} className="animate-spin"/>:<RefreshCw size={13}/>} onClick={refresh} disabled={refreshing || exporting !== null}>{refreshing?"Refreshing…":"Refresh Data"}</Btn>

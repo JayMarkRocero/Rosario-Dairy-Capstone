@@ -1,4 +1,5 @@
 import { InventoryOutflows } from "@/features/inventory/components/InventoryOutflows";
+import { ModuleSubheading } from "@/components/navigation/ModuleSubheading";
 import { ProductTable } from "@/features/inventory/components/ProductTable";
 import { TableCard } from "@/components/data-display/TableCard";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
@@ -405,6 +406,7 @@ export function AdminInventory() {
     <div className="records-page inventory-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
       {/* Inventory actions */}
       <div className="block shrink-0 min-h-10 md:flex md:items-center md:justify-end md:gap-3">
+        <ModuleSubheading description="Track real-time stock levels, monitor batch expirations, and process inventory outflows." />
         <div className="grid grid-cols-2 gap-2 [&_button]:w-full md:flex md:shrink-0 md:[&_button]:w-auto">
           <InventoryOutflows/>
           <div>
