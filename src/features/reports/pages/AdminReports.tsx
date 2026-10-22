@@ -4,10 +4,12 @@ import { ArrowUpRight, BarChart2, Download, FileText, LoaderCircle, Package, Ref
 import { toast } from "sonner";
 import { Btn } from "@/components/buttons/Btn";
 import { Card } from "@/components/data-display/Card";
-import { reportsService, type ReportType } from "@/features/reports/api/reports.service";
+import { reportsService, type ReportDateRange, type ReportType } from "@/features/reports/api/reports.service";
 import { C } from "@/styles/tokens/colors";
 import { useReportPreview, reportNumber } from "@/features/reports/hooks/useReportPreview";
 import { forecastExplanation } from "@/features/dashboard/components/admin/ForecastChart";
+import { ReportDateRangeControl } from "@/features/reports/components/ReportDateRangeControl";
+import { supportsReportDateRange } from "@/features/reports/utils/reportDateRange";
 
 interface ReportDefinition { id: ReportType; title: string; desc: string; icon: React.ReactNode; color: string }
 
@@ -20,23 +22,34 @@ const getReports = (): ReportDefinition[] => [
   { id:"customer", title:"Customer Report", desc:"Customer activity and lifetime value", icon:<Users size={20}/>, color:C.teal },
 ];
 
-function ReportSummary({ type }: { type: ReportType }) {
-  const { data, loading, error } = useReportPreview(type);
+function ReportSummary({ type, range }: { type: ReportType; range?: ReportDateRange }) {
+  const { data, loading, error } = useReportPreview(type, undefined, range);
   if (loading) return <p role="status" className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Loading report summary…</p>;
   if (error) return <p role="alert" className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.red}}>{error}</p>;
   if (!data) return <p className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Report data unavailable.</p>;
   if (type === "sarima_forecast") return <p className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>{forecastExplanation(data)}</p>;
   if (type === "inventory") return <p className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Low stock: {reportNumber(data, "low_stock_count") ?? "Unavailable"} · Expiring batches: {reportNumber(data, "expiring_soon_batch_count") ?? "Unavailable"}</p>;
-  if (type === "customer") return <p className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Active customers: {reportNumber(data, "active_customer_count") ?? "Unavailable"}</p>;
+  const effectiveRange = typeof data.start_date === "string" && typeof data.end_date === "string"
+    ? `${data.start_date} to ${data.end_date}` : typeof data.date === "string" ? data.date : "Report period unavailable";
+  const money = (key: string) => {
+    const value = reportNumber(data, key);
+    return value == null ? "Unavailable" : `₱${value.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+  };
+  if (type === "customer") return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
+    <p>{effectiveRange}</p>
+    <p>Customers: {reportNumber(data, "customer_record_count") ?? "Unavailable"} · Invoice total: {money("total_revenue")}</p>
+    <p>Paid: {money("paid_amount")} · Pending: {money("pending_amount")} · Unknown: {money("unknown_amount")}</p>
+  </div>;
   const revenue = reportNumber(data, type === "daily_sales" ? "total_revenue" : "revenue");
   const count = reportNumber(data, "transaction_count");
-  return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}><p>{data.date ? String(data.date) : `${data.start_date ?? "—"} to ${data.end_date ?? "—"}`}</p><p>Net sales: {revenue == null ? "Unavailable" : `₱${revenue.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`} · Transactions: {count ?? "Unavailable"}</p>{count === 0 && <p>No sales recorded in this period.</p>}</div>;
+  return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}><p>{effectiveRange}</p><p>Net sales: {revenue == null ? "Unavailable" : `₱${revenue.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`} · Transactions: {count ?? "Unavailable"}</p>{count === 0 && <p>No sales recorded in this period.</p>}</div>;
 }
 
 export function AdminReports() {
   const reports = getReports();
   const [exporting,setExporting] = useState<ReportType|null>(null);
   const [refreshing,setRefreshing] = useState(false);
+  const [range, setRange] = useState<ReportDateRange>();
   const actionLock = useRef(false);
 
   const download = async (report: ReportDefinition) => {
@@ -44,7 +57,7 @@ export function AdminReports() {
     actionLock.current = true;
     setExporting(report.id);
     try {
-      await reportsService.downloadReportPDF(report.id);
+      await reportsService.downloadReportPDF(report.id, supportsReportDateRange(report.id) ? range : undefined);
       toast.success(`${report.title} downloaded.`);
     } catch (error) {
       toastApiError(error, "Failed to download report.");
@@ -75,7 +88,10 @@ export function AdminReports() {
         <h2 className="text-lg font-semibold text-gray-700">Reports</h2>
         <p className="mt-1 text-sm text-slate-500 [overflow-wrap:anywhere]">Generate and export business intelligence reports</p>
       </div>
-      <Btn variant="primary" size="sm" fullWidth icon={refreshing?<LoaderCircle size={13} className="animate-spin"/>:<RefreshCw size={13}/>} onClick={refresh} disabled={refreshing || exporting !== null}>{refreshing?"Refreshing…":"Refresh Data"}</Btn>
+      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+        <ReportDateRangeControl range={range} onApply={setRange} disabled={refreshing || exporting !== null} />
+        <Btn variant="primary" size="sm" fullWidth icon={refreshing?<LoaderCircle size={13} className="animate-spin"/>:<RefreshCw size={13}/>} onClick={refresh} disabled={refreshing || exporting !== null}>{refreshing?"Refreshing…":"Refresh Data"}</Btn>
+      </div>
     </div>
     <div className="w-full min-w-0 lg:flex-1 lg:min-h-0 flex flex-col">
     <Card className="w-full min-w-0 lg:h-full lg:min-h-0 flex flex-col p-4">
@@ -86,9 +102,9 @@ export function AdminReports() {
           <div className="flex-1 min-w-0 flex flex-col justify-start space-y-1.5">
           <div className="flex shrink-0 items-start gap-3">
             <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center" style={{backgroundColor:report.color+"15",color:report.color}}>{report.icon}</div>
-            <div className="min-w-0"><h3 className="text-base font-semibold leading-snug text-gray-900 [overflow-wrap:anywhere]">{report.title}</h3><p className="text-sm mt-1 leading-relaxed text-gray-600 [overflow-wrap:anywhere]">{report.desc}</p></div>
+            <div className="min-w-0"><h3 className="text-base font-semibold leading-snug text-gray-900 [overflow-wrap:anywhere]">{report.title}</h3><p className="text-sm mt-1 leading-relaxed text-gray-600 [overflow-wrap:anywhere]">{report.id === "customer" ? "Customer purchases and invoice payment totals" : range && supportsReportDateRange(report.id) ? "Sales summary for the selected date range" : report.desc}</p></div>
           </div>
-          <ReportSummary type={report.id}/>
+          <ReportSummary type={report.id} range={supportsReportDateRange(report.id) ? range : undefined}/>
           </div>
           <div className="mt-auto shrink-0 pt-3 border-t border-slate-100">
             <button type="button" onClick={()=>download(report)} disabled={exporting !== null || refreshing} className="w-full min-h-10 py-2.5 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">

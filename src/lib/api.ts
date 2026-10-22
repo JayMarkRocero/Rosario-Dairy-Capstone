@@ -315,7 +315,7 @@ export interface DjangoProduct {
   readonly low_stock_threshold: number;
   is_active: boolean;
   category: DjangoCategory;
-  total_stock: string;
+  total_stock: number | string;
   created_at: string;
   updated_at: string;
 }

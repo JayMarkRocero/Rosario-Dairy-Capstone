@@ -81,7 +81,9 @@ const compiled = buildSync({
     export { AdminSettings } from './src/features/settings/pages/AdminSettings';
     export { PersonalProfileSettings } from './src/features/settings/components/PersonalProfileSettings';
     export { SETTINGS_UPDATED } from './src/features/settings/api/settings.service';
-    export { useReportVersion } from './src/features/reports/hooks/useReportPreview';
+    export { useReportVersion, useReportPreview } from './src/features/reports/hooks/useReportPreview';
+    export { ReportDateRangeControl } from './src/features/reports/components/ReportDateRangeControl';
+    export * from './src/features/reports/utils/reportDateRange';
     export { InventoryAlert } from './src/features/dashboard/components/staff/InventoryAlert';
     export * from './src/lib/dataCache';
     export { useCachedQuery } from './src/hooks/useCachedQuery';
@@ -2393,6 +2395,119 @@ test('cross-tab login and logout replace auth state without writing or blacklist
     assert.equal(render(ui.AuthProvider).props.value.loading, false);
     assert.ok(requests.every(url => url === '/accounts/user/'));
   } finally { initCleanup?.(); subscriptionCleanup?.(); }
+});
+
+test('report date drafts apply only after validation, retain applied dates on cancel, and reset explicitly', () => {
+  let applied = { start_date: '2000-09-01', end_date: '2000-09-30' }, changes = 0;
+  const props = () => ({ range: applied, onApply: value => { applied = value; changes++; } });
+  let tree = render(ui.ReportDateRangeControl, props());
+  elements(tree, node => node.props.children === 'Custom dates')[0].props.onClick();
+  tree = render(ui.ReportDateRangeControl, props());
+  const input = label => elements(tree, node => node.type === 'input' && node.props['aria-label'] === label)[0];
+  assert.equal(input('Report from date').props.value, '2000-09-01');
+  assert.equal(input('Report to date').props.value, '2000-09-30');
+  input('Report to date').props.onChange({ target: { value: '' } });
+  tree = render(ui.ReportDateRangeControl, props());
+  elements(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  tree = render(ui.ReportDateRangeControl, props());
+  assert.match(elements(tree, node => node.props.role === 'alert')[0].props.children, /both From and To/);
+  assert.equal(changes, 0);
+  assert.equal(elements(tree, node => node.type === ui.Modal)[0].props.open, true);
+  input('Report to date').props.onChange({ target: { value: '2000-09-01' } });
+  assert.equal(changes, 0, 'Typing must not commit or refetch a partial draft');
+  tree = render(ui.ReportDateRangeControl, props());
+  elements(tree, node => node.type === ui.Modal)[0].props.onClose();
+  assert.equal(changes, 0);
+  tree = render(ui.ReportDateRangeControl, props());
+  elements(tree, node => node.props.children === 'Custom dates')[0].props.onClick();
+  tree = render(ui.ReportDateRangeControl, props());
+  assert.equal(input('Report to date').props.value, '2000-09-30');
+  input('Report to date').props.onChange({ target: { value: '2000-09-01' } });
+  tree = render(ui.ReportDateRangeControl, props());
+  elements(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(applied, { start_date: '2000-09-01', end_date: '2000-09-01' });
+  assert.equal(changes, 1);
+  tree = render(ui.ReportDateRangeControl, props());
+  assert.equal(elements(tree, node => node.type === ui.Modal)[0].props.open, false);
+  const modal = elements(tree, node => node.type === ui.Modal)[0];
+  elements(modal.props.footer, node => node.props.children === 'Use report defaults')[0].props.onClick();
+  assert.equal(applied, undefined); assert.equal(changes, 2);
+});
+
+test('report preview hooks isolate ranges, reuse cached navigation, and refresh applied ranges silently', async () => {
+  let range = { start_date: '2000-09-01', end_date: '2000-09-30' }, requests = [], version = 1;
+  const first = { ...range };
+  const second = { ...range, end_date: '2000-10-01' };
+  ui.http.defaults.adapter = async config => {
+    requests.push({ ...config.params });
+    return { status: 200, config, headers: {}, data: { report_type: 'customer', generated_at: '', data: { ...config.params, version } } };
+  };
+  const Preview = () => ui.useReportPreview('customer', undefined, range);
+  assert.equal(render(Preview).loading, true);
+  let cleanup = effects.at(-1)(); await settle();
+  assert.equal(render(Preview).data.end_date, first.end_date);
+  cleanup(); range = second;
+  let result = render(Preview);
+  assert.equal(result.data, null); assert.equal(result.loading, true, 'Never display a previous range as the newly applied preview');
+  cleanup = effects.at(-1)(); await settle();
+  assert.equal(render(Preview).data.end_date, second.end_date);
+  cleanup(); range = first;
+  result = render(Preview);
+  assert.equal(result.data.end_date, first.end_date); assert.equal(result.loading, false);
+  cleanup = effects.at(-1)(); await settle();
+  assert.equal(requests.length, 2);
+  version = 2;
+  window.dispatchEvent(new Event('rosario:reports-updated'));
+  assert.equal(render(Preview).loading, false);
+  await settle();
+  assert.equal(render(Preview).data.version, 2); assert.equal(requests.length, 3);
+  cleanup(); range = second;
+  render(Preview); cleanup = effects.at(-1)(); await settle();
+  assert.equal(render(Preview).data.version, 2); assert.equal(requests.length, 4);
+  cleanup();
+});
+
+test('report preview validation and backend field errors produce visible errors instead of unhandled requests', async () => {
+  let requests = 0;
+  ui.http.defaults.adapter = async config => {
+    requests++;
+    throw new AxiosError('Bad report range', undefined, config, undefined, { status: 400, data: { end_date: ['Must not be in the future.'] }, headers: {}, config });
+  };
+  const invalid = () => ui.useReportPreview('customer', undefined, { start_date: '2000-01-01', end_date: '' });
+  let result = render(invalid);
+  effects.at(-1)(); await settle();
+  assert.equal(requests, 0); assert.equal(result.data, null); assert.equal(result.loading, false);
+  assert.match(result.error, /both From and To/);
+  states = []; refs = []; effects = [];
+  const valid = () => ui.useReportPreview('customer', undefined, { start_date: '2000-01-01', end_date: '2000-01-01' });
+  render(valid); const cleanup = effects.at(-1)(); await settle();
+  result = render(valid);
+  assert.equal(result.loading, false); assert.equal(result.data, null);
+  assert.match(result.error, /Must not be in the future/);
+  assert.equal(requests, 1);
+  cleanup();
+});
+
+test('Reports applies identical dates to previews and exports while preserving Inventory and Forecast defaults', async () => {
+  let tree = render(ui.AdminReports);
+  const control = elements(tree, node => node.type === ui.ReportDateRangeControl)[0];
+  const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
+  control.props.onApply(range);
+  tree = render(ui.AdminReports);
+  const summaries = elements(tree, node => typeof node.type === 'function' && node.type.name === 'ReportSummary');
+  assert.equal(summaries.length, 6);
+  for (const summary of summaries) assert.deepEqual(summary.props.range, ['inventory', 'sarima_forecast'].includes(summary.props.type) ? undefined : range);
+  const requests = [];
+  global.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } };
+  ui.http.defaults.adapter = async config => {
+    requests.push(config);
+    return { status: 200, config, headers: {}, data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }) };
+  };
+  const buttons = elements(tree, node => node.type === 'button');
+  assert.equal(buttons.length, 6);
+  for (const button of buttons) await button.props.onClick();
+  assert.equal(requests.length, 6);
+  for (const request of requests) assert.deepEqual(request.params, ['inventory', 'sarima_forecast'].includes(request.params.type) ? { type: request.params.type } : { type: request.params.type, ...range });
 });
 
 test('POS blocks blind retries after an interrupted write and requires history review before a new transaction', async () => {

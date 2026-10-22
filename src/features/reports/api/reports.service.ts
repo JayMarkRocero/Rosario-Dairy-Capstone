@@ -3,54 +3,10 @@ import { dataCacheEpoch, ensureCacheEvents, fetchDataCache } from "@/lib/dataCac
 import { getApiErrorMessage } from "@/lib/api";
 import http, { type DjangoBestSeller, type DjangoSalesByCategory } from "@/lib/api";
 import type { RevenueBucket, RevenuePeriod } from "@/features/reports/utils/revenueWindow";
-
-export type ReportType = "daily_sales" | "weekly_sales" | "monthly_sales" | "inventory" | "sarima_forecast" | "customer";
-export type ReportScalar = string | number | boolean | null;
-
-export interface ReportPreviewBase {
-  type?: ReportType;
-  generated_at?: string;
-  metrics?: Record<string, ReportScalar>;
-  rows?: Array<Record<string, unknown>>;
-  [key: string]: unknown;
-}
-
-export interface SarimaForecastPreview extends ReportPreviewBase {
-  is_placeholder: boolean;
-  forecast?: Array<Record<string, unknown>>;
-  planning_projection?: PlanningProjection | null;
-}
-
-export interface PlanningProjection {
-  date: string;
-  end_date: string;
-  trained_through: string;
-  predicted_revenue: string;
-  lower_bound: string;
-  upper_bound: string;
-  point_kind: string;
-  range_kind: string;
-  sample_count: number;
-}
-
-export interface DailySalesReport extends ReportPreviewBase {
-  date: string;
-  total_revenue: string | number;
-  transaction_count: number;
-  items: Array<{
-    product_name: string;
-    quantity: string;
-    total_revenue: string | number;
-  }>;
-}
-
-export type ReportPreview = ReportPreviewBase | SarimaForecastPreview | DailySalesReport;
-
-export interface ReportPreviewResponse {
-  report_type: ReportType;
-  generated_at: string;
-  data: ReportPreview;
-}
+import { reportCacheKey, validateReportDateRange } from "@/features/reports/utils/reportDateRange";
+import { revenueBusinessDate } from "@/features/reports/utils/revenueWindow";
+import type { ReportDateRange, ReportPeriod, ReportPreviewResponse, ReportType } from "../types/reports";
+export type * from "../types/reports";
 
 export interface BestSeller {
   product: string;
@@ -80,21 +36,23 @@ export const reportsService = {
       toast.warning(`Saved successfully, but reports could not refresh: ${getApiErrorMessage(error, "Please retry refreshing reports.")}`);
     }
   },
-  fetchReportPreview: async (type: ReportType, period?: "weekly" | "monthly" | "yearly"): Promise<ReportPreviewResponse> => {
-    const { data } = await http.get<ReportPreviewResponse>("/api/reports/preview/", { params: { type, ...(period ? { period } : {}) } });
+  fetchReportPreview: async <T extends ReportType>(type: T, period?: ReportPeriod, range?: ReportDateRange): Promise<ReportPreviewResponse<T>> => {
+    const dates = validateReportDateRange(type, range);
+    const { data } = await http.get<ReportPreviewResponse<T>>("/api/reports/preview/", { params: { type, ...(period ? { period } : {}), ...dates } });
     return data;
   },
 
-  downloadReportPDF: async (type: ReportType): Promise<void> => {
+  downloadReportPDF: async (type: ReportType, range?: ReportDateRange): Promise<void> => {
+    const dates = validateReportDateRange(type, range);
     ensureCacheEvents();
-    const blob = await fetchDataCache(`${dataCacheEpoch()}:reports:pdf:${type}`, async () =>
+    const blob = await fetchDataCache(`${dataCacheEpoch()}:${reportCacheKey("pdf", type, undefined, dates)}`, async () =>
       (await http.get<Blob>("/api/reports/export-pdf/", {
-        params: { type }, responseType: "blob",
+        params: { type, ...dates }, responseType: "blob",
       })).data, ["reports"]);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${type}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    link.download = `${type}-${dates ? `${dates.start_date}-to-${dates.end_date}` : revenueBusinessDate()}.pdf`;
     document.body.appendChild(link);
     try {
       link.click();

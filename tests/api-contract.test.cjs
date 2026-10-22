@@ -29,6 +29,7 @@ const compiled = buildSync({
     export * from './src/features/settings/utils/inventorySettings';
     export * from './src/features/inventory/api/inventory.service';
     export * from './src/features/reports/api/reports.service';
+    export * from './src/features/reports/utils/reportDateRange';
     export * from './src/lib/notifications.service';
     export * from './src/features/dashboard/components/admin/RevenueChart';
     export * from './src/features/dashboard/components/admin/ForecastChart';
@@ -1634,4 +1635,77 @@ test('an action from a stale tab is stopped before it can be sent with another a
   assert.equal(calls.length, 0);
   assert.equal(api.getAccessToken(), 'account-B');
   remove();
+});
+
+test('sales and customer report previews send both inclusive date bounds and preserve default requests', async () => {
+  const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
+  for (const type of ['daily_sales', 'weekly_sales', 'monthly_sales', 'customer']) {
+    await api.reportsService.fetchReportPreview(type, undefined, range);
+    assert.deepEqual(calls.at(-1).params, { type, ...range });
+  }
+  await api.reportsService.fetchReportPreview('daily_sales', undefined, { start_date: '2000-09-01', end_date: '2000-09-01' });
+  assert.equal(calls.at(-1).params.start_date, calls.at(-1).params.end_date);
+  await api.reportsService.fetchReportPreview('customer');
+  assert.deepEqual(calls.at(-1).params, { type: 'customer' });
+});
+
+test('report range validation accepts same-day and leap-day ranges and uses the Manila business day', () => {
+  const day = { start_date: '2026-10-22', end_date: '2026-10-22' };
+  assert.deepEqual(api.validateReportDateRange('customer', day, '2026-10-22'), day);
+  assert.notEqual(api.validateReportDateRange('customer', day, '2026-10-22'), day, 'Capture immutable request bounds rather than the draft object');
+  assert.deepEqual(api.validateReportDateRange('daily_sales', { start_date: '2024-02-29', end_date: '2024-02-29' }, '2026-10-22'), { start_date: '2024-02-29', end_date: '2024-02-29' });
+  assert.equal(api.revenueBusinessDate(new Date('2026-10-21T16:30:00Z')), '2026-10-22');
+  assert.equal(api.validateReportDateRange('inventory', undefined), undefined);
+});
+
+test('invalid report ranges fail before any preview or PDF network request', async () => {
+  const invalid = [
+    null, {}, { start_date: '2000-01-01' }, { end_date: '2000-01-01' },
+    { start_date: '', end_date: '' },
+    { start_date: '2000-02-30', end_date: '2000-03-01' },
+    { start_date: '2000-01-02', end_date: '2000-01-01' },
+    { start_date: '9999-01-01', end_date: '9999-01-02' },
+    { start_date: '0001-01-01', end_date: '2000-01-01' },
+    { start_date: '2000-1-01', end_date: '2000-01-02' },
+    { start_date: 20000101, end_date: '2000-01-02' },
+  ];
+  for (const range of invalid) {
+    for (const request of [
+      () => api.reportsService.fetchReportPreview('customer', undefined, range),
+      () => api.reportsService.downloadReportPDF('customer', range),
+    ]) await assert.rejects(request, error => error.status === 400 && Object.keys(error.fieldErrors).length > 0);
+  }
+  const range = { start_date: '2000-01-01', end_date: '2000-01-02' };
+  for (const type of ['inventory', 'sarima_forecast']) {
+    await assert.rejects(api.reportsService.fetchReportPreview(type, undefined, range), /sales and customer reports only/);
+    await assert.rejects(api.reportsService.downloadReportPDF(type, range), /sales and customer reports only/);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('report PDFs use preview dates, isolate both cache bounds, and refresh every range after invalidation', async () => {
+  responseData = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+  const downloads = [];
+  global.document = { createElement: () => {
+    const link = { click() { downloads.push(this.download); }, remove() {} }; return link;
+  }, body: { appendChild() {} } };
+  const first = { start_date: '2000-09-01', end_date: '2000-09-30' };
+  const changedEnd = { ...first, end_date: '2000-10-01' };
+  const changedStart = { ...first, start_date: '2000-09-02' };
+  await api.reportsService.downloadReportPDF('customer', first);
+  await api.reportsService.downloadReportPDF('customer', first);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].params, { type: 'customer', ...first });
+  assert.equal(calls[0].responseType, 'blob');
+  assert.equal(downloads[0], 'customer-2000-09-01-to-2000-09-30.pdf');
+  await api.reportsService.downloadReportPDF('customer', changedEnd);
+  await api.reportsService.downloadReportPDF('customer', changedStart);
+  await api.reportsService.downloadReportPDF('customer');
+  assert.equal(calls.length, 4);
+  await api.reportsService.refreshReportCache();
+  await api.reportsService.downloadReportPDF('customer', first);
+  await api.reportsService.downloadReportPDF('customer', changedEnd);
+  assert.equal(calls.filter(call => call.url === '/api/reports/export-pdf/').length, 6);
+  assert.notEqual(api.reportCacheKey('preview', 'customer', undefined, first), api.reportCacheKey('pdf', 'customer', undefined, first));
+  assert.notEqual(api.reportCacheKey('preview', 'sarima_forecast', 'weekly'), api.reportCacheKey('preview', 'sarima_forecast', 'monthly'));
 });
