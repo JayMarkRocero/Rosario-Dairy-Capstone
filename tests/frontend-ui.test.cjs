@@ -971,11 +971,12 @@ test('report download blocks double clicks and permits retry after failure', asy
 });
 
 
-async function composerFixture(mode = 'checkout', role = 'staff') {
+async function composerFixture(mode = 'checkout', role = 'staff', productCount = 1) {
   authState.user = { id: 7, username: 'audit', email: 'audit@example.com', role };
   const product = { id: 385, name: 'Milk', unit: 'unit', is_active: true, total_stock: '19', low_stock_threshold: 0, category: { name: 'Dairy', is_active: true, is_visible_to_staff: true } };
+  const products = Array.from({ length: productCount }, (_, index) => ({ ...product, id: 385 + index, name: index ? `Milk ${index}` : 'Milk' }));
   ui.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data:
-    config.url === '/inventory/products/' ? [product] : config.url === '/inventory/product-batches/' ? [{ id: 1, product, status: 'available', remaining_quantity: '19', expiration_date: '2099-10-17', unit_price: null, batch_number: 'B1' }] : config.url === '/sales/customers/' ? [{ id: 906, name: 'Customer', is_active: true, created_at: '2026-10-01' }] : [] });
+    config.url === '/inventory/products/' ? products : config.url === '/inventory/product-batches/' ? products.map((product, index) => ({ id: index + 1, product, status: 'available', remaining_quantity: '19', expiration_date: '2099-10-17', unit_price: null, batch_number: `B${index + 1}` })) : config.url === '/sales/customers/' ? [{ id: 906, name: 'Customer', is_active: true, created_at: '2026-10-01' }] : [] });
   render(ui.SaleComposer, { mode, onSuccess() {} });
   effects[0](); await settle();
   const props = { mode, onSuccess() {} };
@@ -994,17 +995,31 @@ async function composerFixture(mode = 'checkout', role = 'staff') {
   return { props, changeLine, field, submit };
 }
 
-test('order form validates per-line discounts and blocks duplicate pending submissions', async () => {
+test('order form hides discounts, charges the full manual subtotal and blocks duplicate pending submissions', async () => {
   const form = await composerFixture('order', 'admin');
   const picker = elements(render(ui.SaleComposer, form.props), node => node.type?.name === 'CustomerPicker')[0];
   picker.props.onChange('906');
-  form.changeLine({ unitPrice: '50', discountType: 'fixed', discountValue: '60' });
-  form.field('Amount tendered').props.onChange({ target: { value: '100' } });
-  let requests = 0, reject;
-  ui.http.defaults.adapter = () => { requests++; return new Promise((_, fail) => { reject = fail; }); };
+  form.changeLine({ quantity: '2', unitPrice: '50', discountType: 'fixed', discountValue: '60' });
+  const tree = render(ui.SaleComposer, form.props);
+  const line = elements(tree, node => node.type === ui.SaleLineEditor)[0];
+  assert.equal(line.props.canDiscount, false);
+  const fields = render(ui.SaleLineEditor, line.props);
+  assert.deepEqual(elements(fields, node => node.type === 'input').map(node => node.props['aria-label']), ['Quantity for Milk', 'Selling price for Milk']);
+  assert.equal(elements(fields, node => node.type === 'select').length, 0);
+  assert.equal(elements(tree, node => node.props.children === 'Item discounts').length, 0);
+  for (const label of ['Subtotal', 'Total']) {
+    const row = elements(tree, node => node.type === 'div' && node.props.className?.startsWith('flex justify-between gap-2') && elements(node, child => child.type === 'span' && child.props.children === label).length)[0];
+    assert.equal(React.Children.toArray(row.props.children)[1].props.children, '\u20b1100.00');
+  }
+  form.field('Amount tendered').props.onChange({ target: { value: '50' } });
+  let requests = 0, reject, payload;
+  ui.http.defaults.adapter = config => { requests++; payload = JSON.parse(config.data); return new Promise((_, fail) => { reject = fail; }); };
   await form.submit(); assert.equal(requests, 0);
-  form.changeLine({ discountValue: '0' });
+  form.field('Amount tendered').props.onChange({ target: { value: '100' } });
   const first = form.submit(); await settle();
+  assert.deepEqual(payload.items, [{ product_id: 385, quantity: '2.00', unit_price: '50.00', discount_type: 'none', discount_value: '0.00' }]);
+  assert.equal(payload.amount_tendered, '100.00');
+  assert.equal('discount_type' in payload, false);
   await form.submit(); assert.equal(requests, 1);
   reject(new Error('Simulated outage')); await first;
   assert.equal(refs[0].current, false);
@@ -2546,4 +2561,109 @@ test('logout from stale account UI does not clear or blacklist a newer cross-tab
     assert.equal(render(ui.AuthProvider).props.value.user, null);
     assert.equal(render(ui.AuthProvider).props.value.loading, true);
   } finally { initCleanup?.(); subscriptionCleanup?.(); }
+});
+
+test('POS keeps 60 cart lines separate from checkout and confirms bulk clearing without recording a sale', async () => {
+  const form = await composerFixture('checkout', 'staff', 60);
+  let tree = render(ui.SaleComposer, form.props);
+  const catalog = elements(tree, node => node.props['data-pos-catalog'] !== undefined)[0];
+  const additions = elements(catalog, node => node.type === 'button' && !node.props.disabled &&
+    elements(node, child => typeof child.props.children === 'string' && child.props.children.includes('enter price')).length);
+  assert.equal(additions.length, 59);
+  additions.forEach(button => button.props.onClick());
+  tree = render(ui.SaleComposer, form.props);
+  let list = elements(tree, node => node.props['data-pos-cart-items'] !== undefined)[0];
+  const lines = elements(list, node => node.type === ui.SaleLineEditor);
+  assert.equal(lines.length, 60);
+  assert.ok(lines.every(node => node.props.compact));
+  assert.deepEqual(lines.filter(node => node.props.focusPrice).map(node => node.props.line.productId), [444]);
+  assert.equal(elements(list, node => node.props['aria-label'] === 'Amount tendered').length, 0);
+  const checkout = elements(tree, node => node.props['data-pos-checkout'] !== undefined)[0];
+  assert.equal(elements(checkout, node => node.props['aria-label'] === 'Amount tendered').length, 1);
+  assert.equal(elements(checkout, node => node.props.children === 'Item discounts').length, 0);
+  assert.ok(elements(checkout, node => node.props.children === 'Total').length);
+  assert.ok(elements(checkout, node => node.props.children === 'Complete Transaction').length);
+  assert.equal(elements(tree, node => node.type === 'button' && React.Children.toArray(node.props.children).join('') === 'Cart (60)')[0].props['aria-pressed'], true);
+  lines.forEach(node => node.props.onChange({ ...node.props.line, quantity: '2', unitPrice: '1.25' }));
+  form.field('Amount tendered').props.onChange({ target: { value: '150' } });
+  tree = render(ui.SaleComposer, form.props);
+  assert.equal(elements(tree, node => node.props.children === 'Complete Transaction')[0].props.disabled, false);
+  let writes = 0;
+  ui.http.defaults.adapter = async () => { writes++; throw new Error('Clearing must not write stock or sales'); };
+  const openClear = () => {
+    elements(render(ui.SaleComposer, form.props), node => node.type === 'button' && node.props.children === 'Clear All')[0].props.onClick();
+    return elements(render(ui.SaleComposer, form.props), node => node.type === ui.ConfirmDialog && node.props.title === 'Clear all cart items?')[0];
+  };
+  const cancelled = openClear();
+  assert.equal(cancelled.props.open, true);
+  assert.equal(elements(render(ui.SaleComposer, form.props), node => node.type === ui.SaleLineEditor).length, 60);
+  cancelled.props.onClose();
+  assert.equal(elements(render(ui.SaleComposer, form.props), node => node.type === ui.SaleLineEditor).length, 60);
+  assert.equal(form.field('Amount tendered').props.value, '150');
+  openClear().props.onConfirm();
+  tree = render(ui.SaleComposer, form.props);
+  list = elements(tree, node => node.props['data-pos-cart-items'] !== undefined)[0];
+  assert.equal(elements(list, node => node.type === ui.SaleLineEditor).length, 0);
+  assert.ok(elements(list, node => node.props.children === 'Cart is empty. Click products on the left to add items.').length);
+  assert.equal(form.field('Amount tendered').props.value, '');
+  assert.equal(elements(tree, node => node.props.children === 'Complete Transaction')[0].props.disabled, true);
+  assert.equal(writes, 0);
+});
+
+test('POS checkout readiness rejects invalid prices and Enter submits exact tender once without key-repeat or composition duplicates', async () => {
+  const form = await composerFixture();
+  const complete = () => elements(render(ui.SaleComposer, form.props), node => node.props.children === 'Complete Transaction' || node.props.children === 'Saving...')[0];
+  form.field('Amount tendered').props.onChange({ target: { value: '100' } });
+  let requests = 0, reject, payload;
+  ui.http.defaults.adapter = config => { requests++; payload = JSON.parse(config.data); return new Promise((_, fail) => { reject = () => fail(new AxiosError('Invalid request', undefined, config, undefined, { status: 400, data: { detail: 'Test rejection' }, config, headers: {} })); }); };
+  for (const unitPrice of ['', '0', '-1', 'NaN', 'Infinity', '1.001']) {
+    form.changeLine({ unitPrice });
+    assert.equal(complete().props.disabled, true, unitPrice);
+    await form.submit();
+    assert.equal(requests, 0, unitPrice);
+  }
+  form.changeLine({ quantity: '3', unitPrice: '1.99' });
+  form.field('Amount tendered').props.onChange({ target: { value: '5.96' } });
+  let prevented = 0;
+  const key = (changes = {}) => ({ key: 'Enter', repeat: false, nativeEvent: { isComposing: false }, preventDefault() { prevented++; }, ...changes });
+  assert.equal(complete().props.disabled, true);
+  form.field('Amount tendered').props.onKeyDown(key());
+  await settle(); assert.equal(requests, 0);
+  form.field('Amount tendered').props.onChange({ target: { value: '5.97' } });
+  assert.equal(complete().props.disabled, false);
+  const tender = form.field('Amount tendered');
+  tender.props.onKeyDown(key({ key: 'Escape' }));
+  tender.props.onKeyDown(key({ repeat: true }));
+  tender.props.onKeyDown(key({ nativeEvent: { isComposing: true } }));
+  await settle(); assert.equal(requests, 0);
+  tender.props.onKeyDown(key());
+  tender.props.onKeyDown(key());
+  await settle();
+  assert.equal(requests, 1);
+  assert.equal(payload.amount_tendered, '5.97');
+  assert.deepEqual(payload.items, [{ product_id: 385, quantity: '3.00', unit_price: '1.99', discount_type: 'none', discount_value: '0.00' }]);
+  assert.equal(complete().props.disabled, true);
+  assert.equal(prevented, 3);
+  reject(); await settle();
+  assert.equal(complete().props.disabled, false, 'A confirmed validation rejection permits correction and retry');
+});
+
+test('new POS price fields focus without scrolling the page and reveal their row only inside the cart list', () => {
+  const name = 'A very long product name that must keep the bulk cart row predictable';
+  const tree = render(ui.SaleLineEditor, {
+    line: { productId: 1, name, stock: 999999, quantity: '1', unitPrice: '', discountType: 'none', discountValue: '0' },
+    canDiscount: false, compact: true, focusPrice: true, onChange() {}, onRemove() {},
+  });
+  const field = elements(tree, node => node.props['aria-label'] === `Selling price for ${name}`)[0];
+  const list = { scrollTop: 0, getBoundingClientRect: () => ({ top: 0, bottom: 100 }) };
+  const row = { getBoundingClientRect: () => ({ top: 150, bottom: 286 }) };
+  let focused;
+  field.ref.current = { closest: selector => selector === '[data-pos-cart-items]' ? list : row, focus: options => { focused = options; } };
+  effects.at(-1)();
+  assert.deepEqual(focused, { preventScroll: true });
+  assert.equal(list.scrollTop, 186);
+  const heading = elements(tree, node => node.type === 'h4')[0];
+  assert.equal(heading.props.title, name);
+  assert.match(heading.props.className, /truncate/);
+  assert.equal(field.props.min, '0.01');
 });
