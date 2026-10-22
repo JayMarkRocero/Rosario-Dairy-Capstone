@@ -5,7 +5,7 @@ import { Btn } from "@/components/buttons/Btn";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { OverlayPortal } from "@/components/overlays/OverlayPortal";
 import { acknowledgeUnconfirmedSale, hasUnconfirmedSale, UnconfirmedSaleError } from "@/lib/saleSubmission";
-import { isDefiniteRequestFailure } from "@/lib/pendingRequest";
+import { isDefiniteRequestFailure } from "../api/pendingRequest";
 import { Skeleton } from "@/components/EmptyState";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { useAuth } from "@/features/auth/context/AuthContext";

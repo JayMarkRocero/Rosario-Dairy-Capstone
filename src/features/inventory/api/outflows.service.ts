@@ -1,5 +1,5 @@
 import http, { ApiError, type DjangoProductBatch, type DjangoIngredientBatch, type DjangoUserSummary } from "@/lib/api";
-import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest } from "@/lib/pendingRequest";
+import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest } from "@/features/sales/api/pendingRequest";
 import { newEncodingRequestId } from "@/features/sales/utils/manualPricing";
 export type OutflowType = "spoilage" | "complimentary" | "free_taste" | "expired";
 export const OUTFLOW_TYPES: { value: OutflowType; label: string; description: string }[] = [

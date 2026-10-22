@@ -1,6 +1,6 @@
 import { normalizeSaleItems, type SaleLineDraft } from "../utils/manualPricing";
 import http, { ApiError, getAllPages, type DjangoTransaction, type CheckoutItemPayload } from "@/lib/api";
-import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest } from "@/lib/pendingRequest";
+import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest } from "./pendingRequest";
 export interface EncodingPayload {
   request_id: string; transaction_date: string; customer_id?: number | null; si_number?: string; note?: string;
   payment_method: "cash" | "online"; payment_status: "pending" | "paid"; amount_tendered?: string | null; items: CheckoutItemPayload[];
