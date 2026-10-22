@@ -18,7 +18,7 @@ export function DataTable({ headers, rows, alignments = [], scrollable = false }
           </div>)}
         </div>)}
       </div>
-      <table className="hidden sm:table w-full table-fixed text-sm text-slate-700">
+      <table className="hidden sm:table w-full table-fixed text-sm font-normal text-slate-600">
         <thead className={`${scrollable ? "sticky top-0 z-10 bg-slate-50" : "bg-slate-50/80"} border-b border-slate-100`}>
           <tr>
             {headers.map((h, i) => (

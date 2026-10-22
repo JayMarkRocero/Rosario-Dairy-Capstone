@@ -1,8 +1,8 @@
 const light = {
-  navy: "#17375E", blue: "#2F80ED", green: "#27AE60", orange: "#F39C12",
+  navy: "#17375E", blue: "#2563EB", green: "#27AE60", orange: "#F39C12",
   red: "#EB5757", purple: "#9B59B6", teal: "#1ABC9C", bg: "#F5F7FA",
-  white: "#FFFFFF", text: "#1A2332", muted: "#64748B", border: "rgba(0,0,0,0.08)",
-  action: "#2F80ED", successAction: "#27AE60", dangerAction: "#C63F4A", warningAction: "#9A5A00", sidebar: "#17375E",
+  white: "#FFFFFF", text: "#334155", muted: "#64748B", border: "rgba(0,0,0,0.08)",
+  action: "#2563EB", successAction: "#27AE60", dangerAction: "#C63F4A", warningAction: "#9A5A00", sidebar: "#17375E",
 };
 
 const dark = {

@@ -32,7 +32,7 @@ export function AccountSecuritySettings({ compact = false }: { compact?: boolean
       <div className="flex items-start gap-3">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"><ShieldCheck size={18} aria-hidden="true" /></div>
         <div>
-          <h3 className="text-sm font-semibold">Account security</h3>
+          <h3 className="text-base font-semibold text-slate-800">Account security</h3>
           <p className="mt-0.5 text-xs text-slate-500">Change your own password. You’ll sign in again after it is updated.</p>
         </div>
       </div>

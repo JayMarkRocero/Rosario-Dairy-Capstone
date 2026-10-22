@@ -8,7 +8,7 @@ export function MobileUserCard({ user, actions }: { user: SystemUser; actions: R
     <div className="flex w-full min-w-0 items-center gap-2.5">
       <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-xs font-bold text-white">{initials}</span>
       <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">{user.name}</h3>
+        <h3 className="text-base font-semibold text-slate-800 [overflow-wrap:anywhere]">{user.name}</h3>
         <p title={user.email} className="w-full truncate max-w-[180px] sm:max-w-none text-xs text-slate-500">{user.email}</p>
       </div>
     </div>

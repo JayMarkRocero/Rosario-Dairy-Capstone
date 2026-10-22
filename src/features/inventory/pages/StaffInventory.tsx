@@ -87,8 +87,7 @@ export function StaffInventory() {
 
   return (
     <div className="records-page staff-inventory-page px-4 sm:px-6 pt-2 flex flex-col gap-3 max-w-[1400px] mx-auto w-full">
-      <div className="shrink-0 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base sm:text-lg font-bold" style={{color:C.muted}}>Products and stock levels</h2>
+      <div className="shrink-0 flex flex-wrap items-center justify-end gap-2">
         <InventoryOutflows/>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">{[

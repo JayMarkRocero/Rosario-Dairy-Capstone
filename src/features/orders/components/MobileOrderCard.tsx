@@ -20,7 +20,7 @@ export function MobileOrderCard({ order, onView, onCancel, busy = false }: Props
 
   return <article className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-3.5 shadow-sm">
     <div className="mb-3 flex w-full items-center justify-between gap-2">
-      <h3 className="min-w-0 flex-1 text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">
+      <h3 className="text-base font-semibold text-slate-800 min-w-0 flex-1 [overflow-wrap:anywhere]">
         {order.invoiceNumber || `#${order.id}`}
       </h3>
       <span className="shrink-0"><StatusBadge status={order.status} /></span>

@@ -73,10 +73,10 @@ export function TopBar({ title, userName, role, onMenuClick }: TopBarProps) {
         </button>
 
         <div className="min-w-0">
-          <h1 className="font-bold text-base truncate" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
+          <h1 className="text-xl font-bold text-slate-800 truncate">
             {title}
           </h1>
-          <p className="text-xs hidden sm:block truncate" style={{ color: C.muted }}>{dateStr}</p>
+          <p className="text-xs font-normal text-slate-400 hidden sm:block truncate">{dateStr}</p>
         </div>
       </div>
 
@@ -85,7 +85,7 @@ export function TopBar({ title, userName, role, onMenuClick }: TopBarProps) {
           className="hidden xl:flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl"
           style={{ backgroundColor: C.navy + "08", color: C.navy, border: `1px solid ${C.navy}18` }}
         >
-          <span className="font-mono font-semibold tracking-wide">{time}</span>
+          <span className="tabular-nums font-semibold tracking-wide">{time}</span>
         </div>
 
         <NotificationBell staff={role === 'Staff'} />

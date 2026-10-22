@@ -86,7 +86,6 @@ export function AdminSidebar({ active, onChange, onLogout, isOpen, onClose }: Pr
           <div>
             <div
               className="text-white font-semibold text-sm leading-tight"
-              style={{ fontFamily: "Poppins, sans-serif" }}
             >
               Rosario Dairy
             </div>

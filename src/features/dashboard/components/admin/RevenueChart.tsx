@@ -130,7 +130,7 @@ export function RevenueChart() {
     <Card className="min-w-0 p-4 sm:p-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <div>
-          <h2 className="font-semibold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
+          <h2 className="text-base font-semibold text-slate-800">
             Revenue Analytics
           </h2>
           <p className="text-xs mt-0.5" style={{ color: C.muted }}>Total revenue over time</p>

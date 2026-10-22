@@ -22,7 +22,7 @@ export function MobileInventoryCard({ product, busy, deleteDisabled = false, onE
       onClick={() => setExpanded(value => !value)}
       className="flex min-h-16 w-full items-start justify-between gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
       <span className="min-w-0 flex-1">
-        <span className="block break-words font-semibold text-gray-900">{product.name}</span>
+        <span className="block break-words text-base font-semibold text-slate-800">{product.name}</span>
         <span className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="min-w-0 break-words rounded-md border border-blue-200/60 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">{product.cat}</span>
           <InventoryStatusBadge product={product} />
@@ -41,11 +41,11 @@ export function MobileInventoryCard({ product, busy, deleteDisabled = false, onE
           ["Product code", `PRD-${String(product.id).padStart(3, "0")}`],
         ].map(([label, value]) => <div key={String(label)} className="min-w-0">
           <dt className="text-xs text-slate-500">{label}</dt>
-          <dd className="mt-1 break-words font-medium text-gray-900">{value}</dd>
+          <dd className="mt-1 break-words font-medium text-slate-900">{value}</dd>
         </div>)}
         <div className="col-span-2 min-w-0">
           <dt className="text-xs text-slate-500">Nearest available batch (FEFO)</dt>
-          <dd className="mt-1 break-words font-medium text-gray-900">{product.expiredBatch ? `${product.expiredBatch.batch} · ${product.stock} expired units` : product.nearestBatch
+          <dd className="mt-1 break-words font-medium text-slate-900">{product.expiredBatch ? `${product.expiredBatch.batch} · ${product.stock} expired units` : product.nearestBatch
             ? `${product.nearestBatch.number} · ${product.nearestBatch.quantity.toLocaleString("en-PH")} in stock`
             : "No available batch"}</dd>
         </div>

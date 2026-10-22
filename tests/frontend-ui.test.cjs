@@ -43,6 +43,9 @@ const compiled = buildSync({
     export { AdminLayout } from './src/app/layouts/AdminLayout';
     export { StaffLayout } from './src/app/layouts/StaffLayout';
     export { NotificationBell } from './src/components/navigation/NotificationBell';
+    export { TopBar } from './src/components/navigation/TopBar';
+    export { SectionHeader } from './src/components/data-display/SectionHeader';
+    export { Btn } from './src/components/buttons/Btn';
     export { ConfirmDialog } from './src/components/feedback/ConfirmDialog';
     export { AdminReports } from './src/features/reports/pages/AdminReports';
     export { CreateOrderModal } from './src/features/orders/components/CreateOrderModal';
@@ -141,6 +144,56 @@ test('mobile order cards preserve details and enforce cancellation availability'
     assert.equal(elements(tree, node => node.props['aria-label'] === 'Cancel order').length, 0);
   }
   assert.equal(elements(render(ui.MobileOrderCard, { order, onView: props.onView }), node => node.type === 'button').length, 1);
+});
+
+test('the shared top bar owns the page heading and date in both portals while section actions remain accessible', () => {
+  for (const role of ['Administrator', 'Staff']) {
+    states = []; refs = []; effects = [];
+    let menuOpened = false;
+    const tree = render(ui.TopBar, { title: 'Inventory', userName: 'Demo User', role, onMenuClick: () => { menuOpened = true; } });
+    const headings = elements(tree, node => node.type === 'h1');
+    assert.equal(headings.length, 1);
+    assert.equal(headings[0].props.children, 'Inventory');
+    assert.match(headings[0].props.className, /text-xl font-bold text-slate-800/);
+    const date = elements(tree, node => node.type === 'p')[0];
+    assert.ok(date.props.children);
+    assert.match(date.props.className, /text-xs font-normal text-slate-400/);
+    elements(tree, node => node.type === 'button')[0].props.onClick();
+    assert.equal(menuOpened, true);
+  }
+  const action = React.createElement(ui.Btn, { onClick() {} }, 'Refresh Data');
+  const section = render(ui.SectionHeader, { title: 'Revenue Analytics', subtitle: 'Current period', action });
+  assert.equal(elements(section, node => node.type === 'h2')[0].props.className, 'text-base font-semibold text-slate-800');
+  assert.equal(elements(section, node => node.type === ui.Btn)[0], action);
+  const primary = render(ui.Btn, { children: 'Refresh Data' });
+  assert.match(primary.props.className, /bg-blue-600 hover:bg-blue-700 text-white/);
+  assert.match(primary.props.className, /rounded-lg/);
+});
+
+test('feature pages omit repeated page headings and retain their create, restock and export actions', () => {
+  authState = { user: { id: 7, username: 'demo', email: 'demo@example.test', role: 'admin' }, loading: false };
+  const pages = [
+    [ui.AdminInventory, 'Restock'], [ui.AdminOrders, 'Create Order'], [ui.StaffOrders, 'Create Order'],
+    [ui.SalesEncoding, 'New sales entry'], [ui.AdminCategories, 'Add Category'],
+    [ui.AdminCustomers, 'Add Customer'], [ui.AdminUserManagement, 'Add User'],
+    [ui.StaffInventory], [ui.AdminSalesHistory], [ui.StaffSalesHistory], [ui.StaffPOS], [ui.AdminReports],
+  ];
+  for (const [Page, label] of pages) {
+    states = []; refs = []; effects = [];
+    const tree = render(Page);
+    assert.equal(elements(tree, node => node.type === 'h1' || node.type === 'h2').length, 0, Page.name);
+    if (label) {
+      const action = elements(tree, node => node.type === ui.Btn && node.props.children === label)[0];
+      assert.ok(action, `${Page.name} retains ${label}`);
+      action.props.onClick();
+      assert.ok(elements(render(Page), node => node.props.open === true).length, `${label} still opens its form`);
+    }
+    if (Page === ui.AdminReports) {
+      assert.equal(elements(tree, node => node.type === 'button' && typeof node.props.onClick === 'function').length, 6);
+      assert.ok(elements(tree, node => node.type === ui.Btn && node.props.children === 'Refresh Data').length);
+    }
+    if (Page === ui.StaffPOS) assert.equal(elements(tree, node => node.type === ui.SaleComposer).length, 1);
+  }
 });
 
 test('admin and staff Orders use five mobile cards without the default sort selector', () => {

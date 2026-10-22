@@ -7,7 +7,7 @@ export function StaffInventoryCard({ product, onView }: { product: InventoryItem
     <div className="flex items-start gap-2.5">
       <span className="shrink-0 rounded-lg bg-blue-50 p-2 text-blue-500"><Box size={16} aria-hidden="true" /></span>
       <div className="min-w-0 flex-1">
-        <h3 className="break-words text-sm font-semibold text-slate-900">{product.name}</h3>
+        <h3 className="text-base font-semibold text-slate-800 break-words">{product.name}</h3>
         <span className="mt-1 inline-block max-w-full break-words rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">{product.cat}</span>
       </div>
     </div>

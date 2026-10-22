@@ -32,7 +32,7 @@ export function MobileCategoryCard({ category, busy = false, onView, onEdit, onD
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: C.blue + "12" }}>
           <CategoryIcon name={category.name} icon={category.icon} size={17} color={C.blue} />
         </span>
-        <h3 className="min-w-0 break-words pt-1 text-sm font-semibold text-gray-900">{category.name}</h3>
+        <h3 className="text-base font-semibold text-slate-800 min-w-0 break-words pt-1">{category.name}</h3>
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <StatusBadge status={category.is_active ? "Active" : "Inactive"} />

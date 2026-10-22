@@ -18,7 +18,7 @@ export function TransactionDetails({ sale, onClose }: {
     footer={<Btn variant="primary" onClick={onClose}>Close</Btn>}>
     <div className="space-y-5">
       <PaymentUpdateControl key={current.transaction.id} transaction={current.transaction} onUpdated={transaction => setUpdated(toSale(transaction))}/>
-      <h3 className="text-lg font-semibold">{receipt.title}</h3>
+      <h3 className="text-base font-semibold text-slate-800">{receipt.title}</h3>
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">{receipt.fields.map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="text-sm font-medium break-words">{value}</dd></div>)}</dl>
       {receipt.note && <p className="text-xs text-slate-500">{receipt.note}</p>}
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="py-2">Item / Batch</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Price</th><th className="py-2 text-right">Net amount</th></tr></thead>

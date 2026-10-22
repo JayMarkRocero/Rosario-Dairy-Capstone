@@ -27,7 +27,7 @@ export function SalesEncoding() {
   const query = useCachedQuery(`sales:encoding:${payment}:${startDate}:${endDate}`, () => encodingService.list({ payment_status: payment || undefined, start_date: startDate || undefined, end_date: endDate || undefined }), ["sales", "orders", "customers"]);
   const data = useMemo(() => (query.data ?? []).map(toSale), [query.data]);
   const columns: Column<Sale>[] = [
-    { key: "receipt", header: "SI Number", width: "14%", render: sale => <span className="block truncate font-mono text-xs" title={sale.receipt}>{sale.receipt}</span> },
+    { key: "receipt", header: "SI Number", width: "14%", render: sale => <span className="block truncate tabular-nums text-xs" title={sale.receipt}>{sale.receipt}</span> },
     { key: "customer", header: "Customer", width: "20%", render: sale => <span className="block truncate text-sm" title={sale.customer}>{sale.customer}</span> },
     { key: "date", header: "Sales date", width: "14%", render: sale => <span className="text-xs">{sale.date}</span> },
     { key: "cashier", header: "Entered by", width: "16%", render: sale => <span className="block truncate text-xs">{sale.cashier}</span> },
@@ -36,7 +36,7 @@ export function SalesEncoding() {
     { key: "actions", header: "Actions", width: "10%", align: "center", render: sale => <ActionButton label="View encoded transaction" onClick={() => setSelected(sale)}><Eye size={14}/></ActionButton> },
   ];
   return <div className="records-page flex w-full max-w-[1400px] mx-auto flex-col gap-3 p-4 sm:p-6">
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold text-slate-700">Manual sales encoding</h2><p className="text-xs text-slate-500">Record past invoices and track payment separately.</p></div><Btn variant="primary" icon={<Plus size={14}/>} onClick={() => setOpen(true)}>New sales entry</Btn></div>
+    <div className="flex shrink-0 flex-wrap items-center justify-end gap-3"><Btn variant="primary" icon={<Plus size={14}/>} onClick={() => setOpen(true)}>New sales entry</Btn></div>
     <TableCard className="sales-encoding-table">{query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })}/> : <EnhancedTable responsivePageSize measureRenderedRows contentHeight data={data} columns={columns} rowKey={sale => sale.transaction.id} pageSize={5} loading={query.loading} searchKeys={sale => [sale.receipt, sale.customer, sale.cashier]} searchPlaceholder="Search SI number, customer or staff" showExport={false} emptyTitle="No encoded sales" emptyDesc="Record a paper invoice using New sales entry." onRowClick={setSelected} renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected}/>} extraControls={
       <div className="flex w-full flex-col gap-2 md:flex-row md:flex-wrap md:items-center xl:w-auto xl:flex-nowrap">
         <select aria-label="Filter encoding payment status" className={`${filterSelectClass} md:min-w-[9.5rem] md:flex-1 xl:w-[9.5rem] xl:flex-none`} value={payment} onChange={e => setPayment(e.target.value)}>

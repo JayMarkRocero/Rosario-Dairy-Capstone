@@ -130,7 +130,7 @@ export function PersonalProfileSettings({ compact = false }: { compact?: boolean
       <div className="flex items-start gap-3">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><UserRound size={18} aria-hidden="true" /></div>
         <div>
-          <h3 className="text-sm font-semibold">Personal Profile</h3>
+          <h3 className="text-base font-semibold text-slate-800">Personal Profile</h3>
           <p className="mt-0.5 text-xs text-slate-500">Update your account details. You can save changes once every 5 minutes.</p>
         </div>
       </div>

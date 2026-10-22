@@ -168,7 +168,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
         {customerFields}{catalog}
       </div>
       <section id="sale-cart" data-pos-cart className={`${mobilePane === "cart" ? "flex" : "hidden"} min-h-0 min-w-0 flex-col gap-3 overflow-hidden lg:flex lg:col-start-2 lg:row-start-1`}>
-        <div className="flex shrink-0 items-center justify-between gap-2"><h3 className="text-sm font-semibold text-slate-900">Current order · {lines.length} items</h3>
+        <div className="flex shrink-0 items-center justify-between gap-2"><h3 className="text-base font-semibold text-slate-800">Current order · {lines.length} items</h3>
           <button type="button" disabled={busy || !lines.length || unconfirmed} onClick={() => setClearOpen(true)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40">Clear All</button>
         </div>
         <div data-pos-cart-items className="flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain pr-2">
@@ -187,7 +187,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
           <p className="text-xs text-slate-500 sm:col-span-2">Recorded by {user?.username}. The server records your identity and actual entry time.</p>
         </div>}
         {customerFields}
-        <div className="space-y-4">{catalog}<section id="sale-cart" className="min-w-0 space-y-3"><p className="text-xs text-slate-500">For complimentary items or tasting samples, use Inventory &gt; Stock outflows.</p><h3 className="text-sm font-semibold text-slate-900">Selected products</h3>
+        <div className="space-y-4">{catalog}<section id="sale-cart" className="min-w-0 space-y-3"><p className="text-xs text-slate-500">For complimentary items or tasting samples, use Inventory &gt; Stock outflows.</p><h3 className="text-base font-semibold text-slate-800">Selected products</h3>
           {!lines.length && <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Choose products, then enter the selling price for every line.</p>}
           {cartItems}{summary}
         </section></div>

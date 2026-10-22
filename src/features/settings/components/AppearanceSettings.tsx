@@ -9,7 +9,7 @@ export function AppearanceSettings({ compact = false }: { compact?: boolean } = 
     <div className="flex items-start gap-3">
       <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300"><Moon size={18} aria-hidden="true" /></div>
       <div>
-        <h3 className="text-sm font-semibold">Appearance</h3>
+        <h3 className="text-base font-semibold text-slate-800">Appearance</h3>
         <p className="mt-0.5 text-xs text-slate-500">Choose how this browser displays the app. Your choice is saved on this device.</p>
       </div>
     </div>

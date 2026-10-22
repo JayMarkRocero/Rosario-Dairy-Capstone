@@ -170,8 +170,7 @@ export function AdminCustomers() {
 
   return (
     <div className="records-page viewport-records-page customers-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-      <div className="flex flex-wrap shrink-0 min-h-10 justify-between items-center gap-2">
-        <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Customer profiles and purchase activity</h2>
+      <div className="flex flex-wrap shrink-0 min-h-10 justify-end items-center gap-2">
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Customer
         </Btn>
@@ -239,7 +238,7 @@ export function AdminCustomers() {
             <div className="flex items-center gap-4 p-4 rounded-2xl" style={{backgroundColor:C.bg}}>
               <Avatar name={selected.name} size={16}/>
               <div className="min-w-0">
-                <h3 className="break-words text-lg font-bold" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
+                <h3 className="text-base font-semibold text-slate-800 break-words">{selected.name}</h3>
                 <p className="break-all text-sm" style={{color:C.muted}}>{selected.email || "Email not recorded"}</p>
               </div>
             </div>

@@ -358,7 +358,6 @@ export function Login({ onBack }: Props) {
           <div>
             <p
               className="text-base font-semibold text-white leading-tight"
-              style={{ fontFamily: "Poppins, sans-serif" }}
             >
               Rosario Dairy
             </p>
@@ -374,7 +373,6 @@ export function Login({ onBack }: Props) {
         <div className="relative z-10 max-w-sm rd-anim-marketing">
           <h2
             className="text-2xl lg:text-[1.7rem] font-bold text-white leading-tight mb-3 tracking-tight"
-            style={{ fontFamily: "Poppins, sans-serif" }}
           >
             Smarter dairy management
           </h2>
@@ -423,7 +421,7 @@ export function Login({ onBack }: Props) {
           <div className="flex md:hidden items-center gap-3 mb-8">
             <BrandMark size={44} />
             <div>
-              <h1 className="text-xl font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
+              <h1 className="text-xl font-bold" style={{ color: C.text }}>
                 Rosario Dairy
               </h1>
               <p className="text-xs" style={{ color: C.muted }}>
@@ -445,7 +443,7 @@ export function Login({ onBack }: Props) {
             <div className="p-7 sm:p-9">
               <h2
                 className="text-[1.65rem] font-bold tracking-tight leading-none"
-                style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
+                style={{ color: C.text }}
               >
                 Welcome back
               </h2>

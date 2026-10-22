@@ -83,11 +83,7 @@ export function AdminReports() {
   };
 
   return <div className="w-full h-auto lg:h-[calc(100vh-80px)] min-h-0 flex flex-col justify-between gap-3 p-4 sm:p-6 lg:overflow-hidden">
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-      <div className="min-w-0 flex-1">
-        <h2 className="text-lg font-semibold text-gray-700">Reports</h2>
-        <p className="mt-1 text-sm text-slate-500 [overflow-wrap:anywhere]">Generate and export business intelligence reports</p>
-      </div>
+    <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3 shrink-0">
       <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
         <ReportDateRangeControl range={range} onApply={setRange} disabled={refreshing || exporting !== null} />
         <Btn variant="primary" size="sm" fullWidth icon={refreshing?<LoaderCircle size={13} className="animate-spin"/>:<RefreshCw size={13}/>} onClick={refresh} disabled={refreshing || exporting !== null}>{refreshing?"Refreshing…":"Refresh Data"}</Btn>
@@ -102,7 +98,7 @@ export function AdminReports() {
           <div className="flex-1 min-w-0 flex flex-col justify-start space-y-1.5">
           <div className="flex shrink-0 items-start gap-3">
             <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center" style={{backgroundColor:report.color+"15",color:report.color}}>{report.icon}</div>
-            <div className="min-w-0"><h3 className="text-base font-semibold leading-snug text-gray-900 [overflow-wrap:anywhere]">{report.title}</h3><p className="text-sm mt-1 leading-relaxed text-gray-600 [overflow-wrap:anywhere]">{report.id === "customer" ? "Customer purchases and invoice payment totals" : range && supportsReportDateRange(report.id) ? "Sales summary for the selected date range" : report.desc}</p></div>
+            <div className="min-w-0"><h3 className="text-base font-semibold text-slate-800 leading-snug [overflow-wrap:anywhere]">{report.title}</h3><p className="text-sm font-normal mt-1 leading-relaxed text-slate-600 [overflow-wrap:anywhere]">{report.id === "customer" ? "Customer purchases and invoice payment totals" : range && supportsReportDateRange(report.id) ? "Sales summary for the selected date range" : report.desc}</p></div>
           </div>
           <ReportSummary type={report.id} range={supportsReportDateRange(report.id) ? range : undefined}/>
           </div>

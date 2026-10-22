@@ -10,7 +10,6 @@ import { inventoryFields, inventorySettingsDraft, validateInventorySettings, typ
 import { AppearanceSettings } from "@/features/settings/components/AppearanceSettings";
 import { AccountSecuritySettings } from "@/features/settings/components/AccountSecuritySettings";
 import { PersonalProfileSettings } from "@/features/settings/components/PersonalProfileSettings";
-import { C } from "@/styles/tokens/colors";
 import { formInputClass } from "@/styles/controlClasses";
 
 const liveAlerts: { key: keyof NotificationSettings; label: string; description: string; icon: typeof AlertTriangle }[] = [
@@ -184,20 +183,14 @@ export function AdminSettings() {
   };
 
   return <div className="w-full flex flex-col gap-4 px-4 pt-4 sm:pt-6 pb-12 sm:pb-8 sm:px-6 text-slate-900 dark:text-slate-100">
-    <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
-      <div className="min-w-0 flex-1">
-      <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>System settings</h2>
-      <p className="mt-1 text-sm text-slate-500">Manage report details, live alerts, appearance, and your account security.</p>
-      {!canManage && <p className="mt-2 text-sm text-slate-500">Business profile and shared alerts are read-only for your account.</p>}
-      </div>
-    </div>
+    {!canManage && <p className="text-xs font-normal text-slate-400">Business profile and shared alerts are read-only for your account.</p>}
 
     <Card className="overflow-hidden">
       <form onSubmit={saveBusiness} className="p-4 sm:p-5">
         <div className="flex items-start gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><FileText size={18} aria-hidden="true" /></div>
           <div>
-            <h3 className="text-sm font-semibold">Business profile for reports</h3>
+            <h3 className="text-base font-semibold text-slate-800">Business profile for reports</h3>
             <p className="mt-0.5 text-xs text-slate-500">These details appear in downloaded PDF reports. The app navigation keeps its Rosario Dairy name.</p>
           </div>
         </div>
@@ -223,7 +216,7 @@ export function AdminSettings() {
 
     <Card className="overflow-hidden">
       {saved.inventory && inventoryDraft ? <form onSubmit={saveInventory} noValidate className="p-4 sm:p-5">
-        <h3 className="text-sm font-semibold">Inventory alerts</h3>
+        <h3 className="text-base font-semibold text-slate-800">Inventory alerts</h3>
         <p className="mt-1 text-xs text-slate-500">These global thresholds apply to all products and ingredients. Stock is low at or below the threshold, using each item's stock unit. Expiry windows include today.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           {inventoryFields.map(({ key, label }) => <div key={key}>
@@ -242,12 +235,12 @@ export function AdminSettings() {
         {canManage && <div className="mt-4 flex justify-end border-t border-slate-100 pt-4">
           <button type="submit" disabled={!inventoryDirty || saving !== null} className="h-9 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saving === "inventory" ? "Saving…" : "Save inventory alerts"}</button>
         </div>}
-      </form> : <div className="p-4 sm:p-5"><h3 className="text-sm font-semibold">Inventory alerts</h3><p role="alert" className="mt-2 text-xs text-slate-500">Inventory configuration is unavailable.</p><button type="button" onClick={() => setReload(value => value + 1)} className="mt-2 text-sm text-blue-600 underline">Retry loading settings</button></div>}
+      </form> : <div className="p-4 sm:p-5"><h3 className="text-base font-semibold text-slate-800">Inventory alerts</h3><p role="alert" className="mt-2 text-xs text-slate-500">Inventory configuration is unavailable.</p><button type="button" onClick={() => setReload(value => value + 1)} className="mt-2 text-sm text-blue-600 underline">Retry loading settings</button></div>}
     </Card>
 
     <Card className="overflow-hidden">
       <form onSubmit={saveAlerts} className="p-4 sm:p-5">
-        <h3 className="text-sm font-semibold">Notification bell alerts</h3>
+        <h3 className="text-base font-semibold text-slate-800">Notification bell alerts</h3>
         <p className="mt-1 text-xs text-slate-500">These switches control live alerts shown to staff and administrators.</p>
         <fieldset disabled={!canManage || saving !== null} className="mt-3 disabled:opacity-70">
           {liveAlerts.map(({ key, label, description, icon: Icon }) => <label key={key} className="flex cursor-pointer items-center justify-between gap-4 border-b border-slate-100 py-3.5 last:border-b-0">

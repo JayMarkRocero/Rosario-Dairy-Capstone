@@ -76,7 +76,7 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
         <button onClick={() => navigate("home")} className="flex min-w-0 items-center gap-3 text-left">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm" style={{ backgroundColor: C.action }}>RD</span>
           <span className="min-w-0 leading-tight">
-            <span className="block truncate text-sm font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>Rosario Dairy</span>
+            <span className="block truncate text-sm font-bold" style={{ color: C.text }}>Rosario Dairy</span>
             <span className="block truncate text-xs" style={{ color: C.muted }}>Operations Intelligence</span>
           </span>
         </button>
@@ -130,7 +130,7 @@ function DashboardShowcase() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: C.muted }}>Executive overview</p>
-            <p className="mt-1 text-base font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>Operations Dashboard</p>
+            <p className="mt-1 text-base font-bold" style={{ color: C.text }}>Operations Dashboard</p>
           </div>
           <span className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ color: C.green, backgroundColor: `${C.green}12` }}>
             <motion.span className="h-2 w-2 rounded-full" style={{ backgroundColor: C.green }} animate={{ opacity: [1, 0.35, 1] }} transition={{ duration: 1.8, repeat: Infinity }} />Live
@@ -145,7 +145,7 @@ function DashboardShowcase() {
           ].map((item, index) => (
             <motion.div key={item.label} whileHover={{ y: -3 }} className="rounded-2xl border p-3.5 sm:p-4" style={{ backgroundColor: C.bg, borderColor: C.border }}>
               <p className="text-xs leading-tight" style={{ color: C.muted }}>{item.label}</p>
-              <p className="mt-2 text-lg font-bold sm:text-xl" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{item.value}</p>
+              <p className="mt-2 text-lg font-bold sm:text-xl" style={{ color: C.text }}>{item.value}</p>
               <p className="mt-1 text-xs font-medium" style={{ color: index === 2 ? C.orange : C.green }}>{item.change}</p>
             </motion.div>
           ))}
@@ -173,7 +173,7 @@ function HeroSection({ onLogin }: { onLogin?: () => void }) {
       <div className="absolute inset-0 opacity-60" style={{ background: `radial-gradient(circle at 15% 10%, ${C.blue}12, transparent 34%), radial-gradient(circle at 90% 80%, ${C.green}0D, transparent 30%)` }} />
       <div className="relative mx-auto grid max-w-7xl items-center gap-12 md:gap-16 lg:gap-24 px-5 sm:px-8 lg:grid-cols-[0.9fr_1.1fr]">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.08] sm:text-5xl lg:text-[3.5rem]" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>Control dairy operations with clarity and confidence.</h1>
+          <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.08] sm:text-5xl lg:text-[3.5rem]" style={{ color: C.text }}>Control dairy operations with clarity and confidence.</h1>
           <p className="mt-6 max-w-xl text-base leading-8 sm:text-lg" style={{ color: C.muted }}>Unify batch-level inventory, point-of-sale activity, management reporting, and demand forecasting in one dependable operating system.</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="inline-flex items-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold text-white shadow-lg" style={{ backgroundColor: C.action, boxShadow: `0 14px 28px -14px ${C.action}` }}>Access the platform <ArrowRight size={16} /></motion.button>
@@ -190,7 +190,7 @@ function SectionHeading({ eyebrow, title, subtitle, centered = false }: { eyebro
   return (
     <motion.div {...reveal} className={`max-w-2xl ${centered ? "mx-auto text-center" : ""}`}>
       <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: C.blue }}>{eyebrow}</p>
-      <h2 className="mt-3 text-3xl font-bold leading-tight sm:text-4xl" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{title}</h2>
+      <h2 className="mt-3 text-3xl font-bold leading-tight sm:text-4xl" style={{ color: C.text }}>{title}</h2>
       <p className="mt-4 text-base leading-7" style={{ color: C.muted }}>{subtitle}</p>
     </motion.div>
   );
@@ -215,7 +215,7 @@ function FeaturesSection() {
             return (
               <motion.article key={feature.title} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.45, delay: index * 0.05 }} whileHover={{ y: -5 }} className="group rounded-2xl border p-6 sm:p-7" style={{ borderColor: C.border, backgroundColor: C.white, boxShadow: "0 12px 34px -26px rgba(15,23,42,0.35)" }}>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105" style={{ color: C.blue, backgroundColor: `${C.blue}0D` }}><Icon size={22} /></div>
-                <h3 className="mt-5 text-base font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{feature.title}</h3>
+                <h3 className="mt-5 text-base font-bold" style={{ color: C.text }}>{feature.title}</h3>
                 <p className="mt-2 text-sm leading-6" style={{ color: C.muted }}>{feature.desc}</p>
               </motion.article>
             );
@@ -251,7 +251,7 @@ function WorkflowSection({ onLogin }: { onLogin?: () => void }) {
               <motion.div key={step.number} {...reveal} transition={{ duration: 0.45, delay: index * 0.08 }} className="relative flex">
                 <article className="w-full rounded-2xl border p-6" style={{ backgroundColor: C.white, borderColor: C.border, boxShadow: "0 14px 38px -30px rgba(15,23,42,0.4)" }}>
                   <div className="flex items-center justify-between"><span className="text-xs font-bold tracking-[0.18em]" style={{ color: C.blue }}>{step.number}</span><div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ color: C.navy, backgroundColor: `${C.blue}0D` }}><Icon size={19} /></div></div>
-                  <h3 className="mt-6 text-base font-bold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{step.title}</h3>
+                  <h3 className="mt-6 text-base font-bold" style={{ color: C.text }}>{step.title}</h3>
                   <p className="mt-2 text-sm leading-6" style={{ color: C.muted }}>{step.desc}</p>
                 </article>
                 {index < steps.length - 1 && <ChevronRight className="absolute -right-4 top-1/2 z-10 hidden -translate-y-1/2 lg:block" size={17} style={{ color: C.blue }} />}
@@ -261,7 +261,7 @@ function WorkflowSection({ onLogin }: { onLogin?: () => void }) {
         </div>
         <motion.div {...reveal} className="mt-16 overflow-hidden rounded-3xl px-6 py-10 text-center sm:px-10 sm:py-12" style={{ background: `linear-gradient(135deg, ${C.navy}, #244D7C)` }}>
           <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: "#93C5FD" }}>Rosario Dairy Management System</p>
-          <h2 className="mx-auto mt-3 max-w-2xl text-2xl font-bold text-white sm:text-3xl" style={{ fontFamily: "Poppins, sans-serif" }}>Move from manual coordination to informed operational control.</h2>
+          <h2 className="mx-auto mt-3 max-w-2xl text-2xl font-bold text-white sm:text-3xl">Move from manual coordination to informed operational control.</h2>
           <p className="mx-auto mt-4 max-w-xl text-sm leading-6" style={{ color: "#CBD5E1" }}>Access inventory, POS, analytics, and forecasting through one secure workspace.</p>
           <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={onLogin} className="mt-7 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white" style={{ backgroundColor: C.action }}>Sign in to continue <ArrowRight size={16} /></motion.button>
         </motion.div>
@@ -275,7 +275,7 @@ function Footer() {
     <footer id="contact" className="border-t pt-14 pb-7" style={{ backgroundColor: "#0F1E33", borderColor: "rgba(255,255,255,0.08)" }}>
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <div className="grid gap-10 border-b pb-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_0.8fr_1fr]" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-          <div className="max-w-sm"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: C.action }}>RD</div><div><p className="text-sm font-bold text-white" style={{ fontFamily: "Poppins, sans-serif" }}>Rosario Dairy</p><p className="text-xs" style={{ color: "#94A3B8" }}>Integrated Inventory &amp; POS System</p></div></div><p className="mt-4 text-sm leading-6" style={{ color: "#94A3B8" }}>A unified operations platform for perishable inventory, sales control, and forward planning.</p></div>
+          <div className="max-w-sm"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: C.action }}>RD</div><div><p className="text-sm font-bold text-white">Rosario Dairy</p><p className="text-xs" style={{ color: "#94A3B8" }}>Integrated Inventory &amp; POS System</p></div></div><p className="mt-4 text-sm leading-6" style={{ color: "#94A3B8" }}>A unified operations platform for perishable inventory, sales control, and forward planning.</p></div>
           <div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "#64748B" }}>Navigate</p><div className="mt-4 flex flex-col gap-3">{NAV_LINKS.map((link) => <button key={link.id} onClick={() => scrollToId(link.id)} className="text-left text-sm transition-colors hover:text-white" style={{ color: "#CBD5E1" }}>{link.label}</button>)}</div></div>
           <div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "#64748B" }}>Contact</p><div className="mt-4 flex flex-col gap-3 text-sm" style={{ color: "#CBD5E1" }}><a className="flex items-center gap-2 hover:text-white" href="mailto:rocerojaymark31@gmail.com"><Mail size={15} />rocerojaymark31@gmail.com</a><a className="flex items-center gap-2 hover:text-white" href="tel:+639125096057"><Phone size={15} />0912 509 6057</a><p className="flex items-center gap-2"><MapPin size={15} />Rosario, Batangas, Philippines</p></div></div>
         </div>

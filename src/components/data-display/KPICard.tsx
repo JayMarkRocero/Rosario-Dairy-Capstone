@@ -39,11 +39,11 @@ export function KPICard({ title, value, icon, trend, trendLabel, color, compact 
       </div>
       <div
         className="text-2xl font-bold tracking-tight break-words tabular-nums"
-        style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
+        style={{ color: C.text }}
       >
         {value}
       </div>
-      <h3 className="text-sm font-medium mt-1" style={{ color: C.text }}>{title}</h3>
+      <h3 className="text-base font-semibold text-slate-800 mt-1">{title}</h3>
       {detail && <p className="text-xs mt-2" style={{ color: C.muted }}>{detail}</p>}
     </section>
   );

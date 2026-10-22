@@ -33,7 +33,7 @@ export function AdminSalesHistory() {
 
   const columns: Column<Sale>[] = [
     { key:"receipt", header:"SI Number", align:"left", width:"15%", sortKey: r => r.receipt,
-      render: r => <span className="block truncate font-mono text-xs whitespace-nowrap" style={{ color: C.muted }} title={r.receipt}>{r.receipt}</span> },
+      render: r => <span className="block truncate tabular-nums text-xs whitespace-nowrap" style={{ color: C.muted }} title={r.receipt}>{r.receipt}</span> },
     { key:"customer", header:"Customer", align:"left", width:"22%", sortKey: r => r.customer,
       render: r => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{r.customer}</span> },
     { key:"cashier", header:"Cashier", align:"center", width:"14%", sortKey: r => r.cashier,
@@ -58,29 +58,23 @@ export function AdminSalesHistory() {
     { key:"actions", header:"Actions", align:"center", width:"10%",
       render: r => (
         <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
-          <button type="button" aria-label="View Details" title="View Details" onClick={() => setSelected(r)} className="text-gray-500 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><Eye size={16} aria-hidden="true"/></button>
+          <button type="button" aria-label="View Details" title="View Details" onClick={() => setSelected(r)} className="text-slate-500 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><Eye size={16} aria-hidden="true"/></button>
         </div>
       ) },
   ];
 
   return (
     <div className="records-page viewport-records-page sales-history-page flex flex-col gap-3 px-3.5 sm:px-4 pt-2 max-w-[1400px] mx-auto w-full">
-      <div className="flex shrink-0 min-h-10 items-start justify-between gap-3 sm:items-center">
-        <div className="min-w-0 flex-1">
-          <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{ color: C.muted }}>Complete transaction records</h2>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 flex-shrink-0">
         <Card className="px-3.5 py-3 min-w-0">
-          <div className="font-bold text-xl truncate" style={{ color: C.blue, fontFamily: "Poppins, sans-serif" }}>
+          <div className="font-bold text-xl truncate" style={{ color: C.blue }}>
             {query.error ? "Unavailable" : `₱${summary.total.toLocaleString()}`}
           </div>
           <div className="font-medium text-sm mt-1" style={{ color: C.text }}>Total Revenue</div>
           <div className="text-xs mt-0.5" style={{ color: C.muted }}>{query.error ? "" : `${summary.count} transactions`}</div>
         </Card>
         <Card className="px-3.5 py-3 min-w-0">
-          <div className="font-bold text-xl truncate" style={{ color: C.green, fontFamily: "Poppins, sans-serif" }}>
+          <div className="font-bold text-xl truncate" style={{ color: C.green }}>
             {query.error ? "Unavailable" : summary.count}
           </div>
           <div className="font-medium text-sm mt-1" style={{ color: C.text }}>Total Transactions</div>

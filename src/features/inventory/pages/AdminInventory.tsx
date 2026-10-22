@@ -116,7 +116,7 @@ function ProductDetail({ p }: { p: InventoryItem }) {
         >
           <CategoryIcon name={p.cat} size={30} color={accentColor} />
         </div>
-        <div className="font-bold text-base" style={{ color:C.text,fontFamily:"Poppins,sans-serif" }}>{p.name}</div>
+        <div className="font-bold text-base" style={{ color:C.text }}>{p.name}</div>
         <div className="mt-1"><InventoryStatusBadge product={p}/></div>
       </div>
       <div className="space-y-2 sm:space-y-5 sm:p-6">
@@ -403,12 +403,9 @@ export function AdminInventory() {
 
   return (
     <div className="records-page inventory-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-      {/* Header */}
-      <div className="block shrink-0 min-h-10 md:flex md:items-center md:justify-between md:gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Expiry-Based Inventory</h2>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 [&_button]:w-full md:mt-0 md:flex md:shrink-0 md:[&_button]:w-auto">
+      {/* Inventory actions */}
+      <div className="block shrink-0 min-h-10 md:flex md:items-center md:justify-end md:gap-3">
+        <div className="grid grid-cols-2 gap-2 [&_button]:w-full md:flex md:shrink-0 md:[&_button]:w-auto">
           <InventoryOutflows/>
           <div>
             <Btn variant="primary" size="sm" icon={<PackagePlus size={13}/>} fullWidth onClick={openRestock}>

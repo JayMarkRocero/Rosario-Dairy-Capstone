@@ -329,10 +329,7 @@ export function AdminUserManagement() {
 
   return (
     <div className="records-page viewport-records-page users-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-      <div className="flex flex-wrap shrink-0 min-h-10 items-center justify-between gap-2">
-        <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>
-          Manage administrator and staff accounts
-        </h2>
+      <div className="flex flex-wrap shrink-0 min-h-10 items-center justify-end gap-2">
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={openAdd}>
           Add User
         </Btn>
@@ -396,7 +393,7 @@ export function AdminUserManagement() {
                 style={{backgroundColor:selected.role==="Administrator"?C.sidebar:C.action}}>
                 {selected.name.split(" ").map(n=>n[0]).join("").slice(0,2)}
               </div>
-              <h3 className="font-bold text-lg" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
+              <h3 className="text-base font-semibold text-slate-800">{selected.name}</h3>
               <p className="text-sm" style={{color:C.muted}}>{selected.role}</p>
               <div className="mt-2"><StatusBadge status={selected.status}/></div>
               {selected.status === "Inactive" && <p className="mt-2 text-xs" style={{color:C.muted}}>

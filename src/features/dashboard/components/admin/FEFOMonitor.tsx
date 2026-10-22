@@ -48,7 +48,7 @@ export function FEFOMonitor() {
       {/* Header */}
       <div className="mb-1">
         <div>
-          <h2 className="font-semibold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>
+          <h2 className="text-base font-semibold text-slate-800">
             Inventory Monitor
           </h2>
           <p className="text-xs mt-0.5" style={{ color: C.muted }}>
@@ -96,7 +96,7 @@ export function FEFOMonitor() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="break-words text-sm font-medium" style={{ color: C.text }}>{item.product}</p>
-                  <p className="mt-0.5 break-all font-mono text-xs" style={{ color: C.muted }}>{item.batch}</p>
+                  <p className="mt-0.5 break-all tabular-nums text-xs" style={{ color: C.muted }}>{item.batch}</p>
                 </div>
                 <span className="shrink-0"><StatusBadge status={item.priority} /></span>
               </div>
@@ -137,7 +137,7 @@ export function FEFOMonitor() {
                   style={{ borderBottom: `1px solid ${C.border}` }}
                 >
                   <td className="overflow-hidden text-ellipsis whitespace-nowrap py-2.5 px-2 text-left font-medium" title={item.product} style={{ color: C.text }}>{item.product}</td>
-                  <td className="overflow-hidden text-ellipsis whitespace-nowrap py-2.5 px-2 text-left font-mono" title={item.batch} style={{ color: C.muted }}>{item.batch}</td>
+                  <td className="overflow-hidden text-ellipsis whitespace-nowrap py-2.5 px-2 text-left tabular-nums" title={item.batch} style={{ color: C.muted }}>{item.batch}</td>
                   <td className="py-2.5 text-right pl-2 pr-4 font-medium" style={{ color: C.text }}>{item.qty}</td>
                   <td className="py-2.5 text-left px-2 whitespace-nowrap"             style={{ color: C.text }}>{item.expiry}</td>
                   <td

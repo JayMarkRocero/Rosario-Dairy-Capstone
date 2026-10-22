@@ -31,8 +31,7 @@ export function EmptyState({ icon, title, description, action, compact = false, 
         style={{ color: C.muted, backgroundColor: C.bg }}>
         {icon ?? <Inbox size={compact ? 19 : 25} strokeWidth={1.5} aria-hidden="true" />}
       </div>
-      <h3 className={`font-semibold mb-1 ${compact ? "text-sm" : "text-base"}`}
-        style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>{title}</h3>
+      <h3 className="text-base font-semibold text-slate-800 mb-1">{title}</h3>
       {description && <p className={`${compact ? "text-xs" : "text-sm"} max-w-xs ${action ? "mb-4" : ""}`} style={{ color: C.muted }}>{description}</p>}
       {action}
     </div>

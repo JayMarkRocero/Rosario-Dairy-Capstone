@@ -92,13 +92,12 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
         >
           <div>
             <h2
-              className="font-bold text-lg"
-              style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
+              className="text-base font-semibold text-slate-800"
             >
               {title}
             </h2>
             {subtitle && (
-              <p className="text-sm mt-0.5" style={{ color: C.muted }}>{subtitle}</p>
+              <p className="text-xs font-normal text-slate-400 mt-0.5">{subtitle}</p>
             )}
           </div>
           {!hideClose && (

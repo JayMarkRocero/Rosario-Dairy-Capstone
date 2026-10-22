@@ -5,6 +5,7 @@ import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";
 import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
+import { Btn } from "@/components/buttons/Btn";
 import { useMemo, useState } from "react";
 import { Plus, Eye } from "lucide-react";
 import { type Column } from "@/components/data-display/EnhancedTable";
@@ -37,7 +38,7 @@ export function StaffOrders() {
   const view = (order: OrderListItem) => { setSelected(order); setViewOpen(true); };
 
   const columns: Column<OrderListItem>[] = [
-    { key:"id", header:"Order ID", align:"left", width:"15%", render:o=><span className="font-mono text-xs" style={{color:C.muted}}>#{o.id}</span> },
+    { key:"id", header:"Order ID", align:"left", width:"15%", render:o=><span className="tabular-nums text-xs" style={{color:C.muted}}>#{o.id}</span> },
     { key:"customer", header:"Customer", align:"left", width:"22%", sortKey:o=>o.customer, render:o=><span className="font-medium text-sm">{o.customer}</span> },
     { key:"status", header:"Status", align:"center", width:"18%", render:o=><StatusBadge status={o.status}/> },
     { key:"date", header:"Date", align:"center", width:"18%", render:o=><span className="text-xs" style={{color:C.muted}}>{o.date}</span> },
@@ -46,7 +47,7 @@ export function StaffOrders() {
   ];
 
   return <div className="records-page orders-page h-auto flex flex-col gap-4 p-4 sm:p-6 max-w-[1400px] mx-auto w-full">
-    <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="text-xl font-bold text-slate-900">Orders</h1><p className="text-xs text-slate-500">Manage and track customer orders</p></div><button type="button" className="px-3.5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5" onClick={()=>setCreateOpen(true)}><Plus size={14}/>Create Order</button></div>
+    <div className="flex shrink-0 justify-end gap-2"><Btn variant="primary" icon={<Plus size={14}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green], ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>

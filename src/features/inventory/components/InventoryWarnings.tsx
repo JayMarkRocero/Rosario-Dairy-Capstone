@@ -42,7 +42,7 @@ export function InventoryStatusBadge({ product }: { product: InventoryItem }) {
 export function InventoryStockValue({ product }: { product: InventoryItem }) {
   const warning = getInventoryWarnings(product);
   return <span className="inline-flex items-center gap-1">
-    <span className={`font-medium ${warning.lowStock ? "text-amber-600" : "text-gray-900"}`}>{product.stock.toLocaleString("en-PH")}</span>
+    <span className={`font-medium ${warning.lowStock ? "text-amber-600" : "text-slate-900"}`}>{product.stock.toLocaleString("en-PH")}</span>
     {warning.lowStock && <InventoryWarningTooltip message={warning.stockMessage} />}
   </span>;
 }

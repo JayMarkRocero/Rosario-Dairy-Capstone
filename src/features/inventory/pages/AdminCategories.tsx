@@ -219,8 +219,7 @@ export function AdminCategories() {
 
   return (
     <div className="records-page flex flex-col h-auto gap-4 px-4 sm:px-6 pt-3 max-w-[1400px] mx-auto w-full">
-      <div className="flex shrink-0 min-h-10 flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
-        <h2 className="min-w-0 flex-1 text-lg font-semibold" style={{color:C.muted}}>Organize product categories and catalogs</h2>
+      <div className="flex shrink-0 min-h-10 flex-col items-stretch justify-end gap-3 sm:flex-row sm:items-center">
         <Btn fullWidth variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Category
         </Btn>
@@ -283,7 +282,7 @@ export function AdminCategories() {
                 style={{backgroundColor:C.blue+"12"}}>
                 <CategoryIcon name={selected.name} icon={selected.icon} size={28} color={C.blue}/>
               </div>
-              <h3 className="font-bold text-xl" style={{color:C.text,fontFamily:"Poppins,sans-serif"}}>{selected.name}</h3>
+              <h3 className="text-base font-semibold text-slate-800">{selected.name}</h3>
             </div>
             {[{l:"Total Products",v:`${selected.products}`},{l:"Status",v:selected.is_active?"Active":"Inactive"},{l:"Staff Visibility",v:selected.is_visible_to_staff?"Visible":"Hidden"}].map(r=>(
               <div key={r.l} className="flex justify-between py-2" style={{borderBottom:`1px solid ${C.border}`}}>

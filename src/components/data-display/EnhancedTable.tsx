@@ -264,7 +264,7 @@ export function EnhancedTable<T>({
           className={`w-full ${adaptive ? "flex-1 min-h-0 overflow-y-hidden" : ""} ${renderMobileRow ? "hidden md:block overflow-x-auto" : mobileTable ? pageData.length === 0 ? "hidden xl:block" : "block overflow-x-auto" : "hidden xl:block"} ${contentHeight ? "h-auto" : ""} ${tableDisableScroll ? "xl:h-full xl:overflow-hidden" : tableScrollBody ? "xl:h-full xl:overflow-x-auto xl:overflow-y-hidden" : fillHeight ? "xl:h-full xl:overflow-auto" : "xl:overflow-x-auto"}`}
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          <table className={`w-full text-left border-collapse ${contentHeight ? "h-auto" : ""} table-fixed text-sm text-slate-700 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
+          <table className={`w-full text-left border-collapse ${contentHeight ? "h-auto" : ""} table-fixed text-sm font-normal text-slate-600 ${renderMobileRow ? `hidden md:table min-w-[720px] xl:min-w-0 ${tableScrollBody ? "xl:flex" : ""}` : mobileTable ? "min-w-[1120px] xl:min-w-0" : ""} ${tableScrollBody ? `h-full flex flex-col ${tableDisableScroll ? "" : "min-w-[720px]"}` : ""}`}>
             <thead ref={adaptive || autoPageSize ? capacity.headerRef : undefined} className={`bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 ${tableScrollBody ? `block shrink-0 overflow-hidden ${tableDisableScroll ? "" : "[scrollbar-gutter:stable]"}` : ""}`}>
               <tr style={rowStyle}>
                 {columns.map(col => (

@@ -80,7 +80,7 @@ export function ForecastChart() {
   return <Card className="min-w-0 p-4 sm:p-5">
     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
       <div>
-        <h2 className="font-semibold" style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}>Sales Forecast</h2>
+        <h2 className="text-base font-semibold text-slate-800">Sales Forecast</h2>
         <p className="mt-1 text-xs" style={{ color: C.muted }}>SARIMA model search · 2025 backtest{data?.data_end ? ` · Sales through ${new Date(`${String(data.data_end)}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}` : ""}</p>
       </div>
       <div className="grid w-full grid-cols-3 gap-1 sm:flex sm:w-auto" aria-label="Forecast period">
@@ -101,7 +101,7 @@ export function ForecastChart() {
       <p className="mt-2 text-sm leading-relaxed" style={{ color: C.text }}>{forecastExplanation(data as Record<string, unknown> | null)}</p>
     </div>}
     {!loading && !error && projection && <section className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-3 sm:p-4" aria-label="Unvalidated Historical Estimate">
-      <h3 className="text-sm font-semibold text-blue-900">Unvalidated Historical Estimate</h3>
+      <h3 className="text-base font-semibold text-slate-800">Unvalidated Historical Estimate</h3>
       <p className="mt-1 text-xs leading-relaxed text-blue-800">Historical median for the current {period} period. This is a planning aid, not a published SARIMA forecast.</p>
       <p className="mt-3 text-xl font-semibold text-slate-900 sm:text-2xl">{amount(projection.predicted_revenue)}</p>
       <p className="mt-1 text-sm text-slate-700">{dateLabel(projection.date)} – {dateLabel(projection.end_date)}</p>
@@ -110,7 +110,7 @@ export function ForecastChart() {
     </section>}
     {!loading && !error && chartData.length > 0 && <div className="mt-5 min-w-0">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold" style={{ color: C.text }}>2025 actual vs predicted</h3>
+        <h3 className="text-base font-semibold text-slate-800">2025 actual vs predicted</h3>
         {Number.isFinite(wape) && <p className="text-xs" style={{ color: C.muted }}>WAPE {wape.toFixed(1)}%{data?.accuracy_target_percent != null ? ` · target ≤${Number(data.accuracy_target_percent)}%` : ""}</p>}
       </div>
       {period === "monthly" && <div className="mb-3 flex flex-wrap gap-1" aria-label="2025 prediction method">
@@ -138,7 +138,7 @@ export function ForecastChart() {
         </div>
       </div>}
       {!fixedOrigin && baselines && Object.keys(baselines).length > 0 && <div className="mt-4 border-t pt-3" style={{ borderColor: C.border }}>
-        <h3 className="mb-2 text-sm font-semibold" style={{ color: C.text }}>2025 total-sales benchmarks</h3>
+        <h3 className="text-base font-semibold text-slate-800 mb-2">2025 total-sales benchmarks</h3>
         <table className="w-full text-xs" aria-label="Total-sales forecast error comparison">
           <thead style={{ color: C.muted }}><tr><th className="py-1 text-left font-medium">Method</th><th className="py-1 text-right font-medium">WAPE</th></tr></thead>
           <tbody style={{ color: C.text }}>

@@ -65,7 +65,7 @@ export function AppShell() {
         theme={theme}
         position="top-right"
         toastOptions={{
-          style: { fontFamily: "Inter, sans-serif", fontSize: 13, borderRadius: 12 },
+          style: {  fontSize: 13, borderRadius: 12 },
           duration: 3500,
         }}
         richColors

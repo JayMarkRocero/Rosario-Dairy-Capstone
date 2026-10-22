@@ -23,7 +23,7 @@ export function MobileCustomerCard({ customer, onView, onEdit, onDelete, onReact
 
   return <article className="w-full min-w-0 bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm space-y-2.5">
     <div className="flex w-full items-start justify-between gap-2">
-      <h3 className="min-w-0 flex-1 text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{customer.name}</h3>
+      <h3 className="text-base font-semibold text-slate-800 min-w-0 flex-1 [overflow-wrap:anywhere]">{customer.name}</h3>
       <span className="shrink-0"><StatusBadge status={status} /></span>
     </div>
     <dl className="w-full space-y-2.5">

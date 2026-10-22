@@ -57,7 +57,7 @@ export function StaffSalesHistory() {
 
   const columns: Column<Sale>[] = [
     { key:"receipt", header:"SI Number", align:"left", width:"18%",
-      render: s => <span className="block truncate font-mono text-xs whitespace-nowrap" style={{ color: C.muted }} title={s.receipt}>{s.receipt}</span> },
+      render: s => <span className="block truncate tabular-nums text-xs whitespace-nowrap" style={{ color: C.muted }} title={s.receipt}>{s.receipt}</span> },
     { key:"customer", header:"Customer", align:"left", width:"26%",
       render: s => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{s.customer}</span> },
     { key:"date", header:"Date", align:"center", width:"18%",
@@ -80,7 +80,7 @@ export function StaffSalesHistory() {
     { key:"actions", header:"Actions", align:"center", width:"10%",
       render: sale => (
         <div className="flex items-center justify-center gap-1" onClick={event => event.stopPropagation()}>
-          <button type="button" aria-label="View Details" title="View Details" onClick={() => setSelected(sale)} className="text-gray-500 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+          <button type="button" aria-label="View Details" title="View Details" onClick={() => setSelected(sale)} className="text-slate-500 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <Eye size={16} aria-hidden="true" />
           </button>
         </div>
@@ -89,7 +89,6 @@ export function StaffSalesHistory() {
 
   return (
     <div className="records-page viewport-records-page sales-history-page flex flex-col gap-3 px-3.5 sm:px-4 pt-2 max-w-[1400px] mx-auto w-full">
-      <h2 className="text-base sm:text-lg font-bold shrink-0" style={{ color: C.muted }}>Your transaction records</h2>
       <div className="grid grid-cols-2 gap-2.5 shrink-0">
         <SummaryCard compact label="Total Revenue" subtitle="Your lifetime sales processed" value={query.error ? "Unavailable" : `₱${summary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.blue}/>
         <SummaryCard compact label="Total Transactions" subtitle="Your lifetime transactions processed" value={query.error ? "Unavailable" : summary.totalTransactions} color={C.green}/>

@@ -43,8 +43,7 @@ export function ConfirmDialog({
           {current.icon}
         </div>
         <h3
-          className="text-xl font-bold mb-2"
-          style={{ color: C.text, fontFamily: "Poppins, sans-serif" }}
+          className="text-base font-semibold text-slate-800 mb-2"
         >
           {title}
         </h3>

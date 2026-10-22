@@ -86,8 +86,8 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
               {failed ? "Unavailable" : loading ? "Updating" : badge}
             </span>
           </div>
-          <div className="text-2xl font-bold tracking-tight break-words" style={{ color: C.text, fontFamily: "Poppins,sans-serif" }}>{available ? value : "—"}</div>
-          <h3 className="text-sm font-medium mt-1" style={{ color: C.text }}>{title}</h3>
+          <div className="text-2xl font-bold tracking-tight break-words" style={{ color: C.text }}>{available ? value : "—"}</div>
+          <h3 className="text-base font-semibold text-slate-800 mt-1">{title}</h3>
           <p className="text-xs mt-2" style={{ color: C.muted }}>{available ? detail : "Unable to load current metrics."}</p>
         </section>
       ))}

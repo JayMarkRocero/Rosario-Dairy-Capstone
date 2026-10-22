@@ -28,7 +28,7 @@ export function BatchDetailsFields({ batch }: { batch: ExpiredInventoryBatch }) 
   return <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
     {present.map(([label, value]) => <div key={label} className="min-w-0">
       <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="mt-1 whitespace-pre-wrap font-medium text-gray-900 [overflow-wrap:anywhere]">{String(value)}</dd>
+      <dd className="mt-1 whitespace-pre-wrap font-medium text-slate-900 [overflow-wrap:anywhere]">{String(value)}</dd>
     </div>)}
   </dl>;
 }

@@ -28,7 +28,7 @@ export function StaffRecentOrders() {
         <DataTable alignments={["left", "left", "center", "left"]}
           headers={["Order #", "Customer", "Status", "Date"]}
           rows={orders.map(o => [
-            <span key="id"   className="font-mono text-xs"   style={{ color: C.muted }}>#{o.id}</span>,
+            <span key="id"   className="tabular-nums text-xs"   style={{ color: C.muted }}>#{o.id}</span>,
             <span key="cust" className="font-medium text-sm" style={{ color: C.text  }}>{o.customer}</span>,
             <StatusBadge key="st" status={o.status} />,
             <span key="pu"   className="text-xs"             style={{ color: C.muted }}>
