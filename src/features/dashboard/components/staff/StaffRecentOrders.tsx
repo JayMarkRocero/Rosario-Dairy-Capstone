@@ -18,7 +18,7 @@ export function StaffRecentOrders() {
   return (
     <Card className="p-4 sm:p-5 h-full min-w-0">
       <div className="flex-shrink-0">
-        <SectionHeader title="Recent Orders" subtitle="Today's transactions" />
+        <SectionHeader title="Recent Orders" subtitle="Recent customer transactions" />
       </div>
       {query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} /> : loading ? (
         <EmptyState compact loading title="Gathering recent orders" />

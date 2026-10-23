@@ -1,5 +1,5 @@
 import { PaymentStatusBadge } from "@/features/sales/components/PaymentStatusBadge";
-import { ModuleSubheading } from "@/components/navigation/ModuleSubheading";
+ import { ModuleSubheading } from "@/components/navigation/ModuleSubheading";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { StaffOrdersTable } from "@/features/orders/components/StaffOrdersTable";
 import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";

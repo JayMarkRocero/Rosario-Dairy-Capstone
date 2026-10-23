@@ -15,6 +15,7 @@ export default axiosInstance;
 
 export class ApiError extends Error {
   status: number;
+  retryAfterMs?: number;
 
   constructor(status: number, message: string, public fieldErrors: Record<string, string[]> = {}) {
     super(message);
@@ -261,7 +262,14 @@ axiosInstance.interceptors.response.use(
       message = "Your session has expired. Please log in again.";
     }
 
-    return Promise.reject(new ApiError(status, message, fieldErrors));
+    const apiError = new ApiError(status, message, fieldErrors);
+    const retryAfter = error.response.headers?.["retry-after"];
+    if (retryAfter != null) {
+      const seconds = Number(retryAfter);
+      const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(String(retryAfter)) - Date.now();
+      if (Number.isFinite(delay)) apiError.retryAfterMs = Math.max(0, delay);
+    }
+    return Promise.reject(apiError);
   }
 );
 

@@ -37,6 +37,8 @@ const compiled = buildSync({
     export { useAutoPageSize, calculatePageSize, calculateViewportPageSize, calculateFittedPageSize, calculateNaturalPageSize } from './src/hooks/useAutoPageSize';
     export { TableCard, TABLE_CARD_CLASS_NAME } from './src/components/data-display/TableCard';
     export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
+    export { ForecastChart } from './src/features/dashboard/components/admin/ForecastChart';
+    export { useForecastRefresh } from './src/features/dashboard/hooks/useForecastRefresh';
     export { QueryErrorMessage } from './src/components/feedback/QueryErrorMessage';
     export { BatchDetailsFields } from './src/features/inventory/components/BatchDetailsFields';
     export { ExpiredBatchTable } from './src/features/inventory/components/ExpiredBatchTable';
@@ -2899,6 +2901,163 @@ test('staff dashboard available products include sellable low-stock products wit
   const tree = render(ui.InventoryAlert);
   const available = elements(tree, node => node.type === 'div' && node.props.className === 'flex items-center justify-between rounded-xl px-3 py-2.5' && elements(node, child => child.props.children === 'Available').length)[0];
   assert.equal(elements(available, node => node.type === 'span' && node.props.className === 'text-base font-bold tabular-nums')[0].props.children, 1);
+});
+
+function forecastFixture(period = 'monthly') {
+  return { period, available_periods: ['weekly', 'monthly', 'yearly'], available_views: ['combined', 'regular', 'feeding'], default_view: 'combined', default_range: null,
+    views: Object.fromEntries(['combined', 'regular', 'feeding'].map(key => [key, {
+      label: key, status: 'stale_data', status_message: `${key} recorded history is available.`, historical_prediction_status: 'available',
+      metrics: key === 'regular' ? { wape_percent: 10.6433 } : null,
+      history: [{ date: '2025-01-01', end_date: '2025-01-31', actual: key === 'feeding' ? 15 : 100, predicted: key === 'regular' ? 90 : null, is_partial_period: false }],
+      forecast: [], provisional_status: 'provisional', provisional_forecast: [{ date: '2026-01-01', predicted: 120, is_provisional: true, production_approved: false }],
+      provisional_metadata: { warnings: ['Limited recorded history.'] },
+    }])) };
+}
+
+test('forecast tabs retain stale history and distinguish view accuracy from monthly prospective evidence', () => {
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-chart:monthly`, forecastFixture(), ['dashboard', 'reports']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-regular-monthly`, { status: 'research_only', status_message: 'Awaiting publication review.', quality_gate: { reasons: ['needs_12_prospective_reviewed_months'] },
+    metrics: { retrospective_regular_monthly: { wape_percent: 10.6433 }, prospective_regular_monthly: { wape_percent: null } } }, ['dashboard', 'reports']);
+  let tree = render(ui.ForecastChart);
+  const buttons = () => elements(tree, node => node.type === 'button');
+  assert.equal(buttons().find(node => node.props.children === 'Combined').props['aria-pressed'], true);
+  assert.equal(buttons().length, 4);
+  const toolbar = elements(tree, node => node.props['aria-label'] === 'Forecast controls')[0];
+  assert.match(toolbar.props.className, /flex-wrap.*sm:flex-nowrap/);
+  const segments = elements(toolbar, node => node.props['aria-label'] === 'Forecast sales view')[0];
+  assert.match(segments.props.className, /bg-slate-100/);
+  assert.match(buttons().find(node => node.props.children === 'Combined').props.className, /bg-white text-blue-600 shadow-sm/);
+  const periodSelect = () => elements(tree, node => node.type === 'select' && node.props['aria-label'] === 'Forecast period')[0];
+  assert.equal(periodSelect().props.value, 'monthly');
+  assert.deepEqual(elements(periodSelect(), node => node.type === 'option').map(node => [node.props.value, node.props.children]),
+    [['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']]);
+  const refreshButton = buttons().find(node => node.props.title === 'Refresh using the latest completed weeks and months.');
+  assert.ok(refreshButton);
+  assert.equal(elements(refreshButton, node => node.props['aria-hidden'] === 'true').length, 1);
+  const line = elements(tree, node => node.props.dataKey === 'actual')[0];
+  assert.equal(line.props.connectNulls, true);
+  assert.ok(elements(tree, node => ['actual', 'predicted', 'provisional', 'approved'].includes(node.props.dataKey)).every(node => node.props.connectNulls));
+  const xAxis = elements(tree, node => node.props.dataKey === 'date')[0];
+  assert.equal(xAxis.props.padding.right, 44);
+  assert.equal(xAxis.props.tickFormatter('2025-12-01'), 'Dec 2025');
+  assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.margin.right, 40);
+  assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data[0].actual, 100);
+  assert.ok(!JSON.stringify(tree).includes('10.6% WAPE'));
+  buttons().find(node => node.props.children === 'Regular Sales').props.onClick();
+  tree = render(ui.ForecastChart);
+  assert.match(JSON.stringify(tree), /10.6% WAPE/);
+  assert.match(JSON.stringify(tree), /Not yet available/);
+  assert.match(JSON.stringify(tree), /needs 12 prospective reviewed months/);
+  buttons().find(node => node.props.children === 'Milk Feeding').props.onClick();
+  tree = render(ui.ForecastChart);
+  assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data[0].actual, 15);
+  assert.equal(elements(tree, node => node.props.dataKey === 'actual')[0].props.name, 'Recorded feeding revenue');
+  assert.equal(elements(tree, node => node.props.width === 72 && typeof node.props.tickFormatter === 'function')[0].props.tickFormatter(1500000), '₱1.5M');
+  assert.equal(elements(tree, node => typeof node.props.formatter === 'function')[0].props.formatter(1500, 'Recorded feeding revenue')[0], '₱1,500');
+  assert.ok(!JSON.stringify(tree).includes('10.6% WAPE'));
+  periodSelect().props.onChange({ target: { value: 'weekly' } });
+  tree = render(ui.ForecastChart);
+  assert.equal(buttons().find(node => node.props.children === 'Milk Feeding').props['aria-pressed'], true);
+  assert.equal(periodSelect().props.value, 'weekly');
+});
+
+async function withForecastTimers(run) {
+  const originalSet = global.setTimeout, originalClear = global.clearTimeout;
+  const timers = new Map(); let sequence = 0;
+  global.setTimeout = (callback, delay) => { const id = ++sequence; timers.set(id, { callback, delay }); return id; };
+  global.clearTimeout = id => timers.delete(id);
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const tick = async delay => {
+    const [id, timer] = [...timers].find(([, timer]) => timer.delay === delay) ?? [];
+    assert.ok(timer, `Missing timer for ${delay}ms`); timers.delete(id); timer.callback(); await settle();
+  };
+  try { await run({ timers, settle, tick }); }
+  finally { effectCleanups.splice(0).forEach(cleanup => cleanup()); global.setTimeout = originalSet; global.clearTimeout = originalClear; }
+}
+
+test('forecast refresh recovers active jobs, polls every five seconds and invalidates every cached period on success', async () => {
+  await withForecastTimers(async ({ timers, settle, tick }) => {
+    const requests = []; let status = 'running';
+    ui.http.defaults.adapter = async config => { requests.push(config); return { status: 200, config, headers: {}, data: { job_id: 12, status, stage: status === 'running' ? 'refresh_forecast_models' : 'complete', status_url: '/api/forecasting/refresh/12/' } }; };
+    for (const period of ['weekly', 'monthly', 'yearly']) ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-chart:${period}`, forecastFixture(period), ['dashboard', 'reports']);
+    render(ui.useForecastRefresh); effects.splice(0).forEach(effect => effect()); await settle();
+    assert.equal(render(ui.useForecastRefresh).busy, true);
+    assert.equal(requests[0].url, '/api/forecasting/refresh/');
+    await tick(5000);
+    assert.equal(requests.at(-1).url, '/api/forecasting/refresh/12/');
+    status = 'succeeded'; await tick(5000);
+    const state = render(ui.useForecastRefresh);
+    assert.equal(state.busy, false); assert.equal(state.message, 'Forecast refreshed');
+    for (const period of ['weekly', 'monthly', 'yearly']) assert.equal(ui.readDataCache(`${ui.dataCacheEpoch()}:forecast-chart:${period}`).updatedAt, 0);
+    assert.equal(timers.size, 0);
+  });
+});
+
+test('forecast refresh deduplicates starts, reports failed jobs and stops timers and requests on unmount', async () => {
+  await withForecastTimers(async ({ timers, settle, tick }) => {
+    const requests = []; let failed = false;
+    ui.http.defaults.adapter = async config => {
+      requests.push(config);
+      const data = config.method === 'post' ? { job_id: 9, status: 'queued', status_url: '/api/forecasting/refresh/9/' }
+        : config.url.endsWith('/9/') ? { job_id: 9, status: failed ? 'failed' : 'running', message: 'Refresh interrupted safely.', status_url: '/api/forecasting/refresh/9/' } : { status: 'idle', job_id: null };
+      return { status: config.method === 'post' ? 202 : 200, data, config, headers: {} };
+    };
+    let state = render(ui.useForecastRefresh); effects.splice(0).forEach(effect => effect()); await settle();
+    await Promise.all([state.refresh(), state.refresh()]);
+    assert.equal(requests.filter(request => request.method === 'post').length, 1);
+    failed = true; await tick(5000);
+    state = render(ui.useForecastRefresh); assert.equal(state.busy, false); assert.match(state.error, /interrupted safely/);
+    await state.refresh(); assert.equal(timers.size, 1);
+    effectCleanups.splice(0).forEach(cleanup => cleanup());
+    assert.equal(timers.size, 0); assert.equal(requests.at(-1).signal.aborted, true);
+  });
+});
+
+test('forecast refresh respects Retry-After and recovers existing work without repeating the POST', async () => {
+  await withForecastTimers(async ({ timers, settle, tick }) => {
+    const requests = [];
+    ui.http.defaults.adapter = async config => {
+      requests.push(config);
+      if (config.method === 'post') throw new AxiosError('Rate limited', undefined, config, undefined, { status: 429, config, headers: { 'retry-after': '17' }, data: { detail: 'Wait before refreshing.' } });
+      return { status: 200, config, headers: {}, data: { status: 'idle', job_id: null } };
+    };
+    let state = render(ui.useForecastRefresh); effects.splice(0).forEach(effect => effect()); await settle();
+    await state.refresh(); assert.ok([...timers.values()].some(timer => timer.delay === 17000));
+    await tick(5000); assert.equal(render(ui.useForecastRefresh).busy, true);
+    await render(ui.useForecastRefresh).refresh(); // The handler also guards the cooldown before a rerender.
+    await tick(17000); assert.equal(render(ui.useForecastRefresh).busy, false);
+    assert.equal(requests.filter(request => request.method === 'post').length, 1);
+  });
+});
+
+test('forecast refresh ignores a late initial status response after a manual start', async () => {
+  await withForecastTimers(async ({ settle }) => {
+    let resolveInitial;
+    ui.http.defaults.adapter = config => {
+      if (config.method === 'get') return new Promise(resolve => { resolveInitial = () => resolve({ status: 200, config, headers: {}, data: { status: 'idle', job_id: null } }); });
+      return Promise.resolve({ status: 202, config, headers: {}, data: { status: 'queued', job_id: 8, status_url: '/api/forecasting/refresh/8/' } });
+    };
+    const state = render(ui.useForecastRefresh); effects.splice(0).forEach(effect => effect()); await settle();
+    await state.refresh(); resolveInitial(); await settle();
+    assert.equal(render(ui.useForecastRefresh).job.job_id, 8);
+    assert.equal(render(ui.useForecastRefresh).busy, true);
+  });
+});
+
+test('forecast refresh recovers from a transient polling failure and clears busy state on a missing job', async () => {
+  await withForecastTimers(async ({ settle, tick }) => {
+    let response = 'active';
+    ui.http.defaults.adapter = async config => {
+      if (response !== 'active') throw new AxiosError('Unavailable', undefined, config, undefined, { status: response === 'network' ? 503 : 404, config, headers: {}, data: { detail: response === 'network' ? 'Temporarily unavailable.' : 'Job not found.' } });
+      return { status: 200, config, headers: {}, data: { status: 'running', job_id: 8, status_url: '/api/forecasting/refresh/8/' } };
+    };
+    render(ui.useForecastRefresh); effects.splice(0).forEach(effect => effect()); await settle();
+    response = 'network'; await tick(5000);
+    assert.equal(render(ui.useForecastRefresh).busy, true);
+    assert.match(render(ui.useForecastRefresh).error, /Temporarily unavailable/);
+    response = 'active'; await tick(5000); assert.equal(render(ui.useForecastRefresh).error, '');
+    response = 'missing'; await tick(5000); assert.equal(render(ui.useForecastRefresh).busy, false);
+  });
 });
 
 test('the global render boundary retains healthy children and offers safe recovery without exposing exception details', () => {

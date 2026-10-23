@@ -33,6 +33,8 @@ const compiled = buildSync({
     export * from './src/lib/notifications.service';
     export * from './src/features/dashboard/components/admin/RevenueChart';
     export * from './src/features/dashboard/components/admin/ForecastChart';
+    export * from './src/features/dashboard/api/forecasting.service';
+    export { forecastSeries, forecastMetric, forecastDisplayRange, forecastAmount } from './src/features/dashboard/utils/forecast';
     export * from './src/features/reports/utils/revenueWindow';
     export * from './src/features/users/api/user.service';
     export * from './src/features/users/types/user';
@@ -475,14 +477,97 @@ test('PDF download requests a blob and converts JSON blob errors to useful messa
   await assert.rejects(api.reportsService.downloadReportPDF('daily_sales'), { message: 'Report unavailable.' });
 });
 
-test('forecast periods request separate evaluations and explain withheld estimates', async () => {
-  await api.reportsService.fetchReportPreview('sarima_forecast', 'weekly');
-  assert.deepEqual(calls[0].params, { type: 'sarima_forecast', period: 'weekly' });
-  assert.match(api.forecastExplanation({ status: 'rejected', accuracy_target_percent: 30, metrics: { combined: { rows: 12, wape_percent: 35.8 } } }), /35\.8%.*30%/);
-  assert.match(api.forecastExplanation({ status: 'insufficient_evaluation', metrics: { combined: { rows: 4 } } }), /only 4 complete periods/);
-  assert.match(api.forecastExplanation({ status: 'pending_update' }), /offline evaluation/);
+test('forecast periods use the graph endpoint and monthly status uses the regular compatibility contract', async () => {
+  const keys = new Set();
+  for (const period of ['weekly', 'monthly', 'yearly']) {
+    responseData = { period, available_views: ['combined', 'regular', 'feeding'], views: { combined: {}, regular: {}, feeding: {} } };
+    assert.deepEqual(await api.forecastingService.getChart(period), responseData);
+    assert.equal(calls.at(-1).url, '/api/forecasting/chart/');
+    assert.deepEqual(calls.at(-1).params, { period });
+    keys.add(api.forecastChartKey(period));
+  }
+  assert.equal(keys.size, 3);
+  await api.forecastingService.getRegularStatus();
+  assert.equal(calls.at(-1).url, '/api/forecasting/forecast/');
+  assert.deepEqual(calls.at(-1).params, { period: 'monthly' });
+  const payload = { status: 'research_only', status_message: 'Publication is withheld pending review.',
+    quality_gate: { reasons: ['needs_12_prospective_reviewed_months'] },
+    metrics: { retrospective_regular_monthly: { wape_percent: 10.6433, periods: 12 }, prospective_regular_monthly: { wape_percent: null, periods: 0 } } };
+  assert.match(api.forecastExplanation(payload), /Publication is withheld.*needs 12 prospective reviewed months/);
+  assert.equal(api.forecastMetric(payload.metrics.retrospective_regular_monthly), '10.6% WAPE');
+  assert.equal(api.forecastMetric(payload.metrics.prospective_regular_monthly), 'Not yet available');
+  assert.equal(api.forecastMetric({ wape_percent: 0 }), '0.0% WAPE');
+  assert.equal(api.forecastMetric({ wape_percent: 10, failed_rows: 1 }), 'Incomplete evaluation');
 });
 
+test('forecast refresh submits only an empty object and polls authenticated relative job URLs', async () => {
+  responseStatus = 202;
+  responseData = { job_id: 12, status: 'queued', status_url: '/api/forecasting/refresh/12/' };
+  const job = await api.forecastingService.startRefresh();
+  assert.equal(calls[0].method, 'post');
+  assert.equal(calls[0].url, '/api/forecasting/refresh/');
+  assert.deepEqual(JSON.parse(calls[0].data), {});
+  responseStatus = 200;
+  await api.forecastingService.getRefresh(job);
+  await api.forecastingService.getRefresh();
+  assert.deepEqual(calls.slice(1).map(call => [call.method, call.url]), [['get', '/api/forecasting/refresh/12/'], ['get', '/api/forecasting/refresh/']]);
+  await assert.rejects(api.forecastingService.getRefresh({ ...job, status_url: 'https://untrusted.example/' }), { status: 400 });
+  await assert.rejects(api.forecastingService.startRefresh(), /did not accept/);
+});
+
+test('forecast graph preserves null history and appends rough points outside the initial historical range', () => {
+  const view = { status: 'stale_data', history: [
+    { date: '2024-12-01', actual: 99, predicted: 90 },
+    { date: '2025-01-01', actual: 0, predicted: null },
+    { date: '2025-02-01', actual: null, predicted: null },
+  ], provisional_status: 'provisional', provisional_forecast: [{ date: '2026-01-01', predicted: 120 }], forecast: [{ date: '2026-02-01', predicted_revenue: 130 }] };
+  const series = api.forecastSeries(view, { start_date: '2025-01-01', end_date: '2025-12-31' });
+  assert.deepEqual(series.map(row => row.date), ['2025-01-01', '2025-02-01', '2026-01-01']);
+  assert.equal(series[0].actual, 0);
+  assert.equal(series[1].actual, null);
+  assert.equal(series[2].actual, null);
+  assert.equal(series[2].provisional, 120);
+  assert.equal(series[2].approved, null);
+  assert.equal(api.forecastSeries({ ...view, provisional_status: 'primary_refresh_required' }).some(row => row.provisional !== null), false);
+  assert.equal(api.forecastSeries({ ...view, status: 'ready' }).at(-1).approved, 130);
+});
+
+
+test('forecast display keeps eighteen recent history months and the full future horizon', () => {
+  const history = Array.from({ length: 48 }, (_, index) => {
+    const date = new Date(Date.UTC(2022, index, 1)).toISOString().slice(0, 10);
+    return { date, actual: index === 46 ? null : index, predicted: null };
+  }).reverse(); // Range calculation must not depend on response ordering.
+  const view = { status: 'stale_data', history, provisional_status: 'provisional', provisional_forecast: [{ date: '2026-12-01', predicted: 80 }] };
+  const range = api.forecastDisplayRange(view, 'monthly');
+  assert.deepEqual(range, { start_date: '2024-07-01', end_date: '2025-12-01' });
+  const series = api.forecastSeries(view, range);
+  assert.equal(series.length, 19);
+  assert.equal(series[0].date, '2024-07-01');
+  assert.equal(series.find(row => row.date === '2025-11-01').actual, null);
+  assert.equal(series.at(-1).date, '2026-12-01');
+  assert.equal(series.at(-1).actual, null);
+  assert.equal(series.at(-1).provisional, 80);
+  assert.deepEqual(api.forecastDisplayRange({ history: [{ date: '2025-01-01', actual: 0 }, { date: '2026-01-01', actual: null }] }, 'monthly'),
+    { start_date: '2023-08-01', end_date: '2025-01-01' });
+});
+
+test('forecast ranges handle weekly and annual buckets and missing history', () => {
+  assert.equal(api.forecastDisplayRange(undefined, 'monthly'), null);
+  assert.equal(api.forecastDisplayRange({ history: [] }, 'monthly'), null);
+  assert.equal(api.forecastDisplayRange({ history: [{ date: 'bad-date', actual: 1 }] }, 'monthly'), null);
+  const view = { history: [{ date: '2026-10-05', end_date: '2026-10-11', actual: 1 }] };
+  assert.deepEqual(api.forecastDisplayRange(view, 'weekly'), { start_date: '2025-05-01', end_date: '2026-10-11' });
+  assert.deepEqual(api.forecastDisplayRange(view, 'yearly'), { start_date: '2024-01-01', end_date: '2026-10-11' });
+});
+
+test('forecast revenue ticks and tooltips retain accurate currency at small and large magnitudes', () => {
+  assert.equal(api.forecastAmount(1500000, true), '₱1.5M');
+  assert.equal(api.forecastAmount(1500, true), '₱1.5K');
+  assert.equal(api.forecastAmount(0, true), '₱0');
+  assert.equal(api.forecastAmount(1500.5), '₱1,500.5');
+  for (const value of [null, undefined, '', 'invalid', Infinity]) assert.equal(api.forecastAmount(value), '—');
+});
 
 test('checkout sends decimal strings and refreshes reports after committing', async () => {
   responseData = { id: 7, subtotal: '43.00', total_amount: '43.00', change_due: '7.00' };
@@ -863,7 +948,7 @@ test('published forecast requires ready status and finite nonplaceholder values'
   assert.equal(api.publishedForecast({status:'ready',forecast:[{...point,predicted_revenue:'NaN'}]}), null);
   assert.equal(api.publishedForecast({status:'ready',forecast:[{...point,predicted_revenue:null}]}), null);
   assert.deepEqual(api.publishedForecast({status:'ready',forecast:[point]}), point);
-  assert.match(api.forecastExplanation({status:'ready',forecast:[]}), /unavailable/);
+  assert.equal(api.forecastExplanation({status:'ready',status_message:'Published regular monthly forecast.'}), 'Published regular monthly forecast.');
 });
 
 test('checkout retains authoritative returned prices for the saved receipt', async () => {
