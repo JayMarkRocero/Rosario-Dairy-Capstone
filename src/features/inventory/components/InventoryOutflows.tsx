@@ -49,7 +49,7 @@ export function InventoryOutflows() {
   const rows = history.data ?? [];
   const pages = Math.max(1, Math.ceil(rows.length / 10));
   const safePage = Math.min(page, pages);
-  return <><Btn variant="secondary" size="sm" onClick={() => setOpen(true)}>Stock outflows</Btn>
+  return <><Btn variant="primary" size="sm" onClick={() => setOpen(true)}>Stock outflows</Btn>
     <Modal open={open} busy={busy} onClose={() => { if (!lock.current) setOpen(false); }} title="Inventory outflows" subtitle="Record stock leaving a batch without creating a sale." size="lg">
       <div className="space-y-4"><div className="flex gap-2"><Btn variant={tab === "record" ? "primary" : "secondary"} disabled={busy} onClick={() => setTab("record")}>Record outflow</Btn><Btn variant={tab === "history" ? "primary" : "secondary"} disabled={busy} onClick={() => setTab("history")}>History</Btn></div>
         {tab === "record" ? <fieldset disabled={busy} className="space-y-3">

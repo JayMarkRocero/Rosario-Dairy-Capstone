@@ -11,9 +11,10 @@ interface Props {
   fullWidth?: boolean;
 }
 
+const secondaryStyles = "border border-slate-200 bg-white hover:bg-slate-50";
 const variantStyles: Record<Variant, string> = {
   primary: "bg-blue-600 hover:bg-blue-700 text-white",
-  secondary: "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+  secondary: `${secondaryStyles} text-slate-700`,
   ghost: "text-slate-500 hover:bg-slate-100",
   danger: "bg-red-600 hover:bg-red-700 text-white",
 };
