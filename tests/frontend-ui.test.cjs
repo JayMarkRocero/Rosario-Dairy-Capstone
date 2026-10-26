@@ -29,6 +29,7 @@ const compiled = buildSync({
     export { default as http } from './src/lib/api';
     export { AuthProvider } from './src/features/auth/context/AuthContext';
     export { default as App, AppShell } from './src/app/App';
+    export { Login } from './src/app/Login';
     export { AppErrorBoundary } from './src/components/feedback/AppErrorBoundary';
     export { EmptyState } from './src/components/EmptyState';
     export { ProductTable } from './src/features/inventory/components/ProductTable';
@@ -132,6 +133,107 @@ beforeEach(() => {
   global.localStorage = { getItem: key => key === 'rosario_access_token' ? token : null, setItem() {}, removeItem() {} };
   global.window = new EventTarget();
   global.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+});
+
+function loginValidationFixture({ username = '', password = '', agreed = false } = {}, signIn = async () => ({ username: 'cashier' })) {
+  authState = { ...authState, login: signIn };
+  const tree = () => render(ui.Login);
+  const field = id => elements(tree(), node => node.type === 'input' && node.props.id === id)[0];
+  const terms = () => elements(tree(), node => node.type === 'input' && node.props.type === 'checkbox')[0];
+  const wrapper = id => elements(tree(), node => node.type === 'div' && node.props.style?.borderColor
+    && elements(node, child => child.props.id === id).length)[0];
+  const normalBorder = wrapper('rd-username').props.style.borderColor;
+  field('rd-username').props.onChange({ target: { value: username } });
+  field('rd-password').props.onChange({ target: { value: password } });
+  terms().props.onChange({ target: { checked: agreed } });
+  return { tree, field, terms, wrapper, normalBorder,
+    submit: () => elements(tree(), node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} }) };
+}
+
+for (const username of ['', 'cashier']) for (const password of ['', 'password']) for (const agreed of [false, true]) {
+  if (username && password && agreed) continue;
+  test(`login validation targets only missing requirements: username=${!!username}, password=${!!password}, terms=${agreed}`, () => {
+    let requests = 0;
+    const form = loginValidationFixture({ username, password, agreed }, async () => { requests++; return { username: 'cashier' }; });
+    form.submit();
+    for (const [id, invalid] of [['rd-username', !username], ['rd-password', !password]]) {
+      assert.equal(form.field(id).props['aria-invalid'], invalid);
+      assert.equal(form.wrapper(id).props.style.borderColor === form.normalBorder, !invalid);
+      assert.equal(elements(form.tree(), node => node.props.id === `${id}-error`).length, invalid ? 1 : 0);
+    }
+    assert.equal(form.terms().props['aria-invalid'], !agreed);
+    assert.equal(!!form.terms().props.style.outline, !agreed);
+    assert.equal(elements(form.tree(), node => node.props.id === 'rd-terms-error').length, agreed ? 0 : 1);
+    if (!agreed) assert.equal(elements(form.tree(), node => node.props.id === 'rd-terms-error')[0].props.children,
+      'Please agree to the Terms & Conditions to continue.');
+    assert.equal(requests, 0, 'Incomplete validation must not call authentication');
+  });
+}
+
+test('checking login terms immediately clears its error and allows the next sign-in without changing credentials', async () => {
+  const requests = [];
+  const form = loginValidationFixture({ username: ' cashier ', password: ' keep password spaces ' }, async (...credentials) => {
+    requests.push(credentials); return { username: 'cashier' };
+  });
+  form.submit();
+  assert.equal(form.field('rd-username').props['aria-invalid'], false);
+  assert.equal(form.field('rd-password').props['aria-invalid'], false);
+  form.terms().props.onChange({ target: { checked: true } });
+  assert.equal(form.terms().props['aria-invalid'], false);
+  assert.equal(form.terms().props.style.outline, undefined);
+  assert.equal(elements(form.tree(), node => node.props.id === 'rd-terms-error').length, 0);
+  assert.equal(elements(form.tree(), node => node.props.role === 'alert').length, 0);
+  assert.equal(requests.length, 0, 'Checking terms clears validation without submitting credentials');
+  form.submit(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(requests, [['cashier', ' keep password spaces ']]);
+});
+
+test('agreeing through the login terms modal immediately clears only the terms error', () => {
+  const form = loginValidationFixture({ username: 'cashier', password: 'password' });
+  form.submit();
+  elements(form.tree(), node => node.type === 'button' && node.props.children === 'Terms & Conditions')[0].props.onClick();
+  const modal = elements(form.tree(), node => typeof node.type === 'function' && node.type.name === 'TermsModal')[0];
+  modal.props.onAgree();
+  assert.equal(form.terms().props.checked, true);
+  assert.equal(form.terms().props['aria-invalid'], false);
+  assert.equal(elements(form.tree(), node => node.props.role === 'alert').length, 0);
+});
+
+test('correcting login requirements clears only their own validation state', () => {
+  const form = loginValidationFixture(); form.submit();
+  form.terms().props.onChange({ target: { checked: true } });
+  assert.equal(form.field('rd-username').props['aria-invalid'], true);
+  assert.equal(form.field('rd-password').props['aria-invalid'], true);
+  assert.equal(form.terms().props['aria-invalid'], false);
+  form.field('rd-username').props.onChange({ target: { value: 'cashier' } });
+  assert.equal(form.field('rd-username').props['aria-invalid'], false);
+  assert.equal(form.field('rd-password').props['aria-invalid'], true);
+  form.field('rd-password').props.onChange({ target: { value: 'password' } });
+  assert.equal(form.field('rd-password').props['aria-invalid'], false);
+  assert.equal(elements(form.tree(), node => node.props.role === 'alert').length, 0);
+});
+
+test('whitespace-only login usernames are invalid without marking a filled password or accepted terms', () => {
+  let requests = 0;
+  const form = loginValidationFixture({ username: '   ', password: 'password', agreed: true }, async () => { requests++; return { username: '' }; });
+  form.submit();
+  assert.equal(form.field('rd-username').props['aria-invalid'], true);
+  assert.equal(form.field('rd-password').props['aria-invalid'], false);
+  assert.equal(form.terms().props['aria-invalid'], false);
+  assert.equal(requests, 0);
+});
+
+test('login network failures preserve the existing error message without applying field-validation styling', async () => {
+  const form = loginValidationFixture({ username: 'cashier', password: 'password', agreed: true }, async () => {
+    throw new AxiosError('Network Error', AxiosError.ERR_NETWORK);
+  });
+  form.submit(); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(JSON.stringify(form.tree()).includes('Unable to connect to the server. Please try again.'));
+  assert.equal(form.field('rd-username').props['aria-invalid'], false);
+  assert.equal(form.field('rd-password').props['aria-invalid'], false);
+  assert.equal(form.terms().props['aria-invalid'], false);
+  assert.equal(form.wrapper('rd-username').props.style.borderColor, form.normalBorder);
+  assert.equal(form.wrapper('rd-password').props.style.borderColor, form.normalBorder);
 });
 
 test('mobile order cards preserve details and enforce cancellation availability', () => {

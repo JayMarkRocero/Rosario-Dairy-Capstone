@@ -142,7 +142,7 @@ const TERMS_SECTIONS = [
     title: "Data Integrity & Stock Protocols",
     items: [
       "Users must record transactions, stock adjustments, batch details, and expiration dates accurately to maintain data integrity (e.g., First-Expiry-First-Out stock rules).",
-      "Intentional falsification of records or misrepresentation of stock levels will result in immediate termination of access and administrative review.",
+      "Users are responsible for ensuring the accuracy and reliability of all records and stock levels entered into the system. Any discrepancies or incorrect information may be subject to manual verification and administrative review.",
     ],
   },
   {
@@ -285,23 +285,28 @@ export function Login({ onBack }: Props) {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({ username: "", password: "", terms: "" });
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [bgFailed, setBgFailed] = useState(false);
 
+  const updateTermsAgreement = (checked: boolean) => {
+    setAgreedToTerms(checked);
+    if (checked) setFieldErrors(current => ({ ...current, terms: "" }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!username || !password) {
-      setError("Please enter both username and password.");
-      return;
-    }
-    if (!agreedToTerms) {
-      setError("Please agree to the Terms & Conditions to continue.");
-      return;
-    }
+    const validation = {
+      username: username.trim() ? "" : "Please enter your username.",
+      password: password ? "" : "Please enter your password.",
+      terms: agreedToTerms ? "" : "Please agree to the Terms & Conditions to continue.",
+    };
+    setFieldErrors(validation);
+    if (Object.values(validation).some(Boolean)) return;
 
     setLoading(true);
 
@@ -459,7 +464,7 @@ export function Login({ onBack }: Props) {
                   </label>
                   <div
                     className="flex items-center gap-2.5 rounded-xl px-4 py-3 border transition-all focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
-                    style={{ borderColor: error ? C.red : C.border, backgroundColor: "var(--input-background)" }}
+                    style={{ borderColor: fieldErrors.username ? C.red : C.border, backgroundColor: "var(--input-background)" }}
                   >
                     <User size={16} style={{ color: C.muted }} aria-hidden="true" />
                     <input
@@ -468,11 +473,15 @@ export function Login({ onBack }: Props) {
                       type="text"
                       autoComplete="username"
                       value={username}
-                      onChange={(e) => setUsername(e.target.value)}
+                      onChange={(e) => {
+                        setUsername(e.target.value);
+                        if (e.target.value.trim()) setFieldErrors(current => ({ ...current, username: "" }));
+                      }}
                       placeholder="your username"
                       className="bg-transparent outline-none text-sm flex-1 min-w-0"
                       style={{ color: C.text }}
-                      aria-invalid={!!error}
+                      aria-invalid={!!fieldErrors.username}
+                      aria-describedby={fieldErrors.username ? "rd-username-error" : undefined}
                     />
                   </div>
                 </div>
@@ -484,7 +493,7 @@ export function Login({ onBack }: Props) {
                   </label>
                   <div
                     className="flex items-center gap-2.5 rounded-xl px-4 py-3 border transition-all focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]"
-                    style={{ borderColor: error ? C.red : C.border, backgroundColor: "var(--input-background)" }}
+                    style={{ borderColor: fieldErrors.password ? C.red : C.border, backgroundColor: "var(--input-background)" }}
                   >
                     <Lock size={16} style={{ color: C.muted }} aria-hidden="true" />
                     <input
@@ -493,11 +502,15 @@ export function Login({ onBack }: Props) {
                       type={showPass ? "text" : "password"}
                       autoComplete="current-password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (e.target.value) setFieldErrors(current => ({ ...current, password: "" }));
+                      }}
                       placeholder="••••••••"
                       className="bg-transparent outline-none text-sm flex-1 min-w-0"
                       style={{ color: C.text }}
-                      aria-invalid={!!error}
+                      aria-invalid={!!fieldErrors.password}
+                      aria-describedby={fieldErrors.password ? "rd-password-error" : undefined}
                     />
                     <button
                       type="button"
@@ -528,10 +541,12 @@ export function Login({ onBack }: Props) {
                   <input
                     type="checkbox"
                     checked={agreedToTerms}
-                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                    onChange={(e) => updateTermsAgreement(e.target.checked)}
                     className="w-4 h-4 rounded flex-shrink-0 cursor-pointer"
-                    style={{ accentColor: C.navy }}
+                    style={{ accentColor: C.navy, outline: fieldErrors.terms ? `1px solid ${C.red}` : undefined, outlineOffset: fieldErrors.terms ? 2 : undefined }}
                     aria-labelledby="rd-terms-label"
+                    aria-invalid={!!fieldErrors.terms}
+                    aria-describedby={fieldErrors.terms ? "rd-terms-error" : undefined}
                   />
                   <span id="rd-terms-label" className="min-w-0 leading-relaxed">
                     I agree to the{" "}
@@ -545,14 +560,19 @@ export function Login({ onBack }: Props) {
                   </span>
                 </label>
 
-                {error && (
+                {(error || Object.values(fieldErrors).some(Boolean)) && (
                   <div
                     role="alert"
                     className="flex items-start gap-2 mb-4 text-xs px-3.5 py-2.5 rounded-xl"
                     style={{ backgroundColor: C.red + "10", color: C.red }}
                   >
                     <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
-                    <span>{error}</span>
+                    <span>
+                      {error}
+                      {fieldErrors.username && <span id="rd-username-error">{fieldErrors.username}{" "}</span>}
+                      {fieldErrors.password && <span id="rd-password-error">{fieldErrors.password}{" "}</span>}
+                      {fieldErrors.terms && <span id="rd-terms-error">{fieldErrors.terms}</span>}
+                    </span>
                   </div>
                 )}
 
@@ -598,7 +618,7 @@ export function Login({ onBack }: Props) {
         <TermsModal
           onClose={() => setTermsOpen(false)}
           onAgree={() => {
-            setAgreedToTerms(true);
+            updateTermsAgreement(true);
             setTermsOpen(false);
           }}
         />

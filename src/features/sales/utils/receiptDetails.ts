@@ -19,7 +19,14 @@ export function receiptDetails(sale: Sale) {
     ["Payment Status", transaction.payment_status === "paid" ? "Paid" : transaction.payment_status === "pending" ? "Pending" : "Not recorded"],
   ];
   if (transaction.encoded_at) fields.push(["Entered at", dateTime(transaction.encoded_at)]);
-  if (transaction.payment_updated_at) fields.push(["Payment updated", dateTime(transaction.payment_updated_at)]);
+  const createdAt = new Date(transaction.created_at).getTime();
+  const paymentUpdatedAt = new Date(transaction.payment_updated_at ?? "").getTime();
+  // Checkout stamps its initial payment just before creation. Only a later,
+  // visibly different timestamp represents additional payment history here.
+  if (Number.isFinite(paymentUpdatedAt) && (!Number.isFinite(createdAt)
+      || Math.floor(paymentUpdatedAt / 1000) > Math.floor(createdAt / 1000))) {
+    fields.push(["Payment updated", dateTime(transaction.payment_updated_at)]);
+  }
   if (transaction.delivery_status) fields.push(["Delivery Status", transaction.delivery_status]);
   if (transaction.is_voided) fields.push(["Transaction Status", "Voided"]);
   const groups = new Map<string, DjangoTransactionItem[]>();

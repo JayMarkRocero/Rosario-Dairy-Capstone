@@ -6,6 +6,7 @@ import {
   Phone, RefreshCw, ShieldCheck, ShoppingCart, TrendingUp, Users, X,
 } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
+import LOGO_SRC from "../../assets/images/logo.jpg";
 
 interface LandingPageProps { onLogin?: () => void }
 
@@ -74,10 +75,9 @@ function NavBar({ onLogin }: { onLogin?: () => void }) {
     >
       <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 sm:px-8">
         <button onClick={() => navigate("home")} className="flex min-w-0 items-center gap-3 text-left">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm" style={{ backgroundColor: C.action }}>RD</span>
+          <img src={LOGO_SRC} alt="Rosario Dairy logo" className="h-10 w-10 shrink-0 rounded-full object-cover shadow-sm" />
           <span className="min-w-0 leading-tight">
             <span className="block truncate text-sm font-bold" style={{ color: C.text }}>Rosario Dairy</span>
-            <span className="block truncate text-xs" style={{ color: C.muted }}>Operations Intelligence</span>
           </span>
         </button>
 
@@ -275,7 +275,8 @@ function Footer() {
     <footer id="contact" className="border-t pt-14 pb-7" style={{ backgroundColor: "#0F1E33", borderColor: "rgba(255,255,255,0.08)" }}>
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <div className="grid gap-10 border-b pb-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_0.8fr_1fr]" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-          <div className="max-w-sm"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: C.action }}>RD</div><div><p className="text-sm font-bold text-white">Rosario Dairy</p><p className="text-xs" style={{ color: "#94A3B8" }}>Integrated Inventory &amp; POS System</p></div></div><p className="mt-4 text-sm leading-6" style={{ color: "#94A3B8" }}>A unified operations platform for perishable inventory, sales control, and forward planning.</p></div>
+          <div className="max-w-sm"><div className="flex items-center gap-3"><img src={LOGO_SRC} alt="Rosario Dairy logo" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+          <div><p className="text-sm font-bold text-white">Rosario Dairy</p><p className="text-xs" style={{ color: "#94A3B8" }}>Integrated Inventory &amp; POS System</p></div></div><p className="mt-4 text-sm leading-6" style={{ color: "#94A3B8" }}>A unified operations platform for perishable inventory, sales control, and forward planning.</p></div>
           <div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "#64748B" }}>Navigate</p><div className="mt-4 flex flex-col gap-3">{NAV_LINKS.map((link) => <button key={link.id} onClick={() => scrollToId(link.id)} className="text-left text-sm transition-colors hover:text-white" style={{ color: "#CBD5E1" }}>{link.label}</button>)}</div></div>
           <div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "#64748B" }}>Contact</p><div className="mt-4 flex flex-col gap-3 text-sm" style={{ color: "#CBD5E1" }}><a className="flex items-center gap-2 hover:text-white" href="mailto:rocerojaymark31@gmail.com"><Mail size={15} />rocerojaymark31@gmail.com</a><a className="flex items-center gap-2 hover:text-white" href="tel:+639125096057"><Phone size={15} />0912 509 6057</a><p className="flex items-center gap-2"><MapPin size={15} />Rosario, Batangas, Philippines</p></div></div>
         </div>

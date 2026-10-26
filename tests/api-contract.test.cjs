@@ -871,6 +871,44 @@ test('receipt details preserve itemized API values without inventing order metad
   assert.equal(api.receiptMoney('0'), 'PHP 0.00');
 });
 
+test('receipts hide immediate payment timestamps and compare instants at displayed second precision', () => {
+  for (const [created_at, payment_updated_at] of [
+    ['2026-09-15T01:00:00Z', '2026-09-15T01:00:00Z'],
+    ['2026-09-15T01:00:00Z', '2026-09-15T09:00:00+08:00'],
+    ['2026-09-15T01:00:00.100Z', '2026-09-15T01:00:00.900Z'],
+    ['2026-09-15T01:00:01.001Z', '2026-09-15T01:00:00.999Z'],
+  ]) {
+    const sale = receiptFixture();
+    Object.assign(sale.transaction, { created_at, payment_updated_at, payment_status: 'paid' });
+    const receipt = api.receiptDetails(sale);
+    assert.equal(receipt.fields.some(([label]) => label === 'Payment updated'), false);
+    assert.ok(receipt.fields.some(([label]) => label === 'Date / Time'));
+    assert.equal(receipt.fields.find(([label]) => label === 'Payment Status')[1], 'Paid');
+  }
+});
+
+test('receipts preserve genuine later payment updates for paid and pending transactions', () => {
+  for (const payment_status of ['paid', 'pending']) {
+    const sale = receiptFixture();
+    Object.assign(sale.transaction, { payment_updated_at: '2026-09-16T02:00:00Z', payment_status });
+    const fields = api.receiptDetails(sale).fields;
+    const updated = fields.find(([label]) => label === 'Payment updated');
+    assert.ok(updated);
+    assert.match(updated[1], /Asia\/Manila/);
+    assert.notEqual(updated[1], fields.find(([label]) => label === 'Date / Time')[1]);
+  }
+});
+
+test('receipts omit missing or invalid payment update timestamps without losing known payment history', () => {
+  for (const payment_updated_at of [undefined, null, '', 'invalid']) {
+    const sale = receiptFixture(); sale.transaction.payment_updated_at = payment_updated_at;
+    assert.equal(api.receiptDetails(sale).fields.some(([label]) => label === 'Payment updated'), false);
+  }
+  const sale = receiptFixture();
+  Object.assign(sale.transaction, { created_at: 'invalid', payment_updated_at: '2026-09-16T02:00:00Z' });
+  assert.ok(api.receiptDetails(sale).fields.some(([label]) => label === 'Payment updated'));
+});
+
 test('staff history scopes every page by JWT user ID and rejects other cashiers', async () => {
   api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id: 7 })).toString('base64url')}.signature`);
   api.http.defaults.adapter = async config => {
