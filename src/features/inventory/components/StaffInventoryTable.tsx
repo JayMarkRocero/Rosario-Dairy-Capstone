@@ -4,9 +4,12 @@ import { Eye } from "lucide-react";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { Modal } from "@/components/overlays/Modal";
+import { Drawer } from "@/components/overlays/Drawer";
+import { Btn } from "@/components/buttons/Btn";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 import { StaffInventoryCard } from "./StaffInventoryCard";
 import { BatchDetailsFields } from "./BatchDetailsFields";
+import { ProductDetail } from "./ProductDetail";
 
 type Props = ComponentProps<typeof EnhancedTable<InventoryItem>> & { errorContent?: ReactNode };
 
@@ -30,12 +33,13 @@ export function StaffInventoryTable({ errorContent, ...props }: Props) {
         rowKey={item => item.catalogKey || `product-${item.id}`} onRowClick={view}
         renderMobileRow={item => <StaffInventoryCard product={item} onView={view} />} />}
     </div>
-    <Modal open={!!selected} onClose={() => setSelected(null)} title={selected?.expiredBatch ? "Expired batch details" : "Product details"} size="sm">
-      {selected?.expiredBatch ? <BatchDetailsFields batch={selected.expiredBatch} /> : selected && <div className="space-y-3 text-sm">
-        <p className="font-semibold">{selected.name}</p><p>{selected.cat}</p>
-        <p>Stock: {selected.stock} {selected.unit}</p>
-        {selected.expiry && <p>Expiry: {selected.expiry}</p>}
-      </div>}
+    <Drawer open={!!selected && !selected.expiredBatch} onClose={() => setSelected(null)}
+      title="Product Details" subtitle="View full product information" size="sm"
+      footer={<Btn variant="secondary" onClick={() => setSelected(null)}>Close</Btn>}>
+      {selected && !selected.expiredBatch && <ProductDetail p={selected} />}
+    </Drawer>
+    <Modal open={!!selected?.expiredBatch} onClose={() => setSelected(null)} title="Expired batch details" size="sm">
+      {selected?.expiredBatch && <BatchDetailsFields batch={selected.expiredBatch} />}
     </Modal>
   </>;
 }
