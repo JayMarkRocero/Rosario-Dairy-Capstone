@@ -37,7 +37,7 @@ const compiled = buildSync({
     export { useAutoPageSize, calculatePageSize, calculateViewportPageSize, calculateFittedPageSize, calculateNaturalPageSize } from './src/hooks/useAutoPageSize';
     export { TableCard, TABLE_CARD_CLASS_NAME } from './src/components/data-display/TableCard';
     export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
-    export { ForecastChart } from './src/features/dashboard/components/admin/ForecastChart';
+    export { ForecastChart, ForecastGraphTooltip } from './src/features/dashboard/components/admin/ForecastChart';
     export { useForecastRefresh } from './src/features/dashboard/hooks/useForecastRefresh';
     export { QueryErrorMessage } from './src/components/feedback/QueryErrorMessage';
     export { BatchDetailsFields } from './src/features/inventory/components/BatchDetailsFields';
@@ -2904,20 +2904,33 @@ test('staff dashboard available products include sellable low-stock products wit
 });
 
 function forecastFixture(period = 'monthly') {
-  return { period, available_periods: ['weekly', 'monthly', 'yearly'], available_views: ['combined', 'regular', 'feeding'], default_view: 'combined', default_range: null,
+  const dates = period === 'yearly' ? ['2024-01-01', '2025-01-01', '2026-01-01', '2027-01-01', '2028-01-01']
+    : period === 'weekly' ? ['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26', '2026-11-02', '2026-11-09', '2026-11-16']
+      : ['2026-07-01', '2026-08-01', '2026-09-01', '2026-10-01', '2026-11-01', '2026-12-01', '2027-01-01'];
+  const middle = period === 'yearly' ? 2 : 3;
+  const endDate = value => {
+    const date = new Date(`${value}T00:00:00Z`);
+    if (period === 'weekly') date.setUTCDate(date.getUTCDate() + 6);
+    else if (period === 'monthly') { date.setUTCMonth(date.getUTCMonth() + 1); date.setUTCDate(0); }
+    else { date.setUTCMonth(11); date.setUTCDate(31); }
+    return date.toISOString().slice(0, 10);
+  };
+  return { period, scope: 'real', is_demo: false, training_scope: 'real', as_of: '2026-10-26', status: 'ready', model_id: 7,
+    range: { start_date: dates[0], end_date: endDate(dates.at(-1)), past_periods: middle, future_periods: middle },
+    available_periods: ['weekly', 'monthly', 'yearly'], available_views: ['combined', 'regular', 'feeding'],
     views: Object.fromEntries(['combined', 'regular', 'feeding'].map(key => [key, {
-      label: key, status: 'stale_data', status_message: `${key} recorded history is available.`, historical_prediction_status: 'available',
-      metrics: key === 'regular' ? { wape_percent: 10.6433 } : null,
-      history: [{ date: '2025-01-01', end_date: '2025-01-31', actual: key === 'feeding' ? 15 : 100, predicted: key === 'regular' ? 90 : null, is_partial_period: false }],
-      forecast: [], provisional_status: 'provisional', provisional_forecast: [{ date: '2026-01-01', predicted: 120, is_provisional: true, production_approved: false }],
-      provisional_metadata: { warnings: ['Limited recorded history.'] },
+      label: key, message: null,
+      evaluation: { issued_forecast: { periods: 1, wape_percent: 20, mae: 20, bias: -20 },
+        historical_test: { periods: 2, wape_percent: key === 'regular' ? 10.6433 : null, mae: 10, bias: 0 } },
+      points: dates.map((date, index) => ({ date, end_date: endDate(date), actual: index > middle ? null : index === 1 ? null : key === 'feeding' ? 15 : 100,
+        past_prediction: index < middle ? 90 : null, future_prediction: index >= middle ? 120 : null,
+        prediction_basis: index < middle ? index === 0 ? 'issued_forecast' : 'historical_test' : 'forecast',
+        is_current: index === middle, is_partial_period: index === middle })),
     }])) };
 }
 
-test('forecast tabs retain stale history and distinguish view accuracy from monthly prospective evidence', () => {
-  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-chart:monthly`, forecastFixture(), ['dashboard', 'reports']);
-  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-regular-monthly`, { status: 'research_only', status_message: 'Awaiting publication review.', quality_gate: { reasons: ['needs_12_prospective_reviewed_months'] },
-    metrics: { retrospective_regular_monthly: { wape_percent: 10.6433 }, prospective_regular_monthly: { wape_percent: null } } }, ['dashboard', 'reports']);
+test('centered forecast tabs preserve the full calendar and show separate basis evaluations in the compact toolbar', () => {
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, forecastFixture(), ['dashboard', 'reports']);
   let tree = render(ui.ForecastChart);
   const buttons = () => elements(tree, node => node.type === 'button');
   assert.equal(buttons().find(node => node.props.children === 'Combined').props['aria-pressed'], true);
@@ -2935,30 +2948,98 @@ test('forecast tabs retain stale history and distinguish view accuracy from mont
   assert.ok(refreshButton);
   assert.equal(elements(refreshButton, node => node.props['aria-hidden'] === 'true').length, 1);
   const line = elements(tree, node => node.props.dataKey === 'actual')[0];
-  assert.equal(line.props.connectNulls, true);
-  assert.ok(elements(tree, node => ['actual', 'predicted', 'provisional', 'approved'].includes(node.props.dataKey)).every(node => node.props.connectNulls));
+  assert.equal(line.props.connectNulls, false);
+  const series = elements(tree, node => ['actual', 'past_prediction', 'future_prediction'].includes(node.props.dataKey));
+  assert.equal(series.length, 3);
+  assert.ok(series.every(node => node.props.connectNulls === false));
+  assert.equal(elements(tree, node => ['predicted', 'provisional', 'approved'].includes(node.props.dataKey)).length, 0);
   const xAxis = elements(tree, node => node.props.dataKey === 'date')[0];
   assert.equal(xAxis.props.padding.right, 44);
   assert.equal(xAxis.props.tickFormatter('2025-12-01'), 'Dec 2025');
   assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.margin.right, 40);
   assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data[0].actual, 100);
+  assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data.length, 7);
+  assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data[1].actual, null);
   assert.ok(!JSON.stringify(tree).includes('10.6% WAPE'));
+  assert.match(JSON.stringify(tree), /Not yet available/);
+  assert.ok(!JSON.stringify(tree).includes('Approved live forecast currently unavailable'));
   buttons().find(node => node.props.children === 'Regular Sales').props.onClick();
   tree = render(ui.ForecastChart);
   assert.match(JSON.stringify(tree), /10.6% WAPE/);
-  assert.match(JSON.stringify(tree), /Not yet available/);
-  assert.match(JSON.stringify(tree), /needs 12 prospective reviewed months/);
+  assert.match(JSON.stringify(tree), /20.0% WAPE/);
+  assert.match(JSON.stringify(tree), /Original issued forecast/);
+  assert.match(JSON.stringify(tree), /Reconstructed historical test/);
+  assert.ok(elements(tree, node => node.type === 'p' && Array.isArray(node.props.children) && node.props.children.includes(' completed '))
+    .some(node => node.props.children.join('').includes('2 completed periods')));
   buttons().find(node => node.props.children === 'Milk Feeding').props.onClick();
   tree = render(ui.ForecastChart);
   assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data[0].actual, 15);
-  assert.equal(elements(tree, node => node.props.dataKey === 'actual')[0].props.name, 'Recorded feeding revenue');
+  assert.equal(elements(tree, node => node.props.dataKey === 'actual')[0].props.name, 'Recorded sales');
   assert.equal(elements(tree, node => node.props.width === 72 && typeof node.props.tickFormatter === 'function')[0].props.tickFormatter(1500000), '₱1.5M');
-  assert.equal(elements(tree, node => typeof node.props.formatter === 'function')[0].props.formatter(1500, 'Recorded feeding revenue')[0], '₱1,500');
+  assert.equal(elements(tree, node => node.props.content?.type === ui.ForecastGraphTooltip)[0].props.filterNull, false);
   assert.ok(!JSON.stringify(tree).includes('10.6% WAPE'));
   periodSelect().props.onChange({ target: { value: 'weekly' } });
   tree = render(ui.ForecastChart);
   assert.equal(buttons().find(node => node.props.children === 'Milk Feeding').props['aria-pressed'], true);
   assert.equal(periodSelect().props.value, 'weekly');
+});
+
+test('centered forecast renders all nine view/period combinations with the server calendar and current marker', () => {
+  for (const period of ['weekly', 'monthly', 'yearly']) ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:${period}`, forecastFixture(period), ['dashboard', 'reports']);
+  for (const period of ['weekly', 'monthly', 'yearly']) {
+    states = []; refs = []; effects = [];
+    let tree = render(ui.ForecastChart);
+    elements(tree, node => node.type === 'select' && node.props['aria-label'] === 'Forecast period')[0].props.onChange({ target: { value: period } });
+    tree = render(ui.ForecastChart);
+    for (const [view, label] of [['combined', 'Combined'], ['regular', 'Regular Sales'], ['feeding', 'Milk Feeding']]) {
+      elements(tree, node => node.type === 'button' && node.props.children === label)[0].props.onClick();
+      tree = render(ui.ForecastChart);
+      const points = elements(tree, node => Array.isArray(node.props.data))[0].props.data;
+      assert.deepEqual(points, forecastFixture(period).views[view].points);
+      assert.equal(points.length, period === 'yearly' ? 5 : 7);
+      assert.equal(elements(tree, node => node.props.label?.value === 'Current period')[0].props.x, points.find(point => point.is_current).date);
+    }
+  }
+});
+
+test('centered graph tooltips distinguish partial actuals, full estimates and original versus reconstructed forecasts', () => {
+  const point = { ...forecastFixture().views.regular.points[3], actual: 0, future_prediction: 1500, prediction_basis: 'issued_forecast' };
+  let tooltip = ui.ForecastGraphTooltip({ active: true, payload: [{ payload: point }] });
+  let text = JSON.stringify(tooltip);
+  assert.match(text, /partial period/); assert.match(text, /full-period estimate/);
+  assert.match(text, /₱0/); assert.match(text, /₱1,500/); assert.match(text, /Original issued forecast/);
+  assert.ok(!text.includes('Reconstructed historical test'));
+  tooltip = ui.ForecastGraphTooltip({ active: true, payload: [{ payload: { ...point, prediction_basis: 'historical_test', is_current: false } }] });
+  text = JSON.stringify(tooltip);
+  assert.match(text, /Reconstructed historical test/); assert.match(text, /not a forecast issued before the period/);
+  assert.equal(ui.ForecastGraphTooltip({ active: false, payload: [{ payload: point }] }), null);
+});
+
+test('refresh-required graph retains recorded points and issued predictions and distinguishes missing data from zero', () => {
+  const fixture = forecastFixture(); fixture.status = 'refresh_required';
+  fixture.views.combined.message = 'Not enough sales history yet.';
+  fixture.views.combined.evaluation = {};
+  fixture.views.combined.points = fixture.views.combined.points.map((point, index) => ({ ...point, actual: index === 0 ? 0 : null, past_prediction: index === 0 ? 90 : null, future_prediction: null }));
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, fixture, ['dashboard', 'reports']);
+  let tree = render(ui.ForecastChart);
+  assert.match(JSON.stringify(tree), /Saved forecasts need refreshing/);
+  assert.match(JSON.stringify(tree), /Not enough sales history yet/);
+  assert.match(JSON.stringify(tree), /No completed-period evaluation/);
+  const points = elements(tree, node => Array.isArray(node.props.data))[0].props.data;
+  assert.equal(points[0].actual, 0); assert.equal(points[0].past_prediction, 90); assert.equal(points[1].actual, null);
+  assert.equal(points.length, 7);
+  assert.ok(!JSON.stringify(tree).includes('No recorded sales in this range'));
+});
+
+test('centered forecast distinguishes initial loading and request errors with a retry action', async () => {
+  let tree = render(ui.ForecastChart);
+  assert.equal(elements(tree, node => node.type === ui.EmptyState)[0].props.title, 'Loading forecast graph');
+  const key = `${ui.dataCacheEpoch()}:forecast-graph:real:monthly`;
+  await ui.fetchDataCache(key, () => Promise.reject(new Error('Graph service unavailable.')), ['dashboard', 'reports']).catch(() => {});
+  states = []; refs = []; effects = [];
+  tree = render(ui.ForecastChart);
+  assert.equal(elements(tree, node => node.type === ui.EmptyState)[0].props.description, 'Graph service unavailable.');
+  assert.ok(elements(tree, node => node.type === 'button' && node.props.children === 'Retry forecast')[0]);
 });
 
 async function withForecastTimers(run) {
@@ -2979,7 +3060,7 @@ test('forecast refresh recovers active jobs, polls every five seconds and invali
   await withForecastTimers(async ({ timers, settle, tick }) => {
     const requests = []; let status = 'running';
     ui.http.defaults.adapter = async config => { requests.push(config); return { status: 200, config, headers: {}, data: { job_id: 12, status, stage: status === 'running' ? 'refresh_forecast_models' : 'complete', status_url: '/api/forecasting/refresh/12/' } }; };
-    for (const period of ['weekly', 'monthly', 'yearly']) ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-chart:${period}`, forecastFixture(period), ['dashboard', 'reports']);
+    for (const period of ['weekly', 'monthly', 'yearly']) ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:${period}`, forecastFixture(period), ['dashboard', 'reports']);
     render(ui.useForecastRefresh); effects.splice(0).forEach(effect => effect()); await settle();
     assert.equal(render(ui.useForecastRefresh).busy, true);
     assert.equal(requests[0].url, '/api/forecasting/refresh/');
@@ -2988,7 +3069,7 @@ test('forecast refresh recovers active jobs, polls every five seconds and invali
     status = 'succeeded'; await tick(5000);
     const state = render(ui.useForecastRefresh);
     assert.equal(state.busy, false); assert.equal(state.message, 'Forecast refreshed');
-    for (const period of ['weekly', 'monthly', 'yearly']) assert.equal(ui.readDataCache(`${ui.dataCacheEpoch()}:forecast-chart:${period}`).updatedAt, 0);
+    for (const period of ['weekly', 'monthly', 'yearly']) assert.equal(ui.readDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:${period}`).updatedAt, 0);
     assert.equal(timers.size, 0);
   });
 });

@@ -6,9 +6,21 @@ import { FORECAST_POLL_INTERVAL, forecastJobActive, forecastingService, type For
 const STAGES: Record<string, string> = {
   queued: "Waiting to refresh", refresh_forecast_patterns: "Checking sales",
   refresh_forecast_models: "Updating monthly forecasts", refresh_weekly_forecasts: "Updating weekly forecasts",
-  refresh_provisional_forecasts: "Updating forecast views", refresh_projection_evidence: "Checking forecast results",
+  refresh_provisional_forecasts: "Updating forecast views", refresh_beta_graphs: "Updating forecast graphs",
+  refresh_projection_evidence: "Checking forecast results",
   complete: "Forecast refreshed",
 };
+
+let completionEpoch = -1;
+const invalidatedJobs = new Set<number>();
+function invalidateCompletedJob(job: ForecastRefreshJob) {
+  const session = dataCacheEpoch();
+  if (completionEpoch !== session) { completionEpoch = session; invalidatedJobs.clear(); }
+  if (job.job_id === null || invalidatedJobs.has(job.job_id)) return;
+  invalidatedJobs.add(job.job_id);
+  // A refresh may complete while the chart is unmounted and its cache is fresh.
+  invalidateDataCache(["dashboard", "reports"]);
+}
 
 export function useForecastRefresh() {
   const [job, setJob] = useState<ForecastRefreshJob | null>(null);
@@ -19,18 +31,33 @@ export function useForecastRefresh() {
   useEffect(() => {
     const controller = new AbortController(), session = dataCacheEpoch();
     let timer: ReturnType<typeof setTimeout> | undefined, cooldownTimer: ReturnType<typeof setTimeout> | undefined;
-    let current: ForecastRefreshJob | null = null, starting = false, tracking = false, cooling = false, revision = 0;
+    let current: ForecastRefreshJob | null = null, starting = false, recovering = false, cooling = false, revision = 0;
+    let unconfirmedStart: { knownBaseline: boolean; baselineId: number | null; message: string } | null = null;
     const alive = () => !controller.signal.aborted && session === dataCacheEpoch();
+    const terminalRequestFailure = (failure: unknown) => failure instanceof ApiError && [400, 401, 403, 404, 405, 422].includes(failure.status);
+    const retryDelay = (failure: unknown) => failure instanceof ApiError && failure.status === 429
+      ? Math.max(FORECAST_POLL_INTERVAL, failure.retryAfterMs ?? 60_000) : FORECAST_POLL_INTERVAL;
     const schedule = (delay = FORECAST_POLL_INTERVAL) => { clearTimeout(timer); if (alive()) timer = setTimeout(() => void poll(), delay); };
     const accept = (next: ForecastRefreshJob) => {
       if (!alive()) return;
-      current = next; setJob(next); setError("");
-      const active = forecastJobActive(next); setBusy(active);
-      if (active) { tracking = true; schedule(); }
-      else if (tracking) {
-        tracking = false;
-        // All period keys and visible regular/model/report queries share these groups.
-        invalidateDataCache(["dashboard", "reports"]);
+      const active = forecastJobActive(next);
+      const completed = next.status === "succeeded" || next.status === "failed";
+      if (completed) invalidateCompletedJob(next);
+      if (unconfirmedStart && !active) {
+        const isNewJob = completed && unconfirmedStart.knownBaseline && next.job_id !== null
+          && (unconfirmedStart.baselineId === null || next.job_id > unconfirmedStart.baselineId);
+        if (!isNewJob) {
+          const message = unconfirmedStart.message;
+          unconfirmedStart = null; current = next; recovering = false; setJob(null); setBusy(false);
+          setError(`${message} No new refresh job could be confirmed. You can retry the refresh.`);
+          return;
+        }
+      }
+      unconfirmedStart = null;
+      current = next; recovering = false; setJob(next); setError("");
+      setBusy(active);
+      if (active) schedule();
+      else {
         if (next.status === "failed") setError(next.message ?? "Forecast refresh failed. Please retry.");
       }
     };
@@ -43,24 +70,30 @@ export function useForecastRefresh() {
       catch (failure) {
         if (!alive() || requestRevision !== revision) return;
         setError(getApiErrorMessage(failure, "Unable to check forecast refresh. Retrying shortly."));
-        if (failure instanceof ApiError && [401, 403, 404].includes(failure.status)) { current = null; tracking = false; setBusy(false); return; }
-        if (tracking) schedule(failure instanceof ApiError && failure.status === 429 ? Math.max(FORECAST_POLL_INTERVAL, failure.retryAfterMs ?? 60_000) : FORECAST_POLL_INTERVAL);
+        if (terminalRequestFailure(failure)) { current = null; unconfirmedStart = null; recovering = false; setBusy(false); return; }
+        // Recovery also needs retries before any active job has been observed.
+        // Until status is known, another POST could duplicate an accepted start.
+        recovering = true; setBusy(true); schedule(retryDelay(failure));
       }
     };
     start.current = async () => {
-      if (!alive() || starting || cooling || forecastJobActive(current)) return;
-      revision++; starting = true; tracking = true; setBusy(true); setError(""); clearTimeout(timer);
+      if (!alive() || starting || recovering || cooling || forecastJobActive(current)) return;
+      const baseline = { knownBaseline: current !== null, baselineId: current?.job_id ?? null };
+      revision++; starting = true; setJob(null); setBusy(true); setError(""); clearTimeout(timer);
       try { accept(await forecastingService.startRefresh(controller.signal)); }
       catch (failure) {
         if (!alive()) return;
         setError(getApiErrorMessage(failure, "Unable to start forecast refresh."));
-        if (failure instanceof ApiError && [409, 429].includes(failure.status)) {
-          if (failure.status === 429) {
+        if (!terminalRequestFailure(failure)) {
+          unconfirmedStart = { ...baseline, message: getApiErrorMessage(failure, "The refresh request result is unconfirmed.") };
+          if (failure instanceof ApiError && failure.status === 429) {
             cooling = true; setCooldown(true); clearTimeout(cooldownTimer);
             cooldownTimer = setTimeout(() => { cooling = false; if (alive()) setCooldown(false); }, failure.retryAfterMs ?? 60_000);
           }
-          current = null; schedule(); // Recover an already-running job without repeating POST.
-        } else { tracking = false; setBusy(false); }
+          // A timeout/503 may arrive after the server queued the job. Resolve its
+          // status through GET just like 409/429; never automatically repeat POST.
+          current = null; recovering = true; schedule();
+        } else { unconfirmedStart = null; recovering = false; setBusy(false); }
       } finally { starting = false; }
     };
     void poll(); // Recover a job started before navigation/reload.

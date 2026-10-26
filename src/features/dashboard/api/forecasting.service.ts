@@ -2,6 +2,43 @@ import http, { ApiError } from "@/lib/api";
 
 export type ForecastPeriod = "weekly" | "monthly" | "yearly";
 export type ForecastViewKey = "combined" | "regular" | "feeding";
+export type ForecastGraphScope = "real";
+export type PredictionBasis = "issued_forecast" | "historical_test" | "forecast" | "fixed_origin_demo";
+export interface ForecastGraphPoint {
+  date: string;
+  end_date: string;
+  past_prediction: number | null;
+  actual: number | null;
+  future_prediction: number | null;
+  prediction_basis: PredictionBasis;
+  is_current: boolean;
+  is_partial_period: boolean;
+}
+export interface ForecastEvaluation {
+  periods: number;
+  wape_percent: number | null;
+  mae: number | null;
+  bias: number | null;
+}
+export interface ForecastGraphView {
+  label: string;
+  points: ForecastGraphPoint[];
+  evaluation: Partial<Record<PredictionBasis, ForecastEvaluation>>;
+  message: string | null;
+}
+export interface CenteredForecastGraph {
+  scope: ForecastGraphScope;
+  is_demo: boolean;
+  training_scope: "real";
+  period: ForecastPeriod;
+  as_of: string;
+  available_periods: ForecastPeriod[];
+  available_views: ForecastViewKey[];
+  range: { start_date: string; end_date: string; past_periods: number; future_periods: number };
+  views: Record<ForecastViewKey, ForecastGraphView>;
+  status: "ready" | "refresh_required";
+  model_id: number | null;
+}
 export interface ForecastMetrics {
   wape_percent?: number | null;
   periods?: number;
@@ -70,9 +107,19 @@ export interface ForecastRefreshJob {
 }
 
 export const forecastChartKey = (period: ForecastPeriod) => `forecast-chart:${period}`;
+export const forecastGraphKey = (period: ForecastPeriod, scope: ForecastGraphScope = "real", asOf?: string) =>
+  `forecast-graph:${scope}:${period}${asOf ? `:${asOf}` : ""}`;
 export const forecastJobActive = (job: ForecastRefreshJob | null) => job?.status === "queued" || job?.status === "running";
 export const FORECAST_POLL_INTERVAL = 5_000;
 export const forecastingService = {
+  getGraph: async (period: ForecastPeriod, scope: ForecastGraphScope = "real", signal?: AbortSignal): Promise<CenteredForecastGraph> => {
+    if (scope !== "real") throw new ApiError(400, "The dashboard uses real sales only.");
+    const { data } = await http.get<CenteredForecastGraph>("/api/forecasting/graph/", { params: { period, scope }, signal });
+    if (data?.scope !== "real" || data.is_demo !== false || data.training_scope !== "real" || data.period !== period) {
+      throw new ApiError(502, "The server did not return the requested real-sales forecast graph.");
+    }
+    return data;
+  },
   // The backend returns all sales views together; view switching is local.
   getChart: async (period: ForecastPeriod, signal?: AbortSignal): Promise<ForecastChartResponse> =>
     (await http.get<ForecastChartResponse>("/api/forecasting/chart/", { params: { period }, signal })).data,

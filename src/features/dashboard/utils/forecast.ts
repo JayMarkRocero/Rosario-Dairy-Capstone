@@ -1,4 +1,18 @@
-import type { ForecastMetrics, ForecastPeriod, ForecastView } from "../api/forecasting.service";
+import type { ForecastGraphView, ForecastMetrics, ForecastPeriod, ForecastView, PredictionBasis } from "../api/forecasting.service";
+
+export const PREDICTION_BASES: PredictionBasis[] = ["issued_forecast", "historical_test", "forecast", "fixed_origin_demo"];
+export const forecastBasisLabel = (basis: PredictionBasis): string => ({
+  issued_forecast: "Original issued forecast",
+  historical_test: "Reconstructed historical test",
+  forecast: "Current forecast",
+  fixed_origin_demo: "Fixed-origin demonstration",
+})[basis];
+
+// The server owns calendar boundaries, current/partial flags and evaluations.
+// Never trim empty buckets or turn unknown observations into recorded zeroes.
+export function centeredForecastSeries(view: ForecastGraphView | undefined) {
+  return (view?.points ?? []).map(point => ({ ...point }));
+}
 
 // All current chart views, including feeding, contain invoice revenue.
 export function forecastAmount(value: unknown, compact = false): string {
