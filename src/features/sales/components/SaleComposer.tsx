@@ -120,7 +120,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   };
   const customerFields = <>
       <div className="flex flex-wrap items-end gap-2"><div className="min-w-0 flex-1"><label className="block text-xs font-medium text-slate-600">Customer {mode !== "order" && "(optional)"}</label><CustomerPicker customers={customers} value={customerId} onChange={setCustomerId} includeWalkIn={mode !== "order"} placeholder="Search customers" className="w-full px-3 py-2.5 rounded-lg"/></div>
-        <Btn variant={isCheckout ? "primary" : "secondary"} size="sm" onClick={() => setNewCustomerOpen(value => !value)}>New customer</Btn>
+        <Btn variant={isCheckout || mode === "order" ? "primary" : "secondary"} size="sm" onClick={() => setNewCustomerOpen(value => !value)}>New customer</Btn>
         {selectedCustomer && <Btn variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>Purchase history</Btn>}
       </div>
       {newCustomerOpen && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-slate-200 p-3">
@@ -140,7 +140,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const cartItems = lines.map(line => <SaleLineEditor key={line.productId} line={line} canDiscount={canDiscount} compact={isCheckout} focusPrice={isCheckout && focusProductId === line.productId}
     onChange={next => setLines(current => current.map(item => item.productId === next.productId ? next : item))} onRemove={() => setLines(current => current.filter(item => item.productId !== line.productId))}/>);
   const summary = <div className="rounded-xl bg-slate-50 p-3 space-y-1 text-sm"><div className="flex justify-between gap-2"><span>{mode === "order" ? "Subtotal" : "Gross subtotal"}</span><span>{totals ? formatCents(totals.subtotal) : "Not entered"}</span></div>{mode === "encoding" && <div className="flex justify-between gap-2"><span>Item discounts</span><span>{totals ? formatCents(totals.discount) : "Not entered"}</span></div>}<div className="flex justify-between gap-2 font-semibold"><span>Total</span><span>{totals ? formatCents(totals.total) : "Enter item prices"}</span></div></div>;
-  const paymentFields = <div className={`grid ${isCheckout ? (method === "cash" ? "grid-cols-2" : "grid-cols-1") : "grid-cols-1 sm:grid-cols-2"} gap-3`}>
+  const paymentFields = <div className={`grid ${isCheckout || mode === "order" ? (method === "cash" ? "grid-cols-2" : "grid-cols-1") : "grid-cols-1 sm:grid-cols-2"} gap-3`}>
         <label className="text-xs font-medium text-slate-600">Payment method<select aria-label="Payment method" className={input} value={method} onChange={e => { setMethod(e.target.value as typeof method); setTender(""); }}><option value="cash">Cash</option><option value="online">GCash / Online</option></select></label>
         {mode === "encoding" && <label className="text-xs font-medium text-slate-600">Payment status<select aria-label="Payment status" className={input} value={paymentStatus} onChange={e => { setPaymentStatus(e.target.value as typeof paymentStatus); setTender(""); }}><option value="pending">Pending</option><option value="paid">Paid</option></select></label>}
         {method === "cash" && paymentStatus === "paid" && <label className="min-w-0 text-xs font-medium text-slate-600">Amount tendered (₱)<input aria-label="Amount tendered" className={input} type="number" min="0" step="0.01" placeholder="Cash received" value={tender} onChange={e => setTender(e.target.value)}
