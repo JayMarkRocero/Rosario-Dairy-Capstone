@@ -128,7 +128,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
         <label className="text-xs font-medium text-slate-600">Phone (optional)<input aria-label="New customer phone" className={input} value={newCustomerContact.phone} onChange={e => setNewCustomerContact({ ...newCustomerContact, phone: e.target.value })} placeholder="09XXXXXXXXX"/></label>
         <label className="text-xs font-medium text-slate-600">Email (optional)<input aria-label="New customer email" type="email" className={input} value={newCustomerContact.email} onChange={e => setNewCustomerContact({ ...newCustomerContact, email: e.target.value })} placeholder="name@example.com"/></label>
         <label className="text-xs font-medium text-slate-600">Address (optional)<input aria-label="New customer address" className={input} value={newCustomerContact.address} onChange={e => setNewCustomerContact({ ...newCustomerContact, address: e.target.value })} placeholder="Address"/></label>
-        <div className="sm:col-span-2 flex justify-end"><Btn variant="secondary" onClick={registerCustomer}>Register customer</Btn></div>
+        <div className="sm:col-span-2 flex justify-end"><Btn variant={mode === "order" ? "primary" : "secondary"} onClick={registerCustomer}>Register customer</Btn></div>
       </div>}
   </>;
   const catalog = <section className="min-w-0 space-y-3">
