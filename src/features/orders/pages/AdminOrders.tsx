@@ -65,7 +65,7 @@ export function AdminOrders() {
   ];
 
   return <div className="records-page viewport-records-page orders-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-    <div className="flex shrink-0 min-h-10 items-start justify-end gap-3 sm:items-center"><ModuleSubheading description="Monitor, track, and manage customer order fulfillments." /><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
+    <div data-mobile-page-actions className="flex shrink-0 min-h-10 items-start justify-end gap-3 sm:items-center"><ModuleSubheading description="Monitor, track, and manage customer order fulfillments." /><Btn variant="primary" icon={<Plus size={16}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 flex-shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green],
       ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red], ["Warnings", orders.filter(o=>o.warning).length, C.orange],

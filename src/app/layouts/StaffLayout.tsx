@@ -32,7 +32,7 @@ export function StaffLayout({ onLogout }: Props) {
   const { theme } = useTheme();
 
   return (
-    <div data-theme={theme} className="flex h-dvh overflow-hidden" style={{ backgroundColor: C.bg }}>
+    <div data-theme={theme} className="app-shell w-full min-w-0 flex h-dvh overflow-hidden" style={{ backgroundColor: C.bg }}>
       <StaffSidebar
         active={page}
         onChange={setPage}
@@ -50,7 +50,7 @@ export function StaffLayout({ onLogout }: Props) {
           onMenuClick={() => setSidebarOpen(true)}
         />
         </div>
-        <main className={`flex-1 min-h-0 ${page === "settings" ? "overflow-y-auto scroll-pb-12 sm:scroll-pb-8" : `flex ${page === "orders" || page === "sales" || page === "encoding" || page === "inventory" ? "items-start overflow-y-auto md:overflow-hidden" : page === "pos" ? "overflow-hidden" : "overflow-y-auto"}`}`}>
+        <main className={`app-main w-full min-w-0 flex-1 min-h-0 ${page === "settings" ? "overflow-y-auto scroll-pb-12 sm:scroll-pb-8" : `flex ${page === "orders" || page === "sales" || page === "encoding" || page === "inventory" ? "items-start overflow-y-auto md:overflow-hidden" : page === "pos" ? "overflow-hidden" : "overflow-y-auto"}`}`}>
           {page === "encoding" && <SalesEncoding />}
           {page === "dashboard" && <StaffDashboard />}
           {page === "pos"       && <StaffPOS />}

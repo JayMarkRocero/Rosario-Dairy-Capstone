@@ -93,7 +93,7 @@ export function NotificationBell({ staff = false }: { staff?: boolean } = {}) {
     </button>
     {open && <>
       <div className="sm:hidden fixed inset-0 bg-black/20 z-40" onClick={() => setOpen(false)} />
-      <div id={panelId} role="region" aria-label="Notifications inbox" className="notification-inbox fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 w-auto sm:w-96 bg-white rounded-2xl shadow-2xl z-50 overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
+      <div id={panelId} role="region" aria-label="Notifications inbox" className="notification-inbox fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 w-auto sm:w-96 bg-white rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col" style={{ border: `1px solid ${C.border}` }}>
         <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
           <span className="text-base font-semibold text-slate-800">Notifications</span>
           <span aria-live="polite" className="text-[10px] font-medium text-slate-400">{unread.length} unread</span>
@@ -103,7 +103,7 @@ export function NotificationBell({ staff = false }: { staff?: boolean } = {}) {
           <button type="button" onClick={() => void update('read', unread)} disabled={saving || loading || !unread.length} className="text-[10px] font-medium text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-40">Mark all as read</button>
         </div>
         {failed && <div role="alert" className="px-4 py-2 text-xs" style={{ color: C.red }}>Could not refresh notifications. <button type="button" className="underline" onClick={() => void refresh()}>Retry</button></div>}
-        <div className="max-h-[60vh] sm:max-h-96 overflow-y-auto" aria-busy={loading || saving}>
+        <div data-notification-list className="max-h-[60vh] sm:max-h-96 overflow-y-auto" aria-busy={loading || saving}>
           {loading ? <EmptyState compact loading title="Checking notifications" /> : visible.length === 0 ? <EmptyState compact title={filter === 'dismissed' ? 'No dismissed notifications' : filter === 'unread' ? 'No unread notifications' : "You're all caught up"} /> : visible.map(n => {
             const isExpiry = n.id.startsWith('expiry-');
             const expired = n.expiry?.status === 'expired';

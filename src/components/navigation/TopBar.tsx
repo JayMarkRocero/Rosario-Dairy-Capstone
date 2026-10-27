@@ -65,6 +65,7 @@ export function TopBar({ title, userName, role, onMenuClick }: TopBarProps) {
     >
       <div className="flex items-center gap-3 min-w-0">
         <button
+          aria-label="Open navigation"
           onClick={onMenuClick}
           className="lg:hidden w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors flex-shrink-0"
           style={{ border: `1px solid ${C.border}`, color: C.muted }}
@@ -73,7 +74,7 @@ export function TopBar({ title, userName, role, onMenuClick }: TopBarProps) {
         </button>
 
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-slate-800 truncate">
+          <h1 title={title} className="text-xl font-bold text-slate-800 truncate">
             {title}
           </h1>
           <p className="text-xs font-normal text-slate-400 hidden sm:block truncate">{dateStr}</p>

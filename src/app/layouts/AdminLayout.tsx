@@ -38,7 +38,7 @@ export function AdminLayout({ onLogout }: Props) {
   const { theme } = useTheme();
 
   return (
-    <div data-theme={theme} className="flex h-dvh overflow-hidden" style={{ backgroundColor: C.bg }}>
+    <div data-theme={theme} className="app-shell w-full min-w-0 flex h-dvh overflow-hidden" style={{ backgroundColor: C.bg }}>
       <AdminSidebar
         active={page}
         onChange={setPage}
@@ -56,7 +56,7 @@ export function AdminLayout({ onLogout }: Props) {
             onMenuClick={() => setSidebarOpen(true)}
           />
         </div>
-        <main className={`flex-1 min-h-0 overflow-y-auto ${["orders", "customers", "sales", "users", "inventory", "categories", "encoding"].includes(page) ? "md:overflow-hidden" : ""} ${page === "orders" || page === "customers" || page === "sales" || page === "users" || page === "inventory" ? "flex items-start" : page === "categories" ? "flex items-start" : ""}`}>
+        <main className={`app-main w-full min-w-0 flex-1 min-h-0 overflow-y-auto ${["orders", "customers", "sales", "users", "inventory", "categories", "encoding"].includes(page) ? "md:overflow-hidden" : ""} ${page === "orders" || page === "customers" || page === "sales" || page === "users" || page === "inventory" ? "flex items-start" : page === "categories" ? "flex items-start" : ""}`}>
           {page === "encoding" && <SalesEncoding />}
           {page === "dashboard"  && <AdminDashboard />}
           {page === "inventory"  && <AdminInventory />}

@@ -233,6 +233,136 @@ html.dark .notification-inbox button:hover:not(:disabled) {
 .staff-inventory-page td { white-space: normal; overflow-wrap: anywhere; }
 .staff-inventory-page td > span { max-width: 100%; flex-wrap: wrap; }
 
+/* Keep phone pages in the main scroller, with one consistent edge gutter.
+   Desktop capacity measurement and tablet spacing stay in their existing rules. */
+@media (max-width: 767.98px) {
+  .app-main {
+    display: block;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    scroll-padding-bottom: max(3rem, env(safe-area-inset-bottom));
+  }
+
+  .app-sidebar {
+    max-width: calc(100vw - 1rem);
+    max-height: 100dvh;
+  }
+
+  .app-main > div {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding-inline: 0.75rem;
+  }
+
+  .app-main .table-card {
+    width: 100%;
+    min-width: 0;
+    padding: 0.75rem;
+  }
+
+  .app-main .enhanced-table,
+  .app-main .filter-control-group { min-width: 0; }
+  .mobile-record-list { padding-inline: 0; }
+
+  .section-header { flex-wrap: wrap; gap: 0.5rem; }
+  .summary-card { height: auto; }
+  .summary-card.h-16 { min-height: 4rem; }
+  .summary-card.h-20 { min-height: 5rem; }
+  .summary-card.h-24 { min-height: 6rem; }
+  .summary-card .line-clamp-1 {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+  }
+
+  .app-button { height: auto; max-width: 100%; }
+  .app-button.h-8 { min-height: 2rem; }
+  .app-button.h-10 { min-height: 2.5rem; }
+  .mobile-user-actions > div { flex-wrap: wrap; justify-content: flex-end; }
+
+  .table-pagination,
+  .table-pagination > div {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .app-main :where(input, select, textarea, fieldset),
+  .overlay-panel :where(input, select, textarea, fieldset) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Phone keyboards and short screens must not squeeze the cart to zero height. */
+  .app-main .pos-page,
+  .pos-card,
+  .pos-composer {
+    height: auto;
+    flex: none;
+    overflow: visible;
+  }
+
+  [data-pos-workspace] {
+    flex: none;
+    grid-template-rows: none;
+    overflow: visible;
+  }
+
+  [data-pos-catalog],
+  [data-pos-cart],
+  [data-pos-cart-items] {
+    flex: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  [data-pos-cart] > div:first-child { flex-wrap: wrap; }
+
+  /* Scroll the entire overlay on phones, so headers/footers cannot crowd out
+     the form when the viewport is short or the user increases text size. */
+  .overlay-panel {
+    max-width: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    overflow-wrap: anywhere;
+  }
+
+  .overlay-body {
+    flex: 1 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .notification-inbox {
+    max-height: calc(100dvh - 5rem);
+    overflow-wrap: anywhere;
+  }
+  .notification-inbox > div { flex-shrink: 0; }
+  .notification-inbox [data-notification-list] {
+    min-height: 0;
+    max-height: none;
+    flex: 1 1 auto;
+  }
+}
+
+/* Only page-level actions opt in; nested modal/form/table buttons keep their sizing. */
+@media (max-width: 639.98px) {
+  [data-mobile-page-actions] { gap: 0.5rem; }
+
+  [data-mobile-page-actions] > .app-button,
+  [data-mobile-page-actions] > [data-page-action] > .app-button {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 2.5rem;
+    white-space: normal;
+  }
+
+  [data-mobile-page-actions] > .app-button { flex: 1 1 0; }
+  [data-mobile-page-actions] > [data-page-action] { min-width: 0; }
+  [data-mobile-page-actions] > [data-page-action-wide] { grid-column: 1 / -1; }
+}
+
 /* Sales Encoding's search, filters and record count share aligned desktop
    rows. Mobile controls and the measured table surface keep their own flow. */
 @media (min-width: 768px) {

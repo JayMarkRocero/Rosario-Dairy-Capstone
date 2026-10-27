@@ -71,7 +71,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
         aria-modal="true"
         aria-busy={busy}
         aria-label={title || "Confirmation"}
-        className={`relative min-w-0 w-full ${SIZE_CLASS[size]} flex flex-col max-h-[90dvh] bg-white rounded-3xl shadow-2xl transition-all duration-200`}
+        className={`overlay-panel relative min-w-0 w-full ${SIZE_CLASS[size]} flex flex-col max-h-[90dvh] bg-white rounded-3xl shadow-2xl transition-all duration-200`}
         style={{
           opacity:   visible ? 1 : 0,
           transform: visible ? "scale(1) translateY(0)" : "scale(0.96) translateY(12px)",
@@ -82,7 +82,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
           className="flex items-start justify-between px-4 sm:px-7 py-4 sm:py-5 flex-shrink-0"
           style={{ borderBottom: `1px solid ${C.border}` }}
         >
-          <div>
+          <div className="min-w-0 break-words">
             <h2
               className="text-base font-semibold text-slate-800"
             >
@@ -107,7 +107,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
         </div>
 
         {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-7 py-4 sm:py-5">{children}</div>
+        <div className="overlay-body flex-1 min-h-0 overflow-y-auto px-4 sm:px-7 py-4 sm:py-5">{children}</div>
 
         {/* Footer */}
         {footer && (

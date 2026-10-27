@@ -330,7 +330,7 @@ export function AdminUserManagement() {
 
   return (
     <div className="records-page viewport-records-page users-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-      <div className="flex flex-wrap shrink-0 min-h-10 items-center justify-end gap-2">
+      <div data-mobile-page-actions className="flex flex-wrap shrink-0 min-h-10 items-center justify-end gap-2">
         <ModuleSubheading description="Manage system accounts, assign roles, and control user access." />
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={openAdd}>
           Add User

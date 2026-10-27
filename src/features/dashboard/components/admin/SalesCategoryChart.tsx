@@ -45,15 +45,15 @@ export function SalesCategoryChart() {
 
           <div className="space-y-2 mt-2">
             {categoryData.map(d => (
-              <div key={d.name} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
+              <div key={d.name} className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex min-w-0 items-center gap-2">
                   <span
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ backgroundColor: d.color }}
                   />
-                  <span style={{ color: C.text }}>{d.name}</span>
+                  <span className="min-w-0 [overflow-wrap:anywhere]" style={{ color: C.text }}>{d.name}</span>
                 </div>
-                <span className="font-semibold" style={{ color: C.text }}>{d.value}%</span>
+                <span className="shrink-0 font-semibold" style={{ color: C.text }}>{d.value}%</span>
               </div>
             ))}
           </div>

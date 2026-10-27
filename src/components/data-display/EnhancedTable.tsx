@@ -215,7 +215,7 @@ export function EnhancedTable<T>({
 
       {/* Table */}
       <div data-table-surface ref={adaptive || autoPageSize && desktopTable && !contentHeight ? capacity.containerRef : undefined} className={contentHeight ? `relative h-auto bg-slate-50/50 rounded-lg border border-slate-100 overflow-visible ${reserveTableHeight ? "md:min-h-[360px] flex flex-col justify-start shrink-0" : ""}` : `relative overflow-visible border-0 bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:border-slate-100 xl:bg-card xl:shadow-sm ${fillHeight ? "xl:flex-1 xl:min-h-0" : ""}`}>
-        {renderMobileRow && <div className="block md:hidden space-y-3 px-1 py-2">
+        {renderMobileRow && <div className="mobile-record-list block md:hidden space-y-3 px-1 py-2">
           {pageData.length === 0 ? emptyState : pageData.map((row, index) => <div key={rowKey(row)}>{renderMobileRow(row, index)}</div>)}
         </div>}
         <div className={`record-list-scroll ${renderMobileRow || mobileTable ? "hidden" : "xl:hidden"} overflow-visible ${pageData.length === 0 ? "flex min-h-64 items-center justify-center" : ""}`}>
@@ -322,7 +322,7 @@ export function EnhancedTable<T>({
 
       {/* Pagination */}
       {(totalPages > 1 || adaptive || contentHeight && sorted.length > 0) && (
-        <div ref={adaptive ? capacity.footerRef : undefined} className={contentHeight ? `flex items-center justify-between ${adaptive ? "mt-auto" : "mt-4"} pt-3 border-t border-slate-100 dark:border-slate-700 px-1 gap-2 shrink-0` : `flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
+        <div ref={adaptive ? capacity.footerRef : undefined} className={contentHeight ? `table-pagination flex items-center justify-between ${adaptive ? "mt-auto" : "mt-4"} pt-3 border-t border-slate-100 dark:border-slate-700 px-1 gap-2 shrink-0` : `table-pagination flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
           <span className={contentHeight ? "text-xs whitespace-nowrap" : "text-xs order-2 sm:order-1"} style={{ color: C.muted }}>
             {contentHeight ? `Page ${safePage} of ${totalPages}` : <>
             <span className="hidden sm:inline">Page {safePage} of {totalPages}</span>

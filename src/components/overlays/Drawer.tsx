@@ -63,7 +63,7 @@ export function Drawer({ open, onClose, title, subtitle, size = "md", children, 
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-250 ease-out sm:h-full sm:w-[var(--drawer-width)] ${visible ? "translate-x-0 translate-y-0" : "translate-y-full sm:translate-y-0 sm:translate-x-full"}`}
+        className={`overlay-panel relative flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-250 ease-out sm:h-full sm:w-[var(--drawer-width)] ${visible ? "translate-x-0 translate-y-0" : "translate-y-full sm:translate-y-0 sm:translate-x-full"}`}
         style={{ "--drawer-width": DRAWER_WIDTH[size] } as CSSProperties}
       >
         {/* Header */}
@@ -98,7 +98,7 @@ export function Drawer({ open, onClose, title, subtitle, size = "md", children, 
         </div>
 
         {/* Body */}
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">{children}</div>
+        <div className="overlay-body min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">{children}</div>
 
         {/* Footer */}
         {footer && (

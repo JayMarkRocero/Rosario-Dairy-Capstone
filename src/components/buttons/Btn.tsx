@@ -34,7 +34,7 @@ export function Btn({
 
   return (
     <button
-      className={`inline-flex shrink-0 items-center justify-center gap-2 font-medium tracking-wide rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2
+      className={`app-button inline-flex shrink-0 items-center justify-center gap-2 font-medium tracking-wide rounded-lg transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2
         ${fullWidth ? "w-full sm:w-auto" : ""}
         ${disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer"}
         ${sizeClass} ${variantStyles[variant]}`}

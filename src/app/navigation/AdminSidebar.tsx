@@ -71,7 +71,7 @@ export function AdminSidebar({ active, onChange, onLogout, isOpen, onClose }: Pr
 
       <aside
         className={`
-          flex flex-col h-full flex-shrink-0 z-50
+          app-sidebar flex flex-col h-full min-h-0 flex-shrink-0 z-50
           fixed lg:static inset-y-0 left-0
           transition-transform duration-300 ease-in-out
           ${isOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0
@@ -79,7 +79,7 @@ export function AdminSidebar({ active, onChange, onLogout, isOpen, onClose }: Pr
         style={{ width: 240, backgroundColor: C.sidebar }}
       >
         <div
-          className="flex items-center gap-3 px-5 py-5"
+          className="flex shrink-0 items-center gap-3 px-5 py-5"
           style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}
         >
           <BrandMark size={36} />
@@ -95,7 +95,7 @@ export function AdminSidebar({ active, onChange, onLogout, isOpen, onClose }: Pr
           </div>
         </div>
 
-        <nav className="flex-1 py-3 overflow-y-auto">
+        <nav className="flex-1 min-h-0 py-3 overflow-y-auto">
           {NAV_ITEMS.map(item => {
             const Icon = item.icon;
             const isActive = active === item.id;
@@ -120,7 +120,7 @@ export function AdminSidebar({ active, onChange, onLogout, isOpen, onClose }: Pr
 
         <button
           onClick={onLogout}
-          className="flex items-center gap-3 px-5 py-4 text-sm w-full transition-colors hover:bg-white/10"
+          className="flex shrink-0 items-center gap-3 px-5 py-4 text-sm w-full transition-colors hover:bg-white/10"
           style={{ color: "rgba(255,255,255,0.6)", borderTop: "1px solid rgba(255,255,255,0.1)" }}
         >
           <LogOut size={16} />

@@ -171,7 +171,7 @@ export function AdminCustomers() {
 
   return (
     <div className="records-page viewport-records-page customers-page flex flex-col gap-3 px-4 sm:px-6 pt-2 max-w-[1400px] mx-auto w-full">
-      <div className="flex flex-wrap shrink-0 min-h-10 justify-end items-center gap-2">
+      <div data-mobile-page-actions className="flex flex-wrap shrink-0 min-h-10 justify-end items-center gap-2">
         <ModuleSubheading description="View registered customer profiles, transaction histories, and contact information." />
         <Btn variant="primary" size="sm" icon={<Plus size={13}/>} onClick={()=>{setForm(EMPTY);setAddOpen(true);}}>
           Add Customer

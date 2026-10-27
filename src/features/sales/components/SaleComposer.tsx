@@ -119,7 +119,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
     finally { lock.current = false; setBusy(false); onBusyChange?.(false); }
   };
   const customerFields = <>
-      <div className="flex flex-wrap items-end gap-2"><div className="min-w-0 flex-1"><label className="block text-xs font-medium text-slate-600">Customer {mode !== "order" && "(optional)"}</label><CustomerPicker customers={customers} value={customerId} onChange={setCustomerId} includeWalkIn={mode !== "order"} placeholder="Search customers" className="w-full px-3 py-2.5 rounded-lg"/></div>
+      <div className="flex flex-wrap items-end gap-2"><div className="w-full min-w-0 flex-auto sm:w-auto sm:flex-1"><label className="block text-xs font-medium text-slate-600">Customer {mode !== "order" && "(optional)"}</label><CustomerPicker customers={customers} value={customerId} onChange={setCustomerId} includeWalkIn={mode !== "order"} placeholder="Search customers" className="w-full px-3 py-2.5 rounded-lg"/></div>
         <Btn variant={isCheckout || mode === "order" ? "primary" : "secondary"} size="sm" onClick={() => setNewCustomerOpen(value => !value)}>New customer</Btn>
         {selectedCustomer && <Btn variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>Purchase history</Btn>}
       </div>
@@ -158,7 +158,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   </div>;
   if (loadError) return <QueryErrorMessage error={loadError} onRetry={() => setReload(value => value + 1)}/>;
   if (loading) return <div role="status" aria-label="Loading sales options" className="space-y-3"><Skeleton className="h-10 w-full"/><Skeleton className="h-40 w-full"/></div>;
-  return <div className={isCheckout ? "h-full min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden" : "min-w-0 space-y-4"}>
+  return <div className={isCheckout ? "pos-composer h-full min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden" : "min-w-0 space-y-4"}>
     {isCheckout ? <fieldset disabled={busy} data-pos-workspace className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden disabled:opacity-70 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_auto]">
       <div className="flex shrink-0 gap-2 lg:hidden" role="group" aria-label="POS panels">
         <button type="button" aria-pressed={mobilePane === "products"} onClick={() => setMobilePane("products")} className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${mobilePane === "products" ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600"}`}>Products</button>

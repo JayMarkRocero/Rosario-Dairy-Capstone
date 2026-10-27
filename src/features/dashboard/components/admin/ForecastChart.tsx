@@ -67,7 +67,7 @@ export function ForecastChart() {
         <p className="mt-1 text-xs" style={{ color: C.muted }}>Recorded revenue and SARIMA estimates{data ? ` · As of ${dateLabel(data.as_of)}` : ""}</p>
       </div>
       <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-3 sm:ml-auto sm:w-auto sm:flex-nowrap" role="group" aria-label="Forecast controls">
-        <div className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800" role="group" aria-label="Forecast sales view">
+        <div className="flex max-w-full flex-wrap sm:flex-nowrap shrink-0 items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800" role="group" aria-label="Forecast sales view">
           {views.map(value => <button key={value} type="button" onClick={() => setSelectedView(value)} aria-pressed={selectedView === value}
             className={`whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-all ${selectedView === value
               ? "bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-300"

@@ -344,14 +344,14 @@ export function AdminInventory() {
       {/* Inventory actions */}
       <div className="block shrink-0 min-h-10 md:flex md:items-center md:justify-end md:gap-3">
         <ModuleSubheading description="Track real-time stock levels, monitor batch expirations, and process inventory outflows." />
-        <div className="grid grid-cols-2 gap-2 [&_button]:w-full md:flex md:shrink-0 md:[&_button]:w-auto">
+        <div data-mobile-page-actions className="grid grid-cols-2 gap-2 [&_button]:w-full md:flex md:shrink-0 md:[&_button]:w-auto">
           <InventoryOutflows/>
-          <div>
+          <div data-page-action>
             <Btn variant="primary" size="sm" icon={<PackagePlus size={13}/>} fullWidth onClick={openRestock}>
               Restock
             </Btn>
           </div>
-          <div>
+          <div data-page-action data-page-action-wide>
             <Btn variant="primary" size="sm" icon={<Plus size={13}/>} fullWidth onClick={() => { setForm(EMPTY_FORM); setAddOpen(true); }}>
               Add Product
             </Btn>
