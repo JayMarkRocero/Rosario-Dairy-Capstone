@@ -1,6 +1,7 @@
-import { useEffect, useId, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, X } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
+import { useOverlayFocus } from "./useOverlayFocus";
 
 type DrawerSize = "sm" | "md" | "lg";
 
@@ -24,6 +25,7 @@ export function Drawer({ open, onClose, title, subtitle, size = "md", children, 
   const [rendered, setRendered] = useState(false);
   const [visible,  setVisible]  = useState(false);
   const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -37,11 +39,7 @@ export function Drawer({ open, onClose, title, subtitle, size = "md", children, 
     }
   }, [open]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && open) onClose(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  useOverlayFocus(open && rendered, panelRef, onClose);
 
   if (!rendered) return null;
 
@@ -60,6 +58,8 @@ export function Drawer({ open, onClose, title, subtitle, size = "md", children, 
 
       {/* Drawer panel */}
       <div
+        ref={panelRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

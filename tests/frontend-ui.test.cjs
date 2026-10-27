@@ -35,6 +35,8 @@ const compiled = buildSync({
     export { ProductTable } from './src/features/inventory/components/ProductTable';
     export { Card } from './src/components/data-display/Card';
     export { Modal } from './src/components/overlays/Modal';
+    export { Drawer } from './src/components/overlays/Drawer';
+    export { trapOverlayFocus } from './src/components/overlays/useOverlayFocus';
     export { useAutoPageSize, calculatePageSize, calculateViewportPageSize, calculateFittedPageSize, calculateNaturalPageSize } from './src/hooks/useAutoPageSize';
     export { TableCard, TABLE_CARD_CLASS_NAME } from './src/components/data-display/TableCard';
     export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
@@ -1542,7 +1544,9 @@ test('expired batch actions open details and a confirmation without writing stoc
   assert.equal(requests, 0);
   const mobile = table(tree).props.renderMobileRow(batch);
   assert.equal(elements(mobile, node => !!node.props.label).length, 2);
-  const blocked = elements(column.render({ ...batch, status: 'expired' }), node => !!node.props.label)[1];
+  const expired = elements(column.render({ ...batch, status: 'expired' }), node => !!node.props.label)[1];
+  assert.equal(expired.props.disabled, false);
+  const blocked = elements(column.render({ ...batch, status: 'disposed' }), node => !!node.props.label)[1];
   assert.equal(blocked.props.disabled, true);
   confirm.props.onClose();
   tree = render(ui.ExpiredBatchTable, { extraControls: null });
@@ -2517,21 +2521,94 @@ test('payment controls validate tender, persist only payment fields and prevent 
   complete(); await pending; assert.equal(updated.payment_status, 'paid');
 });
 
-test('Escape dismisses only the topmost nested modal without altering its visual classes', () => {
-  const originalDocument = global.document;
-  let closed = 0;
+function focusDocument() {
+  const doc = new EventTarget();
+  doc.defaultView = { getComputedStyle: element => ({ visibility: element.visible ? 'visible' : 'hidden', display: 'block' }) };
+  const node = (options = {}) => ({
+    ownerDocument: doc, isConnected: true, visible: true, disabled: false, tabIndex: 0, children: [], ...options,
+    matches() { return this.disabled; }, closest() { return this.hidden ? this : null; },
+    getClientRects() { return this.visible ? [{}] : []; },
+    contains(other) { return this === other || this.children.some(child => child.contains(other)); },
+    querySelectorAll() { return this.children.flatMap(child => [child, ...child.querySelectorAll()]); },
+    focus(options) { if (!this.disabled && this.isConnected) { this.focusOptions = options; doc.activeElement = this; doc.dispatchEvent(new Event('focusin')); } },
+  });
+  const opener = node(); doc.activeElement = opener;
+  const key = (value, shiftKey = false) => {
+    const event = new Event('keydown', { cancelable: true });
+    Object.defineProperties(event, { key: { value }, shiftKey: { value: shiftKey } });
+    doc.dispatchEvent(event); return event;
+  };
+  return { doc, node, opener, key };
+}
+
+test('overlay keyboard trapping excludes hidden and disabled controls and restores the opener without scrolling', () => {
+  const { doc, node, opener, key } = focusDocument();
+  const first = node(), last = node();
+  const panel = node({ tabIndex: -1, children: [node({ disabled: true }), node({ hidden: true }), first, node({ visible: false }), last] });
+  const cleanup = ui.trapOverlayFocus(panel, () => {});
   try {
-    const ownDialog = {}, nestedDialog = {};
-    let dialogs = [ownDialog, nestedDialog];
-    global.document = { querySelectorAll: () => dialogs };
-    render(ui.Modal, { open: true, title: 'Parent', children: null, onClose: () => closed++ });
-    refs[0].current = ownDialog;
+    assert.equal(doc.activeElement, first);
+    assert.equal(key('Tab', true).defaultPrevented, true); assert.equal(doc.activeElement, last);
+    assert.equal(key('Tab').defaultPrevented, true); assert.equal(doc.activeElement, first);
+    opener.focus(); assert.equal(doc.activeElement, first, 'Programmatic focus cannot escape an open overlay');
+  } finally { cleanup(); }
+  assert.equal(doc.activeElement, opener);
+  assert.deepEqual(opener.focusOptions, { preventScroll: true });
+});
+
+test('Escape closes only the topmost modal or drawer and respects a busy child', () => {
+  const { doc, node, opener, key } = focusDocument();
+  const parentButton = node(), childButton = node();
+  let parentClosed = 0, childClosed = 0, busy = true;
+  const releaseParent = ui.trapOverlayFocus(node({ children: [parentButton] }), () => parentClosed++);
+  const releaseChild = ui.trapOverlayFocus(node({ children: [childButton] }), () => childClosed++, () => !busy);
+  try {
+    key('Escape'); assert.equal(childClosed, 0); assert.equal(parentClosed, 0);
+    busy = false; key('Escape'); assert.equal(childClosed, 1); assert.equal(parentClosed, 0);
+    releaseChild(); assert.equal(doc.activeElement, parentButton);
+    key('Escape'); assert.equal(parentClosed, 1);
+  } finally { releaseChild(); releaseParent(); }
+  assert.equal(doc.activeElement, opener);
+});
+
+test('empty overlays retain keyboard focus and a child can restore focus after its parent unmounts', () => {
+  const { doc, node, opener, key } = focusDocument();
+  const parentButton = node();
+  const releaseParent = ui.trapOverlayFocus(node({ children: [parentButton] }), () => {});
+  const child = node({ tabIndex: -1 });
+  const releaseChild = ui.trapOverlayFocus(child, () => {});
+  try {
+    assert.equal(doc.activeElement, child);
+    assert.equal(key('Tab').defaultPrevented, true); assert.equal(doc.activeElement, child);
+    releaseParent(); parentButton.isConnected = false;
+    assert.equal(doc.activeElement, child);
+  } finally { releaseChild(); releaseParent(); }
+  assert.equal(doc.activeElement, opener);
+});
+
+test('both shared overlay components attach focus handling and expose named close controls', () => {
+  for (const Component of [ui.Modal, ui.Drawer]) {
+    states = [true, true]; refs = []; effects = [];
+    const { doc, node, opener, key } = focusDocument();
+    const control = node(), panel = node({ tabIndex: -1, children: [control] });
+    let closed = 0;
+    const props = { open: true, title: 'Details', children: null, onClose: () => closed++ };
+    const tree = render(Component, props);
+    const dialog = elements(tree, element => element.props.role === 'dialog')[0];
+    assert.equal(dialog.props.tabIndex, -1);
+    assert.ok(elements(tree, element => element.type === 'button' && element.props['aria-label']).length > 0);
+    dialog.ref.current = panel;
     const cleanup = effects[1]();
-    const escape = new Event('keydown'); Object.defineProperty(escape, 'key', { value: 'Escape' });
-    window.dispatchEvent(escape); assert.equal(closed, 0);
-    dialogs = [ownDialog]; window.dispatchEvent(escape); assert.equal(closed, 1);
-    cleanup?.();
-  } finally { global.document = originalDocument; }
+    try {
+      assert.equal(doc.activeElement, control);
+      if (Component === ui.Modal) {
+        render(Component, { ...props, busy: true }); key('Escape'); assert.equal(closed, 0);
+        render(Component, props);
+      }
+      key('Escape'); assert.equal(closed, 1);
+    } finally { cleanup(); }
+    assert.equal(doc.activeElement, opener);
+  }
 });
 
 test('staff sales and recent orders keep persistent retry states on failed initial requests', async () => {
@@ -3256,4 +3333,49 @@ test('the global render boundary retains healthy children and offers safe recove
   assert.ok(empty); assert.ok(!JSON.stringify(empty.props).includes('Sensitive internal stack'));
   elements(empty.props.action, node => node.props.children === 'Try again')[0].props.onClick();
   assert.equal(boundary.render(), content);
+});
+
+test('expired-status disposal is enabled on desktop and mobile while staff table actions stay read-only', () => {
+  const batch = { id: 7, itemId: 1, key: 'product-7', kind: 'product', name: 'Milk', batch: 'EX-7',
+    quantity: 5, unit: 'L', expiry: '2000-01-01', status: 'expired', dateReceived: '2000-01-01', unitCost: null };
+  const item = { id: 1, name: 'Milk', cat: 'Dairy', stock: 5, expiry: batch.expiry, low: false, expiredBatch: batch };
+  const props = { data: [item], columns: [{ key: 'name', header: 'Product' }, { key: 'actions', header: 'Actions' }],
+    renderMobileRow: () => null };
+  const table = elements(render(ui.ProductTable, props), node => Array.isArray(node.props.columns))[0];
+  const actions = elements(table.props.columns.at(-1).render(item), node => !!node.props.label);
+  assert.equal(actions[2].props.disabled, false);
+  assert.equal(table.props.renderMobileRow(item).props.deleteDisabled, false);
+  actions[2].props.onClick();
+  assert.equal(elements(render(ui.ProductTable, props), node => node.props.title === 'Dispose expired batch?')[0].props.open, true);
+  const readOnly = elements(render(ui.ProductTable, { ...props, readOnly: true }), node => Array.isArray(node.props.columns))[0];
+  const staffActions = elements(readOnly.props.columns.at(-1).render(item), node => !!node.props.label);
+  assert.deepEqual(staffActions.map(action => action.props.label), ['View details']);
+});
+
+test('customer history does not display the encoder as an unknown original cashier', () => {
+  const customer = { id: 9, name: 'Customer' };
+  const transaction = { id: 11, transaction_number: 'SI-11', created_at: '2026-10-01T00:00:00Z',
+    total_amount: '10.00', payment_method: 'cash', payment_status: 'paid', recorded_cashier: null,
+    is_manually_encoded: true, handled_by: { id: 7, username: 'ENTRY-OWNER' } };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:customers:history:9:1:false`, { count: 1, results: [transaction] }, ['customers', 'sales']);
+  const content = JSON.stringify(render(ui.CustomerHistory, { customer, onClose() {} }));
+  assert.ok(content.includes('Not recorded'));
+  assert.ok(!content.includes('ENTRY-OWNER'));
+});
+
+test('expired status cannot be used for promotional outflows even when its expiry date is not past', async () => {
+  const batch = { id: 1, key: 'product-1', kind: 'product', name: 'Milk', batch: 'B1', stock: 2,
+    unit: 'L', cost: '0.00', expiry: '2099-01-01', status: 'expired' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:outflow-batches`, [batch], ['inventory']);
+  elements(render(ui.InventoryOutflows), node => node.props.children === 'Stock outflows')[0].props.onClick();
+  const field = label => elements(render(ui.InventoryOutflows), node => node.props['aria-label'] === label)[0];
+  field('Outflow batch').props.onChange({ target: { value: batch.key } });
+  field('Outflow quantity').props.onChange({ target: { value: '1' } });
+  for (const reason of ['complimentary', 'free_taste']) {
+    field('Outflow reason').props.onChange({ target: { value: reason } });
+    let requests = 0; ui.http.defaults.adapter = async () => { requests++; throw new Error('Must not submit'); };
+    await elements(render(ui.InventoryOutflows), node => node.props.children === 'Record and deduct stock')[0].props.onClick();
+    assert.equal(requests, 0);
+    assert.match(toastErrors.at(-1)[0], /Expired stock/);
+  }
 });

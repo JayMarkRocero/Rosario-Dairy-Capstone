@@ -213,7 +213,7 @@ axiosInstance.interceptors.response.use(
       else if (path.startsWith("/sales/customers/")) invalidateDataCache(["customers", "reports"]);
       else if (path === "/accounts/user/") invalidateDataCache(["users", "sales", "orders", "dashboard"]);
       else if (path.startsWith("/accounts/users/") || ["/accounts/register/", "/accounts/admin-reset-password/"].includes(path)) invalidateDataCache(["users"]);
-      else if (path.startsWith("/settings/")) invalidateDataCache(["settings", "inventory", "dashboard", "reports"]);
+      else if (path.startsWith("/settings/") && !path.startsWith("/settings/inbox/")) invalidateDataCache(["settings", "inventory", "dashboard", "reports"]);
       if (typeof window !== "undefined" && (path.startsWith("/sales/encoding/") || path.startsWith("/inventory/stock-adjustments/"))) window.dispatchEvent(new Event(INVENTORY_UPDATED));
     }
     return response;
@@ -529,6 +529,7 @@ export interface DjangoTransactionItem {
 }
 
 export interface DjangoTransaction {
+  recorded_cashier?: DjangoUserSummary | null;
   transaction_number?: string | null;
   transaction_date?: string | null;
   is_manually_encoded?: boolean;
@@ -551,6 +552,9 @@ export interface DjangoTransaction {
   payment_method: string;
   delivery_status: string | null;
   is_voided?: boolean;
+  voided_at?: string | null;
+  voided_by?: number | null;
+  void_reason?: string;
   items: DjangoTransactionItem[];
   created_at: string;
   source_reference?: string | null;

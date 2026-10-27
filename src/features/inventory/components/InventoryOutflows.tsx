@@ -38,7 +38,7 @@ export function InventoryOutflows() {
       if (!batch) throw new Error("Select an available batch.");
       const parsedQty = decimalUnits(quantity, "Quantity"); decimalUnits(cost, "Unit cost");
       if (parsedQty <= 0n || Number(quantity) > batch.stock) throw new Error("Quantity must be positive and no greater than the batch's remaining stock.");
-      if ((type === "complimentary" || type === "free_taste") && batch.expiry < businessDate()) throw new Error("Expired stock cannot be used for complimentary items or free tastings.");
+      if ((type === "complimentary" || type === "free_taste") && (batch.status === "expired" || batch.expiry < businessDate())) throw new Error("Expired stock cannot be used for complimentary items or free tastings.");
       lock.current = true; setBusy(true);
       await outflowsService.create({ [batch.kind === "product" ? "product_batch_id" : "ingredient_batch_id"]: batch.id, adjustment_type: type, quantity, unit_cost: cost, reason: notes.trim() });
       setQuantity(""); setKey(""); setCost(""); setNotes(""); setTab("history"); setPage(1);

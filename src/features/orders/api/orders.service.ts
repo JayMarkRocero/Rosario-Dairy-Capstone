@@ -2,6 +2,7 @@ import { businessDate, normalizeSaleItems } from "@/features/sales/utils/manualP
 import { reportsService } from "@/features/reports/api/reports.service";
 import http, { ApiError, getAllPages, type PaginatedResponse, type DjangoTransaction } from "@/lib/api";
 import { submitSaleOnce } from "@/lib/saleSubmission";
+import { recordedCashierName } from "@/features/sales/api/sales.service";
 import type { CreateOrderPayload, Order, OrderListLine, OrderListResponse, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
 
 function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
@@ -64,7 +65,7 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
     customerPhone: o.customer.contact_number ?? "",
     customerEmail: o.customer.email ?? "",
     status: toDisplayStatus(o.status),
-    staff: transaction?.source_reference ? "Not recorded" : o.handled_by.username,
+    staff: recordedCashierName(transaction ?? {}, o.handled_by),
     staffId: transaction?.source_reference ? null : o.handled_by.id,
     date: transaction?.transaction_date || (Number.isFinite(new Date(o.created_at).getTime()) ? businessDate(new Date(o.created_at)) : ""),
     total: amount(transaction?.total_amount),

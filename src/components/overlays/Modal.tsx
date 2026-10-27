@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { X } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
+import { useOverlayFocus } from "./useOverlayFocus";
 
 type Size = "sm" | "md" | "lg" | "xl" | "full";
 
@@ -41,17 +42,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
     }
   }, [open]);
 
-  // Close on ESC
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !open || busy) return;
-      const dialogs = typeof document !== "undefined" ? document.querySelectorAll?.('[data-modal-open="true"]') : null;
-      if (dialogs?.length && dialogs[dialogs.length - 1] !== dialogRef.current) return;
-      onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose, busy]);
+  useOverlayFocus(open && rendered, dialogRef, onClose, busy);
 
   if (!rendered) return null;
 
@@ -74,6 +65,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
       {/* Panel */}
       <div
         ref={dialogRef}
+        tabIndex={-1}
         data-modal-open={open ? "true" : "false"}
         role="dialog"
         aria-modal="true"
@@ -102,6 +94,8 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
           </div>
           {!hideClose && (
             <button
+              type="button"
+              aria-label="Close dialog"
               onClick={onClose}
               disabled={busy}
               className="ml-4 w-8 h-8 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors flex-shrink-0"

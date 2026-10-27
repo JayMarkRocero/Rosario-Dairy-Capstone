@@ -22,6 +22,7 @@ import http, {
 import type { InventoryItem, FEFOItem, Category } from "@/features/inventory/types/inventory";
 import { normalizeCategoryIcon, type CategoryIconKey } from "@/features/inventory/utils/categoryIcons";
 import { daysUntilExpiry, isExpiredProduct } from "@/features/inventory/utils/expiry";
+import { isExpiredStockBatch } from "@/features/inventory/utils/batchEligibility";
 import { isLowStock } from "@/features/inventory/utils/stock";
 import { settingsService, type InventorySettings } from "@/features/settings/api/settings.service";
 
@@ -35,6 +36,11 @@ export interface ExpiredInventoryBatch {
   dateReceived: string; grade: string | null; notes: string | null;
   key: string; kind: 'product' | 'ingredient'; name: string; category: string;
   batch: string; quantity: number; unit: string; expiry: string;
+}
+
+export function canDisposeExpiredBatch(batch: ExpiredInventoryBatch): boolean {
+  return isExpiredStockBatch({ status: batch.status, remaining_quantity: batch.quantity,
+    expiration_date: batch.expiry, date_received: batch.dateReceived });
 }
 
 // Explicit writable fields also keep legacy runtime callers from forwarding
@@ -57,17 +63,15 @@ function fefoStatus(days: number, settings?: InventorySettings, expiryStatus?: D
 }
 
 export const inventoryService = {
-  getExpiredBatches: async (staffVisibleOnly = false, allowPartial = false): Promise<ExpiredInventoryBatch[]> => {
+  getExpiredBatches: async (staffVisibleOnly = false, allowPartial = false, productBatches?: Promise<DjangoProductBatch[]>): Promise<ExpiredInventoryBatch[]> => {
     const feeds = await Promise.allSettled([
-      http.get<DjangoProductBatch[]>('/inventory/product-batches/'),
+      productBatches ? productBatches.then(data => ({ data })) : http.get<DjangoProductBatch[]>('/inventory/product-batches/'),
       http.get<DjangoIngredientBatch[]>('/inventory/ingredient-batches/'),
     ]);
     if (!allowPartial) for (const feed of feeds) if (feed.status === 'rejected') throw feed.reason;
     const products = feeds[0].status === 'fulfilled' ? feeds[0].value : { data: [] };
     const ingredients = feeds[1].status === 'fulfilled' ? feeds[1].value : { data: [] };
-    const hasExpiredStock = (batch: DjangoProductBatch | DjangoIngredientBatch) =>
-      (batch.status === 'available' || batch.status === 'expired') && Number(batch.remaining_quantity) > 0
-      && isExpiredProduct({ expiry: batch.expiration_date });
+    const hasExpiredStock = (batch: DjangoProductBatch | DjangoIngredientBatch) => isExpiredStockBatch(batch);
     return [
       ...products.data.filter(batch => hasExpiredStock(batch) && (!staffVisibleOnly ||
         batch.product.is_active && batch.product.category.is_active && batch.product.category.is_visible_to_staff))
@@ -84,8 +88,10 @@ export const inventoryService = {
     ].sort((a, b) => a.expiry.localeCompare(b.expiry));
   },
   getCatalogOverview: async (staff = false): Promise<InventoryItem[]> => {
+    // Share this request only within this load; later refreshes still read fresh batches.
+    const productBatches = http.get<DjangoProductBatch[]>('/inventory/product-batches/').then(({ data }) => data);
     const [products, batches] = await Promise.all([
-      inventoryService.getOverview(staff), inventoryService.getExpiredBatches(staff),
+      inventoryService.getOverview(staff, productBatches), inventoryService.getExpiredBatches(staff, false, productBatches),
     ]);
     // Keep the sellable catalog/POS mapping separate from expired batch stock.
     const rows = products.map(item => item.stock <= 0 && batches.some(batch => batch.kind === 'product' && batch.itemId === item.id)
@@ -95,7 +101,7 @@ export const inventoryService = {
       inventoryValue: batch.unitCost == null ? null : Number(batch.unitCost) * batch.quantity, stock: batch.quantity, expiry: batch.expiry, unit: batch.unit,
       low: false, expiredBatch: batch,
     }))].sort((a, b) => {
-      const aExpired = isExpiredProduct(a), bExpired = isExpiredProduct(b);
+      const aExpired = !!a.expiredBatch || isExpiredProduct(a), bExpired = !!b.expiredBatch || isExpiredProduct(b);
       if (aExpired !== bExpired) return aExpired ? -1 : 1;
       return (a.expiry || '9999').localeCompare(b.expiry || '9999');
     });
@@ -103,9 +109,9 @@ export const inventoryService = {
   disposeExpiredBatch: async (item: ExpiredInventoryBatch): Promise<void> => {
     const route = item.kind === 'product' ? 'product-batches' : 'ingredient-batches';
     const { data: batch } = await http.get<DjangoProductBatch | DjangoIngredientBatch>(`/inventory/${route}/${item.id}/`);
-    if (!isExpiredProduct({ expiry: batch.expiration_date }) || batch.status !== 'available') {
+    if (!isExpiredStockBatch(batch)) {
       invalidateDataCache(['inventory']);
-      throw new Error('This batch cannot be disposed through the current stock adjustment API. Refresh the inventory and check its status.');
+      throw new Error('Only received, expired batches with remaining stock can be disposed. Refresh the inventory and check its status.');
     }
     const quantity = Number(batch.remaining_quantity);
     if (!Number.isFinite(quantity) || quantity <= 0 || quantity !== item.quantity) {
@@ -123,10 +129,10 @@ export const inventoryService = {
     });
     window.dispatchEvent(new Event(REPORTS_UPDATED));
   },
-  getAll: async (staffVisibleOnly = false): Promise<InventoryItem[]> => fetchDataCache(`${dataCacheEpoch()}:inventory:products:${staffVisibleOnly}`, async () => {
+  getAll: async (staffVisibleOnly = false, productBatches?: Promise<DjangoProductBatch[]>): Promise<InventoryItem[]> => fetchDataCache(`${dataCacheEpoch()}:inventory:products:${staffVisibleOnly}`, async () => {
   const [productsResponse, batchesResponse] = await Promise.all([
     http.get<DjangoProduct[]>("/inventory/products/"),
-    http.get<DjangoProductBatch[]>("/inventory/product-batches/"),
+    productBatches ? productBatches.then(data => ({ data })) : http.get<DjangoProductBatch[]>("/inventory/product-batches/"),
   ]);
   const allProducts = productsResponse.data;
   const batches = batchesResponse.data;
@@ -164,9 +170,9 @@ export const inventoryService = {
 
   // Admin inventory uses saved windows independently of notification switches.
   // Staff can only classify expiry warnings supplied by their permitted alert feed.
-  getOverview: async (staffVisibleOnly = false): Promise<InventoryItem[]> => {
+  getOverview: async (staffVisibleOnly = false, productBatches?: Promise<DjangoProductBatch[]>): Promise<InventoryItem[]> => {
     const [items, config] = await Promise.all([
-      inventoryService.getAll(staffVisibleOnly),
+      inventoryService.getAll(staffVisibleOnly, productBatches),
       staffVisibleOnly ? inventoryService.getExpiringProducts() : settingsService.getInventory(),
     ]);
     return items.map(item => {

@@ -4,8 +4,8 @@ import { isLowStock } from "./stock";
 
 export function getInventoryWarnings(item: InventoryItem, now = new Date()) {
   const daysLeft = daysUntilExpiry(item.expiry, now);
-  const expired = daysLeft !== null && daysLeft < 0;
-  const nearExpiry = daysLeft !== null && daysLeft >= 0 && (item.nearExpiryThreshold != null
+  const expired = item.expiredBatch?.status === "expired" || daysLeft !== null && daysLeft < 0;
+  const nearExpiry = !expired && daysLeft !== null && daysLeft >= 0 && (item.nearExpiryThreshold != null
     ? daysLeft <= item.nearExpiryThreshold : item.expiryStatus === "critical" || item.expiryStatus === "near_expiry");
   const threshold = item.reorderThreshold;
   const lowStock = threshold != null ? isLowStock(item.stock, threshold) : item.low;
@@ -17,5 +17,5 @@ export function getInventoryWarnings(item: InventoryItem, now = new Date()) {
   const dualMessage = `Low Stock (${item.stock} remaining) & Near Expiry (${daysLeft} days left).`;
   return { expired, nearExpiry, lowStock, daysLeft, status,
     stockMessage: lowStock && nearExpiry ? dualMessage : lowMessage,
-    expiryMessage: expired ? `Product batch expired on ${item.expiry}.` : lowStock && nearExpiry ? dualMessage : nearMessage };
+    expiryMessage: expired ? daysLeft !== null && daysLeft >= 0 ? "Batch is marked as expired and must not be sold." : `Product batch expired on ${item.expiry}.` : lowStock && nearExpiry ? dualMessage : nearMessage };
 }

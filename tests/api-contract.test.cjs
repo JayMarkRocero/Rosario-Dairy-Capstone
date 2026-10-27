@@ -1390,8 +1390,8 @@ test('expired batch disposal writes off the full authoritative quantity with the
 
 test('disposal rejects changed stock, nonexpired dates, blocked status and failed writes', async () => {
   const base = { status: 'available', expiration_date: '2000-01-01', remaining_quantity: '5', unit_price: '12.34', batch_number: 'EX-01' };
-  for (const change of [{ remaining_quantity: '4' }, { status: 'expired' }, { status: 'disposed' },
-    { expiration_date: '2099-01-01' }, { unit_price: '-1' }, { remaining_quantity: '0' }]) {
+  for (const change of [{ remaining_quantity: '4' }, { status: 'depleted' }, { status: 'disposed' },
+    { expiration_date: '2099-01-01' }, { date_received: '2099-01-01' }, { unit_price: '-1' }, { remaining_quantity: '0' }]) {
     calls = [];
     api.http.defaults.adapter = async config => { calls.push(config); return { status: 200, config, headers: {}, data: { ...base, ...change } }; };
     await assert.rejects(api.inventoryService.disposeExpiredBatch({ id: 7, kind: 'product', quantity: 5 }));
@@ -1926,13 +1926,13 @@ test('blocked storage retains outflow guards in memory across component remounts
   } finally { global.localStorage = originalStorage; }
 });
 
-test('expired batch disposal accepts null or zero costs and preserves existing positive costs', async () => {
+test('expired batch disposal accepts available or expired status and null, zero or positive costs', async () => {
   const costs = [null, '0.00', '4.25'];
-  for (const kind of ['product', 'ingredient']) for (const unit_price of costs) {
+  for (const kind of ['product', 'ingredient']) for (const status of ['available', 'expired']) for (const unit_price of costs) {
     let submitted;
     api.http.defaults.adapter = async config => {
       if (config.method === 'post') submitted = JSON.parse(config.data);
-      return { status: 200, config, headers: {}, data: { [kind]: { unit_price: null }, status: 'available', expiration_date: '2000-01-01', remaining_quantity: '2', unit_price, batch_number: 'B1' } };
+      return { status: 200, config, headers: {}, data: { [kind]: { unit_price: null }, status, expiration_date: '2000-01-01', remaining_quantity: '2', unit_price, batch_number: 'B1' } };
     };
     await api.inventoryService.disposeExpiredBatch({ id: 1, kind, quantity: 2 });
     assert.equal(submitted.unit_cost, unit_price ?? '0.00');
@@ -1948,4 +1948,90 @@ test('user mapping retains separate multi-word first and last names for edit pay
   await api.userService.updateUser(8, { username: user.username, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName });
   assert.equal(JSON.parse(calls.at(-1).data).first_name, 'Juan Miguel');
   assert.equal(JSON.parse(calls.at(-1).data).last_name, 'Dela Cruz');
+});
+
+test('recorded cashier takes precedence and unknown historical cashiers never fall back to the entry owner', () => {
+  const base = { id: 1, handled_by: { id: 7, username: 'entry-owner' }, created_at: '2026-10-01T00:00:00Z',
+    total_amount: '10.00', payment_method: 'cash', items: [] };
+  assert.equal(api.toSale({ ...base, recorded_cashier: { id: 8, username: 'original-cashier' } }).cashier, 'original-cashier');
+  for (const fields of [{ recorded_cashier: null }, { recorded_cashier: null, is_manually_encoded: true },
+    { recorded_cashier: null, source_reference: 'imported' }, { source_reference: 'legacy-import' },
+    { is_manually_encoded: true }, { encoded_at: '2026-10-02T00:00:00Z' }]) {
+    const sale = api.toSale({ ...base, ...fields });
+    assert.equal(sale.cashier, 'Not recorded');
+    assert.equal(api.receiptDetails(sale).fields.find(([label]) => label === 'Cashier')[1], 'Not recorded');
+  }
+  assert.equal(api.toSale(base).cashier, 'entry-owner', 'Legacy live receipts retain their known handler');
+});
+
+test('inbox read, dismiss and restore preserve business caches while actual settings saves invalidate them', async () => {
+  api.setAccessToken(null); api.setRefreshToken(null);
+  const groups = ['settings', 'inventory', 'dashboard', 'reports'];
+  for (const group of groups) await api.fetchDataCache(`ack-test:${group}`, async () => [1], [group]);
+  for (const action of ['read', 'dismiss', 'restore']) {
+    await api.notificationsService.update(action, [{ id: 'server-alert', revision: 'a'.repeat(64) }]);
+    assert.equal(calls.at(-1).url, '/settings/inbox/');
+    assert.deepEqual(JSON.parse(calls.at(-1).data), { action, notifications: [{ id: 'server-alert', revision: 'a'.repeat(64) }] });
+    for (const group of groups) assert.ok(api.readDataCache(`ack-test:${group}`).updatedAt > 0, `${action} keeps ${group} fresh`);
+  }
+  await api.settingsService.updateInventory({ low_stock_threshold: 0 });
+  for (const group of groups) assert.equal(api.readDataCache(`ack-test:${group}`).updatedAt, 0);
+});
+
+test('order cashier display uses recorded identity without changing staff ownership scoping', () => {
+  const order = { id: 1, status: 'fulfilled', created_at: '2026-10-01T00:00:00Z', items: [],
+    customer: { id: 1, name: 'Customer' }, handled_by: { id: 7, username: 'entry-owner' },
+    transaction: { recorded_cashier: { id: 8, username: 'recorded-cashier' } } };
+  assert.equal(api.mapOrder(order).staff, 'recorded-cashier');
+  assert.equal(api.mapOrder(order).staffId, 7, 'Staff filtering continues to use the order processor ID');
+  assert.equal(api.mapOrder({ ...order, transaction: { recorded_cashier: null, is_manually_encoded: true } }).staff, 'Not recorded');
+});
+
+test('catalog shares one product-batch request per load and reads fresh batches after invalidation', async () => {
+  const product = { id: 1, name: 'Milk', unit: 'L', is_active: true, total_stock: '10.00', low_stock_threshold: 2,
+    category: { id: 1, name: 'Dairy', is_active: true, is_visible_to_staff: true } };
+  const batch = { id: 7, product, batch_number: 'B7', status: 'available', remaining_quantity: '10.00',
+    initial_quantity: '10.00', expiration_date: '2099-01-01', date_received: api.businessDate(), unit_price: null };
+  let batchRequests = 0;
+  api.http.defaults.adapter = async config => {
+    let data;
+    if (config.url === '/inventory/products/') data = [product];
+    else if (config.url === '/inventory/product-batches/') { batchRequests++; data = [batch]; }
+    else if (config.url === '/inventory/ingredient-batches/') data = [];
+    else if (config.url === '/settings/inventory/') data = { near_expiry_threshold: 7, critical_expiry_threshold: 3 };
+    else throw new Error(`Unexpected request: ${config.url}`);
+    return { status: 200, config, headers: {}, data };
+  };
+  assert.equal((await api.inventoryService.getCatalogOverview())[0].stock, 10);
+  assert.equal(batchRequests, 1);
+  product.total_stock = batch.remaining_quantity = '2.00';
+  api.invalidateDataCache(['inventory']);
+  assert.equal((await api.inventoryService.getCatalogOverview())[0].stock, 2);
+  assert.equal(batchRequests, 2);
+  const successfulAdapter = api.http.defaults.adapter;
+  api.http.defaults.adapter = config => config.url === '/inventory/product-batches/'
+    ? Promise.reject(new Error('Batch feed offline')) : successfulAdapter(config);
+  api.invalidateDataCache(['inventory']);
+  await assert.rejects(api.inventoryService.getCatalogOverview(), /Batch feed offline/);
+  api.http.defaults.adapter = successfulAdapter;
+  assert.equal((await api.inventoryService.getCatalogOverview())[0].stock, 2);
+  assert.equal(batchRequests, 3, 'A failed batch load can be retried without a stuck shared request');
+});
+
+test('expired outflow choices include stocked expired batches, excluding disposed, empty and future receipts', async () => {
+  const product = { id: 1, name: 'Milk', unit: 'L', is_active: true, total_stock: '0', low_stock_threshold: 2,
+    category: { id: 1, name: 'Dairy', is_active: true, is_visible_to_staff: true } };
+  const batch = { product, id: 1, batch_number: 'EX', status: 'expired', remaining_quantity: '2', initial_quantity: '2',
+    expiration_date: '2000-01-01', date_received: '2000-01-01', unit_price: null };
+  api.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data:
+    config.url === '/inventory/product-batches/' ? [batch, { ...batch, id: 2, status: 'disposed' },
+      { ...batch, id: 3, remaining_quantity: '0' }, { ...batch, id: 4, date_received: '2099-01-01' }] :
+    config.url === '/inventory/products/' ? [product] : [] });
+  const choices = await api.outflowsService.batches();
+  assert.deepEqual(choices.map(item => [item.id, item.status]), [[1, 'expired']]);
+  assert.equal(api.canDisposeExpiredBatch({ status: 'expired', quantity: 2, expiry: '2000-01-01', dateReceived: '2000-01-01' }), true);
+  const warning = api.getInventoryWarnings({ expiry: '2099-01-01', stock: 2, low: false, expiredBatch: { status: 'expired' } });
+  assert.equal(warning.status, 'Expired'); assert.equal(warning.nearExpiry, false);
+  assert.deepEqual((await api.inventoryService.getExpiredBatches()).map(item => item.id), [1]);
+  assert.equal((await api.inventoryService.getAll(true))[0].stock, 0, 'Disposal eligibility never makes expired stock sellable');
 });

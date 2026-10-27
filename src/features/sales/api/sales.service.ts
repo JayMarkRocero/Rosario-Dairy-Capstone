@@ -31,11 +31,20 @@ function manilaDate(timestamp: string): string {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
+export function recordedCashierName(
+  transaction: Pick<DjangoTransaction, "recorded_cashier" | "source_reference" | "is_manually_encoded" | "encoded_at">,
+  handler?: { username: string },
+): string {
+  if (transaction.recorded_cashier !== undefined) return transaction.recorded_cashier?.username || "Not recorded";
+  if (transaction.source_reference || transaction.is_manually_encoded || transaction.encoded_at) return "Not recorded";
+  return handler?.username || "Not recorded";
+}
+
 export function toSale(t: DjangoTransaction): Sale {
   return {
     receipt: (t.transaction_number ?? t.source_invoice_number) || "Not recorded",
     customer: transactionCustomerName(t),
-    cashier: t.source_reference ? "Not recorded" : t.handled_by.username,
+    cashier: recordedCashierName(t, t.handled_by),
     date: manilaDate(t.created_at),
     payment: toDisplayPayment(t.payment_method),
     total: parseFloat(t.total_amount),

@@ -1,6 +1,5 @@
 export type ReportType = "daily_sales" | "weekly_sales" | "monthly_sales" | "inventory" | "sarima_forecast" | "customer";
 export type ReportPeriod = "weekly" | "monthly" | "yearly";
-export type ReportScalar = string | number | boolean | null;
 
 export interface ReportDateRange {
   start_date: string;

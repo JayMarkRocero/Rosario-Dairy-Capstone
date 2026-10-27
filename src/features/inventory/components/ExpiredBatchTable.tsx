@@ -1,7 +1,7 @@
 import { BatchDetailsFields } from "./BatchDetailsFields";
 import { EnhancedTable, type Column } from '@/components/data-display/EnhancedTable';
 import { useCachedQuery } from '@/hooks/useCachedQuery';
-import { inventoryService, type ExpiredInventoryBatch } from '@/features/inventory/api/inventory.service';
+import { canDisposeExpiredBatch, inventoryService, type ExpiredInventoryBatch } from '@/features/inventory/api/inventory.service';
 import { useRef, useState, type ReactNode } from 'react';
 import { Box, Eye, Trash2 } from 'lucide-react';
 import { ActionButton } from '@/components/buttons/ActionButton';
@@ -43,8 +43,8 @@ export function ExpiredBatchTable({ staff = false, category = 'All', extraContro
     }
   };
   const actions = (item: ExpiredInventoryBatch, mobile = false) => {
-    const blocked = item.status !== 'available';
-    const restriction = 'The current stock adjustment API does not allow disposal of batches already marked expired.';
+    const blocked = !canDisposeExpiredBatch(item);
+    const restriction = 'Only received, expired batches with remaining stock can be disposed.';
     return <div className={mobile ? 'flex items-center gap-2 pt-2' : 'flex items-center justify-center gap-2'} onClick={event => event.stopPropagation()}>
       <ActionButton label={`View batch details: ${item.batch}`} onClick={() => setDetails(item)} disabled={saving} className={mobile ? 'h-11 w-11' : ''}><Eye size={13} /></ActionButton>
       <span title={blocked ? restriction : undefined}>
