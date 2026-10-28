@@ -37,7 +37,7 @@ export function ReportDateRangeControl({ range, onApply, disabled = false }: Pro
       setOpen(true);
     }}>{range ? "Custom dates" : "Date range"}</Btn>
     <OverlayPortal><Modal open={open} busy={disabled} onClose={() => { if (!disabled) setOpen(false); }} title="Report date range" size="sm"
-      subtitle="Choose an inclusive sales period for sales and customer reports."
+      subtitle="Choose an inclusive date range for all six reports."
       footer={<>
         <Btn variant="secondary" disabled={disabled} onClick={() => {
           onApply(undefined); setDraft({ start_date: "", end_date: "" }); setError(""); setOpen(false);
@@ -54,7 +54,7 @@ export function ReportDateRangeControl({ range, onApply, disabled = false }: Pro
               onChange={event => { setDraft(current => ({ ...current, [key]: event.target.value })); setError(""); }} />
           </label>)}
         </fieldset>
-        <p id="report-date-help" className="text-xs leading-relaxed text-slate-500">Dates use Asia/Manila time. Inventory always shows today's ledger; forecasts keep their existing period. Report defaults use today, the last seven days, or the current month, depending on the report.</p>
+        <p id="report-date-help" className="text-xs leading-relaxed text-slate-500">Dates use Asia/Manila time and apply to all reports. Inventory movements use the selected period; stock health remains current as of its timestamp. Forecasts show available overlapping predictions at their full period value, without prorating or fitting a new model. Use report defaults to restore each report's usual period.</p>
         {range && <p className="text-xs text-slate-500">Applied: {range.start_date} to {range.end_date}</p>}
         {error && <p id="report-date-error" role="alert" className="text-sm text-red-600">{error}</p>}
       </form>

@@ -214,7 +214,7 @@ axiosInstance.interceptors.response.use(
       else if (path === "/accounts/user/") invalidateDataCache(["users", "sales", "orders", "dashboard"]);
       else if (path.startsWith("/accounts/users/") || ["/accounts/register/", "/accounts/admin-reset-password/"].includes(path)) invalidateDataCache(["users"]);
       else if (path.startsWith("/settings/") && !path.startsWith("/settings/inbox/")) invalidateDataCache(["settings", "inventory", "dashboard", "reports"]);
-      if (typeof window !== "undefined" && (path.startsWith("/sales/encoding/") || path.startsWith("/inventory/stock-adjustments/"))) window.dispatchEvent(new Event(INVENTORY_UPDATED));
+      if (typeof window !== "undefined" && (["/sales/encoding/", "/sales/checkout/", "/sales/orders/", "/sales/transactions/", "/inventory/stock-adjustments/"].some(prefix => path.startsWith(prefix)))) window.dispatchEvent(new Event(INVENTORY_UPDATED));
     }
     return response;
   },

@@ -10,7 +10,6 @@ import { C } from "@/styles/tokens/colors";
 import { useReportPreview, reportNumber } from "@/features/reports/hooks/useReportPreview";
 import { forecastExplanation } from "@/features/dashboard/components/admin/ForecastChart";
 import { ReportDateRangeControl } from "@/features/reports/components/ReportDateRangeControl";
-import { supportsReportDateRange } from "@/features/reports/utils/reportDateRange";
 
 interface ReportDefinition { id: ReportType; title: string; desc: string; icon: React.ReactNode; color: string }
 
@@ -28,10 +27,22 @@ function ReportSummary({ type, range }: { type: ReportType; range?: ReportDateRa
   if (loading) return <p role="status" className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Loading report summary…</p>;
   if (error) return <p role="alert" className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.red}}>{error}</p>;
   if (!data) return <p className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Report data unavailable.</p>;
-  if (type === "sarima_forecast") return <p className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>{forecastExplanation(data)}</p>;
-  if (type === "inventory") return <p className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Low stock: {reportNumber(data, "low_stock_count") ?? "Unavailable"} · Expiring batches: {reportNumber(data, "expiring_soon_batch_count") ?? "Unavailable"}</p>;
   const effectiveRange = typeof data.start_date === "string" && typeof data.end_date === "string"
     ? `${data.start_date} to ${data.end_date}` : typeof data.date === "string" ? data.date : "Report period unavailable";
+  if (type === "sarima_forecast") return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
+    {typeof data.start_date === "string" && typeof data.end_date === "string" && <p>{effectiveRange}</p>}
+    <p>{forecastExplanation(data)}</p>
+    {typeof data.range_note === "string" && data.range_note.trim() && <p>{data.range_note}</p>}
+  </div>;
+  if (type === "inventory") {
+    const asOf = typeof data.as_of === "string" ? new Date(data.as_of) : null;
+    const timestamp = asOf && Number.isFinite(asOf.getTime())
+      ? asOf.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }) : "unavailable";
+    return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
+      <p>Stock movements: {effectiveRange}</p>
+      <p>Current health as of {timestamp} (Asia/Manila): Low stock: {reportNumber(data, "low_stock_count") ?? "Unavailable"} · Expiring batches: {reportNumber(data, "expiring_soon_batch_count") ?? "Unavailable"}</p>
+    </div>;
+  }
   const money = (key: string) => {
     const value = reportNumber(data, key);
     return value == null ? "Unavailable" : `₱${value.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`;
@@ -58,7 +69,7 @@ export function AdminReports() {
     actionLock.current = true;
     setExporting(report.id);
     try {
-      await reportsService.downloadReportPDF(report.id, supportsReportDateRange(report.id) ? range : undefined);
+      await reportsService.downloadReportPDF(report.id, range);
       toast.success(`${report.title} downloaded.`);
     } catch (error) {
       toastApiError(error, "Failed to download report.");
@@ -100,9 +111,9 @@ export function AdminReports() {
           <div className="flex-1 min-w-0 flex flex-col justify-start space-y-1.5">
           <div className="flex shrink-0 items-start gap-3">
             <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center" style={{backgroundColor:report.color+"15",color:report.color}}>{report.icon}</div>
-            <div className="min-w-0"><h3 className="text-base font-semibold text-slate-800 leading-snug [overflow-wrap:anywhere]">{report.title}</h3><p className="text-sm font-normal mt-1 leading-relaxed text-slate-600 [overflow-wrap:anywhere]">{report.id === "customer" ? "Customer purchases and invoice payment totals" : range && supportsReportDateRange(report.id) ? "Sales summary for the selected date range" : report.desc}</p></div>
+            <div className="min-w-0"><h3 className="text-base font-semibold text-slate-800 leading-snug [overflow-wrap:anywhere]">{report.title}</h3><p className="text-sm font-normal mt-1 leading-relaxed text-slate-600 [overflow-wrap:anywhere]">{report.id === "inventory" ? "Stock movements and current inventory health" : report.id === "sarima_forecast" && range ? "Available predictions for the selected dates" : report.id === "customer" ? "Customer purchases and invoice payment totals" : range ? "Sales summary for the selected date range" : report.desc}</p></div>
           </div>
-          <ReportSummary type={report.id} range={supportsReportDateRange(report.id) ? range : undefined}/>
+          <ReportSummary type={report.id} range={range}/>
           </div>
           <div className="mt-auto shrink-0 pt-3 border-t border-slate-100">
             <button type="button" onClick={()=>download(report)} disabled={exporting !== null || refreshing} className="w-full min-h-10 py-2.5 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">

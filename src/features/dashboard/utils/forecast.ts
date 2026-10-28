@@ -1,4 +1,4 @@
-import type { ForecastGraphView, ForecastMetrics, ForecastPeriod, ForecastView, PredictionBasis } from "../api/forecasting.service";
+import type { ForecastGraphPoint, ForecastGraphView, ForecastMetrics, ForecastPeriod, ForecastView, PredictionBasis } from "../api/forecasting.service";
 
 export const PREDICTION_BASES: PredictionBasis[] = ["issued_forecast", "historical_test", "forecast", "fixed_origin_demo"];
 export const forecastBasisLabel = (basis: PredictionBasis): string => ({
@@ -12,6 +12,28 @@ export const forecastBasisLabel = (basis: PredictionBasis): string => ({
 // Never trim empty buckets or turn unknown observations into recorded zeroes.
 export function centeredForecastSeries(view: ForecastGraphView | undefined) {
   return (view?.points ?? []).map(point => ({ ...point }));
+}
+
+type ForecastBoundarySegment = [{ x: string; y: number }, { x: string; y: number }];
+
+/** Connect only the adjacent past/current predictions for display, without changing data. */
+export function forecastBoundarySegment(points: readonly ForecastGraphPoint[]): ForecastBoundarySegment | null {
+  const index = points.findIndex(point => point?.is_current);
+  if (index <= 0) return null;
+  const previous = points[index - 1], current = points[index];
+  if (!previous || !current) return null;
+  const from = previous.past_prediction, to = current.future_prediction;
+  if (typeof from !== "number" || !Number.isFinite(from)
+      || typeof to !== "number" || !Number.isFinite(to)) return null;
+  const validDay = (value: string) => {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith("0000")) return null;
+    const day = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(day.getTime()) && day.toISOString().slice(0, 10) === value ? day.getTime() : null;
+  };
+  const previousStart = validDay(previous.date), end = validDay(previous.end_date), start = validDay(current.date);
+  if (previousStart === null || end === null || start === null || previousStart > end
+      || previousStart >= start || end + 86_400_000 !== start) return null;
+  return [{ x: previous.date, y: from }, { x: current.date, y: to }];
 }
 
 // All current chart views, including feeding, contain invoice revenue.

@@ -3,7 +3,7 @@ import type { ReportDateRange, ReportPeriod, ReportType } from "../types/reports
 import { revenueBusinessDate } from "./revenueWindow";
 
 export function supportsReportDateRange(type: ReportType): boolean {
-  return ["daily_sales", "weekly_sales", "monthly_sales", "customer"].includes(type);
+  return ["daily_sales", "weekly_sales", "monthly_sales", "customer", "inventory", "sarima_forecast"].includes(type);
 }
 
 function validDate(value: unknown): value is string {
@@ -16,7 +16,7 @@ function validDate(value: unknown): value is string {
 export function validateReportDateRange(type: ReportType, range?: ReportDateRange, today = revenueBusinessDate()): ReportDateRange | undefined {
   if (range === undefined) return undefined;
   if (!supportsReportDateRange(type)) {
-    throw new ApiError(400, "Custom dates apply to sales and customer reports only.", { start_date: ["This report does not support a custom date range."] });
+    throw new ApiError(400, "Choose a supported report type.", { start_date: ["This report does not support a custom date range."] });
   }
   if (!range || typeof range !== "object" || !range.start_date || !range.end_date) {
     throw new ApiError(400, "Choose both From and To dates, or use report defaults.", {
@@ -30,6 +30,14 @@ export function validateReportDateRange(type: ReportType, range?: ReportDateRang
   if (Object.keys(errors).length) throw new ApiError(400, Object.values(errors).flat().join(" "), errors);
   if (range.start_date > range.end_date) throw new ApiError(400, "To date must be on or after From date.", { end_date: ["Must be on or after From date."] });
   if (range.end_date > today) throw new ApiError(400, "Report dates cannot be in the future (Asia/Manila).", { end_date: ["Must not be in the future."] });
+  if (["daily_sales", "weekly_sales", "monthly_sales"].includes(type)) {
+    const start = Date.parse(`${range.start_date}T00:00:00Z`), end = Date.parse(`${range.end_date}T00:00:00Z`);
+    const days = (end - start) / 86_400_000 + 1;
+    const ordinal = (start - Date.parse("0001-01-01T00:00:00Z")) / 86_400_000 + 1;
+    if (ordinal <= days) throw new ApiError(400, "The preceding comparison period falls outside the supported calendar.", {
+      start_date: ["Choose a later start date or a shorter sales period."],
+    });
+  }
   return { start_date: range.start_date, end_date: range.end_date };
 }
 

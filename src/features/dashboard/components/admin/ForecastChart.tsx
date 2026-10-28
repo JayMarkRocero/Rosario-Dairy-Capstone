@@ -7,7 +7,7 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { getApiErrorMessage } from "@/lib/api";
 import { forecastingService, forecastGraphKey, type ForecastGraphPoint, type ForecastPeriod, type ForecastViewKey } from "../../api/forecasting.service";
 import { useForecastRefresh } from "../../hooks/useForecastRefresh";
-import { centeredForecastSeries, forecastAmount, forecastBasisLabel, forecastMetric, PREDICTION_BASES } from "../../utils/forecast";
+import { centeredForecastSeries, forecastAmount, forecastBasisLabel, forecastBoundarySegment, forecastMetric, PREDICTION_BASES } from "../../utils/forecast";
 import { C } from "@/styles/tokens/colors";
 
 // The report summary still uses the separate legacy report contract.
@@ -54,6 +54,7 @@ export function ForecastChart() {
   const refresh = useForecastRefresh();
   const data = query.data, view = data?.views?.[selectedView];
   const chartData = centeredForecastSeries(view);
+  const boundary = forecastBoundarySegment(chartData);
   const current = chartData.find(point => point.is_current);
   const hasPredictions = chartData.some(point => point.past_prediction !== null || point.future_prediction !== null);
   const hasRecordedSales = chartData.some(point => point.actual !== null);
@@ -113,6 +114,9 @@ export function ForecastChart() {
                 <Tooltip filterNull={false} content={<ForecastGraphTooltip />} />
                 <Legend align="left" verticalAlign="top" height={28} />
                 {current && <ReferenceLine x={current.date} stroke={C.muted} strokeDasharray="3 3" label={{ value: "Current period", position: "insideTopRight", fontSize: 10, fill: C.muted }} />}
+                {boundary && <ReferenceLine className="forecast-boundary-connector" segment={boundary}
+                  stroke={C.green} strokeWidth={2.5} strokeDasharray="3 4" ifOverflow="discard"
+                  aria-hidden="true" pointerEvents="none" />}
                 <Line type="monotone" dataKey="past_prediction" name="Past predictions" connectNulls={false} stroke={C.orange} strokeWidth={2.5} strokeDasharray="5 4" dot={{ r: 2 }} activeDot={{ r: 4 }} />
                 <Line type="monotone" dataKey="actual" name="Recorded sales" connectNulls={false} stroke={C.blue} strokeWidth={2.5} dot={{ r: 2 }} activeDot={{ r: 4 }} />
                 <Line type="monotone" dataKey="future_prediction" name="Future predictions" connectNulls={false} stroke={C.green} strokeWidth={2.5} strokeDasharray="3 4" dot={{ r: 2 }} activeDot={{ r: 4 }} />
@@ -120,7 +124,7 @@ export function ForecastChart() {
             </ResponsiveContainer>
           </div>
         </div>
-        {current && <p className="mt-1 text-xs" style={{ color: C.muted }}>Current period: {dateLabel(current.date)} – {dateLabel(current.end_date)}.{current.is_partial_period ? " Recorded sales are partial; the prediction estimates the full period." : " Predictions estimate the full period."}</p>}
+        {current && <p className="mt-1 text-xs" style={{ color: C.muted }}>Current period: {dateLabel(current.date)} – {dateLabel(current.end_date)}.{current.is_partial_period ? " Recorded sales are partial; the prediction estimates the full period." : " Predictions estimate the full period."}{boundary && " Adjacent prediction periods are connected for display; historical and issued prediction bases remain separate."}</p>}
       </div> : <EmptyState compact title="No forecast buckets returned" />}
       <div className="mt-3 space-y-2 border-t pt-3 text-xs" style={{ borderColor: C.border, color: C.muted }} aria-label="Forecast evaluation by prediction basis">
         <p>Completed-period evaluations are kept separate by prediction basis.</p>

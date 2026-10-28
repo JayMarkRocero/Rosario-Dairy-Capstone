@@ -91,6 +91,8 @@ const compiled = buildSync({
     export { AdminCategories } from './src/features/inventory/pages/AdminCategories';
     export { AdminCustomers } from './src/features/customers/pages/AdminCustomers';
     export { AdminUserManagement } from './src/features/users/pages/AdminUserManagement';
+    export { userService } from './src/features/users/api/user.service';
+    export { normalizeRegistrationUsername, validateRegistration } from './src/features/users/utils/registration';
     export { AdminSettings } from './src/features/settings/pages/AdminSettings';
     export { PersonalProfileSettings } from './src/features/settings/components/PersonalProfileSettings';
     export { SETTINGS_UPDATED } from './src/features/settings/api/settings.service';
@@ -2780,7 +2782,7 @@ test('report preview validation and backend field errors produce visible errors 
   cleanup();
 });
 
-test('Reports applies identical dates to previews and exports while preserving Inventory and Forecast defaults', async () => {
+test('Reports applies identical custom dates to all six previews and PDF exports', async () => {
   let tree = render(ui.AdminReports);
   const control = elements(tree, node => node.type === ui.ReportDateRangeControl)[0];
   const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
@@ -2788,7 +2790,7 @@ test('Reports applies identical dates to previews and exports while preserving I
   tree = render(ui.AdminReports);
   const summaries = elements(tree, node => typeof node.type === 'function' && node.type.name === 'ReportSummary');
   assert.equal(summaries.length, 6);
-  for (const summary of summaries) assert.deepEqual(summary.props.range, ['inventory', 'sarima_forecast'].includes(summary.props.type) ? undefined : range);
+  for (const summary of summaries) assert.deepEqual(summary.props.range, range);
   const requests = [];
   global.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } };
   ui.http.defaults.adapter = async config => {
@@ -2799,7 +2801,69 @@ test('Reports applies identical dates to previews and exports while preserving I
   assert.equal(buttons.length, 6);
   for (const button of buttons) await button.props.onClick();
   assert.equal(requests.length, 6);
-  for (const request of requests) assert.deepEqual(request.params, ['inventory', 'sarima_forecast'].includes(request.params.type) ? { type: request.params.type } : { type: request.params.type, ...range });
+  for (const request of requests) assert.deepEqual(request.params, { type: request.params.type, ...range });
+  assert.equal(elements(tree, node => node.type === 'p' && node.props.children === 'Stock movements and current inventory health').length, 1);
+  assert.equal(elements(tree, node => node.type === 'p' && node.props.children === 'Available predictions for the selected dates').length, 1);
+});
+
+test('Reports resets every preview and export to backend defaults without retaining custom dates', async () => {
+  let tree = render(ui.AdminReports);
+  elements(tree, node => node.type === ui.ReportDateRangeControl)[0].props.onApply({ start_date: '2000-09-01', end_date: '2000-09-30' });
+  tree = render(ui.AdminReports);
+  elements(tree, node => node.type === ui.ReportDateRangeControl)[0].props.onApply(undefined);
+  tree = render(ui.AdminReports);
+  const summaries = elements(tree, node => typeof node.type === 'function' && node.type.name === 'ReportSummary');
+  assert.equal(summaries.length, 6);
+  for (const summary of summaries) assert.equal(summary.props.range, undefined);
+  const requests = [];
+  global.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } };
+  ui.http.defaults.adapter = async config => { requests.push(config); return { status: 200, config, headers: {}, data: new Blob(['%PDF-1.4']) }; };
+  for (const button of elements(tree, node => node.type === 'button')) await button.props.onClick();
+  assert.equal(requests.length, 6);
+  for (const request of requests) assert.deepEqual(request.params, { type: request.params.type });
+});
+
+function reportSummaryFixture(type, data, range) {
+  const page = render(ui.AdminReports);
+  const summary = elements(page, node => typeof node.type === 'function' && node.type.name === 'ReportSummary' && node.props.type === type)[0];
+  states = []; refs = []; effects = [];
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:${ui.reportCacheKey('preview', type, undefined, range)}`, data, ['reports']);
+  return render(summary.type, { type, range });
+}
+
+test('Inventory report summary separates selected movement dates from timestamped current stock health', () => {
+  const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
+  const data = Object.freeze({ ...range, is_custom_range: true, as_of: '2000-10-01T00:05:00Z', low_stock_count: 2, expiring_soon_batch_count: 3,
+    ledger: { ...range, date: range.end_date, columns: [], rows: [] } });
+  const tree = reportSummaryFixture('inventory', data, range);
+  const lines = elements(tree, node => node.type === 'p').map(node => React.Children.toArray(node.props.children).join(''));
+  assert.equal(lines[0], 'Stock movements: 2000-09-01 to 2000-09-30');
+  assert.match(lines[1], /Current health as of .*Oct.*1.*2000.*8:05.*Asia\/Manila.*Low stock: 2.*Expiring batches: 3/);
+  assert.equal(data.as_of, '2000-10-01T00:05:00Z');
+  assert.equal(tree.props.className, 'min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]');
+});
+
+test('Forecast report summary preserves no-overlap status and explains full-period prediction basis', () => {
+  const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
+  const data = Object.freeze({ ...range, is_custom_range: true, status: 'no_forecasts_in_range', is_placeholder: false, forecast: [],
+    status_message: 'No published forecasts overlap the selected dates.',
+    range_note: 'Available predictions keep their full period values; amounts are not prorated.' });
+  const tree = reportSummaryFixture('sarima_forecast', data, range);
+  const lines = elements(tree, node => node.type === 'p').map(node => React.Children.toArray(node.props.children).join(''));
+  assert.equal(lines[0], '2000-09-01 to 2000-09-30');
+  assert.equal(lines[1], data.status_message);
+  assert.equal(lines[2], data.range_note);
+  assert.doesNotMatch(lines.join(' '), /₱0|approved live forecast/i);
+});
+
+test('Report date dialog explains the all-report date contract without changing control classes', () => {
+  const tree = render(ui.ReportDateRangeControl, { onApply() {} });
+  const modal = elements(tree, node => node.type === ui.Modal)[0];
+  assert.match(modal.props.subtitle, /all six reports/);
+  const help = elements(tree, node => node.props.id === 'report-date-help')[0];
+  assert.match(help.props.children, /stock health remains current/);
+  assert.match(help.props.children, /without prorating or fitting a new model/);
+  assert.equal(help.props.className, 'text-xs leading-relaxed text-slate-500');
 });
 
 test('POS blocks blind retries after an interrupted write and requires history review before a new transaction', async () => {
@@ -3378,4 +3442,111 @@ test('expired status cannot be used for promotional outflows even when its expir
     assert.equal(requests, 0);
     assert.match(toastErrors.at(-1)[0], /Expired stock/);
   }
+});
+
+const registrationDraft = () => ({ username: 'new-user', firstName: '', lastName: '', email: 'new@example.test', password: 'StrongPass!92', phoneNumber: '', address: '' });
+
+for (const [field, apiField, label] of [
+  ['username', 'username', 'Username'], ['firstName', 'first_name', 'First name'], ['lastName', 'last_name', 'Last name'],
+]) {
+  for (const length of [50, 51]) test(`registration ${field} enforces the ${length}-code-point boundary`, async () => {
+    const input = { ...registrationDraft(), [field]: (field === 'username' ? 'a' : '😀').repeat(length) };
+    const errors = ui.validateRegistration(input).errors;
+    assert.equal(errors[apiField], length > 50 ? `${label} must be at most 50 characters.` : undefined);
+    let requests = 0;
+    ui.http.defaults.adapter = async config => { requests++; return { status: 201, config, headers: {}, data: {} }; };
+    if (length > 50) await assert.rejects(ui.userService.createUser({ ...input, role: 'Staff' }), error =>
+      error.status === 400 && error.fieldErrors[apiField][0] === errors[apiField]);
+    else await ui.userService.createUser({ ...input, role: 'Staff' });
+    assert.equal(requests, length > 50 ? 0 : 1);
+  });
+}
+
+for (const length of [7, 8, 25, 26]) test(`registration password enforces the ${length}-code-point boundary`, async () => {
+  const input = { ...registrationDraft(), password: '😀'.repeat(length) };
+  const invalid = length < 8 || length > 25;
+  assert.equal(ui.validateRegistration(input).errors.password, invalid ? 'Password must be between 8 and 25 characters.' : undefined);
+  let requests = 0;
+  ui.http.defaults.adapter = async config => { requests++; return { status: 201, config, headers: {}, data: {} }; };
+  if (invalid) await assert.rejects(ui.userService.createUser({ ...input, role: 'Staff' }), error => error.status === 400 && !!error.fieldErrors.password);
+  else await ui.userService.createUser({ ...input, role: 'Staff' });
+  assert.equal(requests, invalid ? 0 : 1);
+});
+
+test('registration username normalization matches Python stripping and NFKC without changing names or passwords', async () => {
+  const whitespaces = '\u0009\u000a\u000b\u000c\u000d\u001c\u001d\u001e\u001f \u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000';
+  for (const space of whitespaces) assert.equal(ui.normalizeRegistrationUsername(`${space}Ａｄｍｉｎ${space}`), 'Admin');
+  assert.equal(ui.normalizeRegistrationUsername('\ufeffAdmin\ufeff'), '\ufeffAdmin\ufeff');
+  assert.equal(ui.validateRegistration({ ...registrationDraft(), username: '\ufeff' + 'a'.repeat(50) }).errors.username, 'Username must be at most 50 characters.');
+  assert.equal(ui.validateRegistration({ ...registrationDraft(), username: '\u001c\u0085 ' }).errors.username, 'Username is required.');
+  assert.equal(ui.validateRegistration({ ...registrationDraft(), username: '㍿'.repeat(12) }).errors.username, undefined);
+  assert.equal(ui.validateRegistration({ ...registrationDraft(), username: '㍿'.repeat(13) }).errors.username, 'Username must be at most 50 characters.');
+  assert.equal(ui.validateRegistration({ ...registrationDraft(), firstName: ' ' + 'a'.repeat(50) }).errors.first_name, 'First name must be at most 50 characters.');
+  const input = { ...registrationDraft(), username: '\u001cＡｄｍｉｎ\u0085', firstName: ' First ', lastName: ' Last ', password: '  StrongPass!92  ', role: 'Staff' };
+  const snapshot = structuredClone(input);
+  let payload;
+  ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); return { status: 201, config, headers: {}, data: {} }; };
+  await ui.userService.createUser(input);
+  assert.deepEqual(input, snapshot);
+  assert.equal(payload.username, 'Admin'); assert.equal(payload.first_name, ' First '); assert.equal(payload.last_name, ' Last '); assert.equal(payload.password, '  StrongPass!92  ');
+});
+
+function registrationFixture(draft) {
+  authState.user = { id: 7, username: 'admin', email: 'admin@example.test', role: 'admin' };
+  elements(render(ui.AdminUserManagement), node => node.type === ui.Btn && node.props.children === 'Add User')[0].props.onClick();
+  const form = elements(render(ui.AdminUserManagement), node => node.type?.name === 'UserForm' && node.props.title === 'Add User')[0];
+  form.props.onChange({ ...form.props.form, ...draft });
+  return {
+    form: () => elements(render(ui.AdminUserManagement), node => node.type?.name === 'UserForm' && node.props.title === 'Add User')[0],
+    submit() {
+      const modal = elements(render(ui.AdminUserManagement), node => node.type === ui.Modal && node.props.title === 'Add User')[0];
+      elements(modal.props.footer, node => node.type === ui.Btn && node.props.children === 'Add User')[0].props.onClick();
+    },
+  };
+}
+
+for (const patch of [{ username: 'a'.repeat(51) }, { username: '㍿'.repeat(13) }, { firstName: '😀'.repeat(51) }, { lastName: 'a'.repeat(51) }, { password: 'a'.repeat(7) }, { password: 'a'.repeat(26) }]) {
+  test(`registration form shows validation before submission for ${Object.keys(patch)[0]} ${Array.from(Object.values(patch)[0]).length}`, async () => {
+    let requests = 0;
+    ui.http.defaults.adapter = async () => { requests++; throw new Error('Invalid registration must not reach the API'); };
+    const form = registrationFixture({ ...registrationDraft(), ...patch });
+    form.submit(); await settle();
+    assert.equal(requests, 0);
+    assert.match(toastErrors.at(-1)[0], /must be (?:at most 50|between 8 and 25) characters/);
+  });
+}
+
+test('registration form accepts Unicode boundaries without native UTF-16 limits and forwards unchanged password spaces', async () => {
+  const draft = { ...registrationDraft(), username: '\u001c' + 'Ａ'.repeat(50) + '\u0085', firstName: '😀'.repeat(50), lastName: 'é'.repeat(50), password: '  StrongPass!92  ' };
+  const form = registrationFixture(draft);
+  const component = form.form();
+  const controls = elements(render(component.type, component.props), node => node.type === 'input');
+  assert.equal(controls.find(node => node.props.placeholder === 'jdelacruz').props.maxLength, undefined);
+  for (const placeholder of ['Juan', 'dela Cruz']) assert.equal(controls.find(node => node.props.placeholder === placeholder).props.maxLength, undefined);
+  const password = controls.find(node => node.props.type === 'password');
+  assert.equal(password.props.minLength, undefined); assert.equal(password.props.maxLength, undefined);
+  let payload;
+  ui.http.defaults.adapter = async config => {
+    if (config.method === 'post') payload = JSON.parse(config.data);
+    return { status: config.method === 'post' ? 201 : 200, config, headers: {}, data: config.method === 'get' ? [] : {} };
+  };
+  form.submit(); await settle();
+  assert.equal(payload.username, 'A'.repeat(50)); assert.equal(payload.first_name, draft.firstName); assert.equal(payload.last_name, draft.lastName); assert.equal(payload.password, draft.password);
+});
+
+test('registration limits do not constrain existing account editing', async () => {
+  authState.user = { id: 7, username: 'admin', email: 'admin@example.com', role: 'admin' };
+  const user = { id: 8, username: 'a'.repeat(80), name: 'Long existing name', firstName: 'f'.repeat(80), lastName: 'l'.repeat(80), email: 'old@example.test', role: 'Staff', status: 'Active', last: 'Never', phone: '', address: '' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:users:list`, [user], ['users']);
+  const table = elements(render(ui.AdminUserManagement), node => node.type === ui.EnhancedTable)[0];
+  elements(table.props.columns.find(column => column.key === 'actions').render(user), node => node.props.label === 'Edit')[0].props.onClick();
+  const form = elements(render(ui.AdminUserManagement), node => node.type?.name === 'UserForm' && node.props.title === 'Edit User')[0];
+  const controls = elements(render(form.type, form.props), node => node.type === 'input');
+  assert.equal(controls.find(node => node.props.placeholder === 'jdelacruz').props.maxLength, 150);
+  assert.equal(controls.filter(node => node.props.type === 'password').length, 0);
+  let payload;
+  ui.http.defaults.adapter = async config => { if (config.method === 'patch') payload = JSON.parse(config.data); return { status: 200, config, headers: {}, data: config.method === 'get' ? [] : {} }; };
+  const modal = elements(render(ui.AdminUserManagement), node => node.type === ui.Modal && node.props.title === 'Edit User')[0];
+  elements(modal.props.footer, node => node.props.children === 'Save Changes')[0].props.onClick(); await settle();
+  assert.equal(payload.username, user.username); assert.equal(payload.first_name, user.firstName); assert.equal(payload.last_name, user.lastName);
 });

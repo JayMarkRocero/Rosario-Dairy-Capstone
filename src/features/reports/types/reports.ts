@@ -112,14 +112,15 @@ export interface InventoryLedgerRow {
   remarks: string;
 }
 
-export interface InventoryLedger {
+export interface InventoryLedger extends ReportDateRange {
   date: string;
   columns: Array<{ key: string; name: string }>;
   rows: InventoryLedgerRow[];
 }
 
 export type InventoryFEFOStatus = "no_stock" | "expired" | "expiring_soon" | "healthy";
-export interface InventoryReport extends ReportPreviewBase {
+export interface InventoryReport extends ReportPreviewBase, ReportDateRange {
+  is_custom_range: boolean;
   ledger: InventoryLedger;
   as_of: string;
   total_products: number;
@@ -153,9 +154,30 @@ export interface PlanningProjection {
   sample_count: number;
 }
 
+export interface ForecastReportPoint {
+  date: string;
+  predicted_revenue: string;
+  lower_bound: string;
+  upper_bound: string;
+  end_date?: string;
+  trained_through?: string;
+  interval_nominal_percent?: number;
+  range_kind?: string;
+  point_kind?: string;
+  sample_count?: number;
+}
+
 export interface SarimaForecastPreview extends ReportPreviewBase {
+  start_date?: string;
+  end_date?: string;
+  is_custom_range: boolean;
+  range_note?: string;
+  status?: string;
+  status_message?: string;
+  limitations?: string;
+  warnings?: string[];
   is_placeholder: boolean;
-  forecast?: Array<Record<string, unknown>>;
+  forecast?: ForecastReportPoint[];
   planning_projection?: PlanningProjection | null;
 }
 

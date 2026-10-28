@@ -569,34 +569,39 @@ test('forecast revenue ticks and tooltips retain accurate currency at small and 
   for (const value of [null, undefined, '', 'invalid', Infinity]) assert.equal(api.forecastAmount(value), '—');
 });
 
-test('checkout sends decimal strings and refreshes reports after committing', async () => {
+test('checkout sends decimal strings without an automatic report-refresh request', async () => {
   responseData = { id: 7, subtotal: '43.00', total_amount: '43.00', change_due: '7.00' };
   const result = await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80', discount_type: 'fixed', discount_value: '1.50' }], payment_method: 'cash', amount_tendered: '50.00' });
   assert.deepEqual(JSON.parse(calls[0].data), { customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80', discount_type: 'fixed', discount_value: '1.50' }], payment_method: 'cash', amount_tendered: '50.00' });
-  assert.equal(calls[1].url, '/api/reports/refresh/');
+  assert.equal(calls.length, 1);
   assert.equal(result.totalAmount, 43);
   assert.equal(result.changeDue, 7);
 });
 
-test('a report refresh failure never rejects an already completed checkout', async () => {
+test('consecutive completed sales never trigger a throttled automatic report refresh', async () => {
   api.http.defaults.adapter = async config => {
     calls.push(config);
-    if (config.url === '/api/reports/refresh/') throw new AxiosError('Offline');
+    if (config.url === '/api/reports/refresh/') throw new AxiosError('Throttled', undefined, config, undefined,
+      { status: 429, data: { detail: 'Try later.' }, headers: { 'retry-after': '60' }, config });
     return { data: { id: 7, subtotal: '43', total_amount: '43', change_due: null }, status: 200, config, headers: {} };
   };
-  const result = await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '1', unit_price: '43' }], payment_method: 'online' });
-  assert.equal(result.id, 7);
+  for (let i = 0; i < 3; i++) {
+    const result = await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '1', unit_price: '43' }], payment_method: 'online' });
+    assert.equal(result.id, 7);
+  }
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => call.url === '/sales/checkout/'));
   assert.equal(JSON.parse(calls[0].data).amount_tendered, undefined);
 });
 
-test('order creation rejects missing customers and refreshes only after a successful save', async () => {
+test('order creation rejects missing customers and avoids an automatic report-refresh request', async () => {
   await assert.rejects(api.ordersService.createOrder({ customer_id: 0, items: [] }), { status: 400 });
   assert.equal(calls.length, 0);
   responseData = { id: 1, transaction: { id: 1 } };
   await api.ordersService.createOrder({ customer_id: 3, items: [{ product_id: 2, quantity: '1.5', unit_price: '20.00' }] });
   assert.equal(calls[0].url, '/sales/orders/');
   assert.equal(JSON.parse(calls[0].data).items[0].quantity, '1.50');
-  assert.equal(calls[1].url, '/api/reports/refresh/');
+  assert.equal(calls.length, 1);
 });
 
 test('paginated transaction history includes all pages with numeric totals', async () => {
@@ -1691,7 +1696,7 @@ test('initial batch failure reports the existing product and recovery steps with
   assert.deepEqual(calls.map(call => call.url), ['/inventory/products/', '/inventory/product-batches/']);
 });
 
-test('simultaneous checkout calls share one active write and refresh reports once', async () => {
+test('simultaneous checkout calls share one active write without refreshing reports', async () => {
   let finish;
   const payload = { customer_id: null, payment_method: 'online', items: [{ product_id: 1, quantity: '1', unit_price: '10' }] };
   api.http.defaults.adapter = config => {
@@ -1704,7 +1709,7 @@ test('simultaneous checkout calls share one active write and refresh reports onc
   assert.equal(calls.filter(call => call.url === '/sales/checkout/').length, 1);
   finish();
   assert.deepEqual(await first, await second);
-  assert.equal(calls.filter(call => call.url === '/api/reports/refresh/').length, 1);
+  assert.equal(calls.filter(call => call.url === '/api/reports/refresh/').length, 0);
 });
 
 test('ambiguous writes block checkout and order retries across reloads until explicitly reconciled', async () => {
@@ -1760,16 +1765,21 @@ test('an action from a stale tab is stopped before it can be sent with another a
   remove();
 });
 
-test('sales and customer report previews send both inclusive date bounds and preserve default requests', async () => {
+test('all six report previews send both inclusive date bounds and preserve default requests', async () => {
   const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
-  for (const type of ['daily_sales', 'weekly_sales', 'monthly_sales', 'customer']) {
+  for (const type of ['daily_sales', 'weekly_sales', 'monthly_sales', 'customer', 'inventory', 'sarima_forecast']) {
+    assert.equal(api.supportsReportDateRange(type), true);
     await api.reportsService.fetchReportPreview(type, undefined, range);
     assert.deepEqual(calls.at(-1).params, { type, ...range });
+    await api.reportsService.fetchReportPreview(type);
+    assert.deepEqual(calls.at(-1).params, { type });
   }
   await api.reportsService.fetchReportPreview('daily_sales', undefined, { start_date: '2000-09-01', end_date: '2000-09-01' });
   assert.equal(calls.at(-1).params.start_date, calls.at(-1).params.end_date);
-  await api.reportsService.fetchReportPreview('customer');
-  assert.deepEqual(calls.at(-1).params, { type: 'customer' });
+  await api.reportsService.fetchReportPreview('sarima_forecast', 'weekly', range);
+  assert.deepEqual(calls.at(-1).params, { type: 'sarima_forecast', period: 'weekly', ...range });
+  await api.reportsService.fetchReportPreview('sarima_forecast', 'monthly');
+  assert.deepEqual(calls.at(-1).params, { type: 'sarima_forecast', period: 'monthly' });
 });
 
 test('report range validation accepts same-day and leap-day ranges and uses the Manila business day', () => {
@@ -1792,16 +1802,13 @@ test('invalid report ranges fail before any preview or PDF network request', asy
     { start_date: '2000-1-01', end_date: '2000-01-02' },
     { start_date: 20000101, end_date: '2000-01-02' },
   ];
-  for (const range of invalid) {
-    for (const request of [
-      () => api.reportsService.fetchReportPreview('customer', undefined, range),
-      () => api.reportsService.downloadReportPDF('customer', range),
-    ]) await assert.rejects(request, error => error.status === 400 && Object.keys(error.fieldErrors).length > 0);
-  }
-  const range = { start_date: '2000-01-01', end_date: '2000-01-02' };
-  for (const type of ['inventory', 'sarima_forecast']) {
-    await assert.rejects(api.reportsService.fetchReportPreview(type, undefined, range), /sales and customer reports only/);
-    await assert.rejects(api.reportsService.downloadReportPDF(type, range), /sales and customer reports only/);
+  for (const type of ['daily_sales', 'weekly_sales', 'monthly_sales', 'customer', 'inventory', 'sarima_forecast']) {
+    for (const range of invalid) {
+      for (const request of [
+        () => api.reportsService.fetchReportPreview(type, undefined, range),
+        () => api.reportsService.downloadReportPDF(type, range),
+      ]) await assert.rejects(request, error => error.status === 400 && Object.keys(error.fieldErrors).length > 0);
+    }
   }
   assert.equal(calls.length, 0);
 });
@@ -1831,6 +1838,227 @@ test('report PDFs use preview dates, isolate both cache bounds, and refresh ever
   assert.equal(calls.filter(call => call.url === '/api/reports/export-pdf/').length, 6);
   assert.notEqual(api.reportCacheKey('preview', 'customer', undefined, first), api.reportCacheKey('pdf', 'customer', undefined, first));
   assert.notEqual(api.reportCacheKey('preview', 'sarima_forecast', 'weekly'), api.reportCacheKey('preview', 'sarima_forecast', 'monthly'));
+});
+
+test('inventory and forecast previews retain their returned range metadata and report data unchanged', async () => {
+  const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
+  const payloads = {
+    inventory: { ...range, is_custom_range: true, as_of: '2026-10-28', ledger: { ...range, rows: [], columns: [] },
+      total_products: 2, total_ingredients: 1, low_stock_count: 1, expired_batch_count: 0, expiring_soon_batch_count: 0,
+      items: [], status_counts: { healthy: 2 } },
+    sarima_forecast: { ...range, is_custom_range: true, is_placeholder: false, forecast: [],
+      range_note: 'Requested range', planning_projection: null, warnings: ['No forecast points for this range.'] },
+  };
+  for (const [type, data] of Object.entries(payloads)) {
+    responseData = { report_type: type, generated_at: '2026-10-28T01:00:00Z', data };
+    const result = await api.reportsService.fetchReportPreview(type, undefined, range);
+    assert.deepEqual(result, responseData);
+    assert.equal(result.data.is_custom_range, true);
+    assert.deepEqual(calls.at(-1).params, { type, ...range });
+  }
+});
+
+test('inventory and forecast PDF exports use the preview bounds and keep default and custom caches separate', async () => {
+  const downloads = [];
+  global.document = { createElement: () => ({ click() { downloads.push(this.download); }, remove() {} }), body: { appendChild() {} } };
+  const first = { start_date: '2000-09-01', end_date: '2000-09-30' };
+  const ranges = [first, { ...first, start_date: '2000-09-02' }, { ...first, end_date: '2000-10-01' }, undefined];
+  for (const type of ['inventory', 'sarima_forecast']) {
+    const keys = new Set(ranges.map(range => api.reportCacheKey('preview', type, undefined, range)));
+    assert.equal(keys.size, 4, 'Both bounds and the default range must distinguish preview caches');
+    for (const range of ranges) {
+      responseData = { report_type: type, data: { ...range } };
+      await api.reportsService.fetchReportPreview(type, undefined, range);
+      const params = { ...calls.at(-1).params };
+      responseData = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+      await api.reportsService.downloadReportPDF(type, range);
+      assert.deepEqual(calls.at(-1).params, params, 'The PDF and preview must use identical dates');
+      assert.equal(calls.at(-1).responseType, 'blob');
+      const count = calls.length;
+      await api.reportsService.downloadReportPDF(type, range);
+      assert.equal(calls.length, count, 'Fresh exports should reuse only their matching range blob');
+      assert.match(downloads.at(-1), range ? new RegExp(`${type}-${range.start_date}-to-${range.end_date}\\.pdf$`)
+        : new RegExp(`${type}-\\d{4}-\\d{2}-\\d{2}\\.pdf$`));
+    }
+  }
+  assert.equal(calls.filter(call => call.url === '/api/reports/export-pdf/').length, 8);
+  const inventoryKey = api.reportCacheKey('preview', 'inventory', undefined, first);
+  const forecastKey = api.reportCacheKey('preview', 'sarima_forecast', undefined, first);
+  assert.notEqual(inventoryKey, forecastKey);
+  assert.notEqual(forecastKey, api.reportCacheKey('preview', 'sarima_forecast', 'weekly', first));
+});
+
+test('successful sales mutations invalidate cached previews and PDFs without posting a report refresh', async () => {
+  global.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } };
+  let inventoryUpdates = 0;
+  window.addEventListener(api.INVENTORY_UPDATED, () => inventoryUpdates++);
+  const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
+  for (const [method, url] of [['post', '/sales/checkout/'], ['post', '/sales/orders/'],
+    ['patch', '/sales/orders/2/'], ['patch', '/sales/transactions/2/']]) {
+    const previewKey = api.reportCacheKey('preview', 'inventory', undefined, range);
+    const pdfKey = `${api.dataCacheEpoch()}:${api.reportCacheKey('pdf', 'inventory', undefined, range)}`;
+    const loadPreview = () => api.fetchDataCache(previewKey,
+      async () => (await api.reportsService.fetchReportPreview('inventory', undefined, range)).data, ['reports', 'dashboard']);
+    responseData = { report_type: 'inventory', data: { is_custom_range: true, ...range } };
+    await loadPreview();
+    responseData = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+    await api.reportsService.downloadReportPDF('inventory', range);
+    assert.ok(api.readDataCache(previewKey).updatedAt > 0);
+    assert.ok(api.readDataCache(pdfKey).updatedAt > 0);
+    responseData = {};
+    await api.http.request({ method, url, data: {} });
+    assert.equal(api.readDataCache(previewKey).updatedAt, 0, `${url}: preview invalidation`);
+    assert.equal(api.readDataCache(pdfKey).updatedAt, 0, `${url}: PDF invalidation`);
+    const count = calls.length;
+    responseData = { report_type: 'inventory', data: { is_custom_range: true, ...range } };
+    await loadPreview();
+    responseData = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+    await api.reportsService.downloadReportPDF('inventory', range);
+    assert.equal(calls.length, count + 2, 'Visible reports and the next PDF export must refetch after a commit');
+  }
+  assert.equal(inventoryUpdates, 4);
+  assert.equal(calls.filter(call => call.url === '/api/reports/refresh/').length, 0);
+});
+
+test('failed sales writes preserve report caches and do not signal committed stock changes', async () => {
+  api.writeDataCache('report-preview', { saved: true }, ['reports']);
+  api.writeDataCache('report-pdf', new Blob(['saved']), ['reports']);
+  let changes = 0;
+  window.addEventListener(api.INVENTORY_UPDATED, () => changes++);
+  responseStatus = 400;
+  for (const url of ['/sales/checkout/', '/sales/orders/', '/sales/transactions/2/']) {
+    await assert.rejects(api.http.post(url, {}), { status: 400 });
+  }
+  assert.ok(api.readDataCache('report-preview').updatedAt > 0);
+  assert.ok(api.readDataCache('report-pdf').updatedAt > 0);
+  assert.equal(changes, 0);
+});
+
+test('concurrent manual report refreshes share one request and publish one cache update', async () => {
+  let complete;
+  let updates = 0;
+  window.addEventListener(api.REPORTS_UPDATED, () => updates++);
+  api.writeDataCache('report-preview', { saved: true }, ['reports']);
+  api.http.defaults.adapter = config => {
+    calls.push(config);
+    return new Promise(resolve => { complete = () => resolve({ status: 200, data: {}, headers: {}, config }); });
+  };
+  const first = api.reportsService.refreshReportCache();
+  const second = api.reportsService.refreshReportCache();
+  assert.equal(first, second);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/api/reports/refresh/');
+  assert.equal(calls[0].method, 'post');
+  assert.deepEqual(JSON.parse(calls[0].data), {});
+  assert.equal(updates, 0);
+  assert.ok(api.readDataCache('report-preview').updatedAt > 0);
+  complete();
+  await Promise.all([first, second]);
+  assert.equal(updates, 1);
+  assert.equal(api.readDataCache('report-preview').updatedAt, 0);
+});
+
+test('manual refresh honors Retry-After seconds without requests during cooldown and retries at expiry', async () => {
+  const originalNow = Date.now;
+  let now = Date.UTC(2026, 9, 28, 1);
+  Date.now = () => now;
+  let updates = 0;
+  window.addEventListener(api.REPORTS_UPDATED, () => updates++);
+  api.writeDataCache('report-preview', { saved: true }, ['reports']);
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    if (calls.length === 1) throw new AxiosError('Throttled', undefined, config, undefined,
+      { status: 429, data: { detail: 'Wait before refreshing again.' }, headers: { 'retry-after': '2' }, config });
+    return { status: 200, data: {}, headers: {}, config };
+  };
+  try {
+    await assert.rejects(api.reportsService.refreshReportCache(), error => error.status === 429 && error.retryAfterMs === 2000);
+    await assert.rejects(api.reportsService.refreshReportCache(), error => error.status === 429 && error.retryAfterMs === 2000);
+    now += 1999;
+    await assert.rejects(api.reportsService.refreshReportCache(), error => error.status === 429 && error.retryAfterMs === 1);
+    assert.equal(calls.length, 1, 'A cooldown must not bypass the server limit');
+    assert.equal(updates, 0);
+    assert.ok(api.readDataCache('report-preview').updatedAt > 0);
+    now++;
+    await api.reportsService.refreshReportCache();
+    assert.equal(calls.length, 2);
+    assert.equal(updates, 1);
+    assert.equal(api.readDataCache('report-preview').updatedAt, 0);
+  } finally { Date.now = originalNow; }
+});
+
+test('manual refresh also honors HTTP-date Retry-After headers', async () => {
+  const originalNow = Date.now;
+  const now = Date.UTC(2026, 9, 28, 1);
+  Date.now = () => now;
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    throw new AxiosError('Throttled', undefined, config, undefined,
+      { status: 429, data: {}, headers: { 'retry-after': new Date(now + 5000).toUTCString() }, config });
+  };
+  try {
+    await assert.rejects(api.reportsService.refreshReportCache(), error => error.status === 429 && error.retryAfterMs === 5000);
+    await assert.rejects(api.reportsService.refreshReportCache(), error => error.status === 429 && error.retryAfterMs === 5000);
+    assert.equal(calls.length, 1);
+  } finally { Date.now = originalNow; }
+});
+
+test('a report cooldown is isolated from a later account cache epoch', async () => {
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    if (calls.length === 1) throw new AxiosError('Throttled', undefined, config, undefined,
+      { status: 429, data: {}, headers: { 'retry-after': '60' }, config });
+    return { status: 200, data: {}, headers: {}, config };
+  };
+  await assert.rejects(api.reportsService.refreshReportCache(), { status: 429 });
+  api.clearDataCache();
+  await api.reportsService.refreshReportCache();
+  assert.equal(calls.length, 2, 'The previous account must not block a new account refresh');
+});
+
+test('manual refresh never shares pending work or publishes old updates across account cache epochs', async () => {
+  let completeOld;
+  let updates = 0;
+  window.addEventListener(api.REPORTS_UPDATED, () => updates++);
+  api.http.defaults.adapter = config => {
+    calls.push(config);
+    if (calls.length === 1) return new Promise(resolve => { completeOld = () => resolve({ status: 200, data: {}, headers: {}, config }); });
+    return Promise.resolve({ status: 200, data: {}, headers: {}, config });
+  };
+  const old = api.reportsService.refreshReportCache();
+  await new Promise(resolve => setImmediate(resolve));
+  api.clearDataCache();
+  const current = api.reportsService.refreshReportCache();
+  assert.notEqual(old, current);
+  await current;
+  assert.equal(updates, 1);
+  completeOld();
+  await old;
+  assert.equal(calls.length, 2);
+  assert.equal(updates, 1, 'A completed old request must not invalidate a newer account cache');
+});
+
+test('manual refresh recovers after network and server failures without publishing successful refreshes', async () => {
+  for (const status of [null, 500, 429]) {
+    api.clearDataCache();
+    calls = [];
+    let updates = 0;
+    const listener = () => updates++;
+    window.addEventListener(api.REPORTS_UPDATED, listener);
+    api.http.defaults.adapter = async config => {
+      calls.push(config);
+      if (calls.length === 1) throw new AxiosError('Unavailable', undefined, config, undefined,
+        status == null ? undefined : { status, data: {}, headers: {}, config });
+      return { status: 200, data: {}, headers: {}, config };
+    };
+    await assert.rejects(api.reportsService.refreshReportCache());
+    assert.equal(updates, 0);
+    await api.reportsService.refreshReportCache();
+    assert.equal(calls.length, 2, 'A rejected request must release its in-flight state');
+    assert.equal(updates, 1);
+    window.removeEventListener(api.REPORTS_UPDATED, listener);
+  }
 });
 
 function reloadServicesForRetry() {

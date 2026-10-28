@@ -37,6 +37,10 @@ export function receiptDetails(sale: Sale) {
   return {
     title: transaction.source_reference ? "Historical Sales Record" : transaction.is_manually_encoded ? "Encoded Sales Record" : "Official Sales Receipt",
     note: transaction.source_note || "", fields,
+    lineAmountLabel: transaction.source_reference ? "Recorded line amount" : "Net amount",
+    lineAmountNote: transaction.source_reference
+      ? "Historical line amounts are recorded source values and may precede an invoice-level discount; per-line allocations of that discount were not recorded."
+      : "",
     items: [...groups.entries()].sort(([, a], [, b]) => a[0].line_number == null || b[0].line_number == null ? 0 : a[0].line_number - b[0].line_number).map(([id, items]) => {
       const item = items[0];
       const name = item.product_name_snapshot || item.product_batch.product.name;

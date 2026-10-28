@@ -2,6 +2,7 @@ import http, { ApiError, type CurrentUser, type DeactivationReason, type Registe
 import { DEACTIVATION_OPTIONS } from "@/features/users/types/user";
 import type { SystemUser } from "@/features/users/types/user";
 import { authService, getSessionUserId } from "@/features/auth/api/auth.service";
+import { validateRegistration } from "../utils/registration";
 
 function toDisplayRole(role: "admin" | "staff"): "Administrator" | "Staff" {
   return role === "admin" ? "Administrator" : "Staff";
@@ -51,8 +52,13 @@ export const userService = {
     firstName?: string;
     lastName?: string;
   }): Promise<void> => {
+    const { username, errors } = validateRegistration(input);
+    if (Object.keys(errors).length) {
+      throw new ApiError(400, Object.values(errors).join(" "),
+        Object.fromEntries(Object.entries(errors).map(([field, message]) => [field, [message]])));
+    }
     const payload: RegisterUserPayload = {
-      username: input.username,
+      username,
       password: input.password,
       email: input.email,
       role: toBackendRole(input.role),

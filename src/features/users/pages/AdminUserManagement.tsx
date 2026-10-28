@@ -22,6 +22,7 @@ import { DEACTIVATION_OPTIONS, canReactivateUser, compareUsersByStatusAndLogin, 
 import { useAuth } from "@/features/auth/context/AuthContext";
 import type { DeactivationReason } from "@/lib/api";
 import { isValidPhoneNumber, PHONE_FORMAT_HINT } from "@/lib/validators";
+import { validateRegistration } from "../utils/registration";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
 const inputStyle = { borderColor:"var(--border)", color:"var(--foreground)", backgroundColor:"var(--input-background)" };
@@ -47,23 +48,27 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
   role: "Staff" | "Administrator";
   onRoleChange: (r: "Staff" | "Administrator") => void;
 }) {
+  const isRegistration = title === "Add User";
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Username</label>
+        <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Username{isRegistration && " (max. 50)"}</label>
         <input className={inputClass} style={inputStyle} placeholder="jdelacruz"
-          autoComplete="off" maxLength={150}
+          autoComplete="off" maxLength={isRegistration ? undefined : 150}
+          title={isRegistration ? "Maximum 50 characters after username normalization." : undefined}
           value={form.username} onChange={e=>onChange({...form,username:e.target.value})}/>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>First Name</label>
+          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>First Name{isRegistration && " (max. 50)"}</label>
           <input className={inputClass} style={inputStyle} placeholder="Juan"
+            title={isRegistration ? "Maximum 50 characters." : undefined}
             value={form.firstName} onChange={e=>onChange({...form,firstName:e.target.value})}/>
         </div>
         <div>
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Last Name</label>
+          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Last Name{isRegistration && " (max. 50)"}</label>
           <input className={inputClass} style={inputStyle} placeholder="dela Cruz"
+            title={isRegistration ? "Maximum 50 characters." : undefined}
             value={form.lastName} onChange={e=>onChange({...form,lastName:e.target.value})}/>
         </div>
         <div className="sm:col-span-2">
@@ -100,8 +105,9 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
       </div>
       {title==="Add User"&&(
         <div>
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Temporary Password</label>
-          <input className={inputClass} style={inputStyle} type="password" placeholder="Min. 8 characters"
+          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Temporary Password (8–25)</label>
+          <input className={inputClass} style={inputStyle} type="password" placeholder="8–25 characters"
+            title="Between 8 and 25 characters. Password spaces are preserved."
             autoComplete="new-password"
             value={form.password} onChange={e=>onChange({...form,password:e.target.value})}/>
         </div>
@@ -186,6 +192,10 @@ export function AdminUserManagement() {
   const handleAddSave = () => {
     if (!form.username || !form.email || !form.password) {
       toast.error("Please fill in username, email, and temporary password."); return;
+    }
+    const { errors } = validateRegistration(form);
+    if (Object.keys(errors).length) {
+      toast.error(Object.values(errors).join(" ")); return;
     }
     if (submissionLock.current) return;
     submissionLock.current = true;

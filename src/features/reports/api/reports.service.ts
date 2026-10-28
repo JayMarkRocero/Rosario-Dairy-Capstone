@@ -1,6 +1,5 @@
-import { toast } from "sonner";
 import { dataCacheEpoch, ensureCacheEvents, fetchDataCache } from "@/lib/dataCache";
-import { getApiErrorMessage } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import http, { type DjangoBestSeller, type DjangoSalesByCategory } from "@/lib/api";
 import type { RevenueBucket, RevenuePeriod } from "@/features/reports/utils/revenueWindow";
 import { reportCacheKey, validateReportDateRange } from "@/features/reports/utils/reportDateRange";
@@ -23,18 +22,14 @@ const CATEGORY_PALETTE = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
 
 export const REPORTS_UPDATED = "rosario:reports-updated";
 
+let manualRefresh: { session: number; retryAt: number; pending?: Promise<void> } | undefined;
+
 export const reportsService = {
   getRevenue: async (period: RevenuePeriod, startDate: string, endDate: string, signal?: AbortSignal): Promise<RevenueBucket[]> => {
     const { data } = await http.get<RevenueBucket[]>("/sales/reports/revenue/", {
       params: { period, start_date: startDate, end_date: endDate }, signal,
     });
     return data;
-  },
-  refreshAfterMutation: async (): Promise<void> => {
-    try { await reportsService.refreshReportCache(); }
-    catch (error) {
-      toast.warning(`Saved successfully, but reports could not refresh: ${getApiErrorMessage(error, "Please retry refreshing reports.")}`);
-    }
   },
   fetchReportPreview: async <T extends ReportType>(type: T, period?: ReportPeriod, range?: ReportDateRange): Promise<ReportPreviewResponse<T>> => {
     const dates = validateReportDateRange(type, range);
@@ -63,10 +58,28 @@ export const reportsService = {
     }
   },
 
-  refreshReportCache: async (): Promise<void> => {
+  refreshReportCache: (): Promise<void> => {
     ensureCacheEvents();
-    await http.post("/api/reports/refresh/", {});
-    window.dispatchEvent(new Event(REPORTS_UPDATED));
+    const session = dataCacheEpoch();
+    if (!manualRefresh || manualRefresh.session !== session) manualRefresh = { session, retryAt: 0 };
+    const state = manualRefresh;
+    if (state.pending) return state.pending;
+    const remaining = state.retryAt - Date.now();
+    if (remaining > 0) {
+      const error = new ApiError(429, `Reports are cooling down. Try again in ${Math.ceil(remaining / 1000)} seconds.`);
+      error.retryAfterMs = remaining;
+      return Promise.reject(error);
+    }
+    const pending = http.post("/api/reports/refresh/", {}).then(() => {
+      if (session === dataCacheEpoch() && typeof window !== "undefined") window.dispatchEvent(new Event(REPORTS_UPDATED));
+    }).catch(error => {
+      if (error instanceof ApiError && error.status === 429 && error.retryAfterMs != null) {
+        state.retryAt = Date.now() + error.retryAfterMs;
+      }
+      throw error;
+    }).finally(() => { if (state.pending === pending) state.pending = undefined; });
+    state.pending = pending;
+    return pending;
   },
 
   getBestSellers: async (limit = 10): Promise<BestSeller[]> => {

@@ -1,5 +1,4 @@
 import { businessDate, normalizeSaleItems } from "@/features/sales/utils/manualPricing";
-import { reportsService } from "@/features/reports/api/reports.service";
 import http, { ApiError, getAllPages, type PaginatedResponse, type DjangoTransaction } from "@/lib/api";
 import { submitSaleOnce } from "@/lib/saleSubmission";
 import { recordedCashierName } from "@/features/sales/api/sales.service";
@@ -36,14 +35,12 @@ export const ordersService = {
     return submitSaleOnce("order", body, async () => {
       const { data } = await http.post<Order>("/sales/orders/", body);
       if (!data.transaction) throw new ApiError(502, "The server returned an order without its transaction. Check order history before submitting again.");
-      await reportsService.refreshAfterMutation();
       return { ...data, transaction: data.transaction };
     });
   },
 
   cancelOrder: async (orderId: number): Promise<Order> => {
     const { data } = await http.post<Order>(`/sales/orders/${orderId}/cancel/`);
-    await reportsService.refreshAfterMutation();
     return data;
   },
 
