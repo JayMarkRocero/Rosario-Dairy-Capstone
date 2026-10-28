@@ -27,8 +27,11 @@ const input = "w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 p
 export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkout" | "order" | "encoding"; onSuccess: (sale: DjangoTransaction) => void; onBusyChange?: (busy: boolean) => void }) {
   const { user } = useAuth();
   const isCheckout = mode === "checkout";
-  const canDiscount = mode !== "order" && user?.role === "admin";
+  const canDiscount = mode === "checkout" && user?.role === "admin";
   const savedEncoding = mode === "encoding" ? encodingService.pending()?.payload : undefined;
+  // Never reprice an ambiguous pre-change submission under its existing request ID.
+  const discountedEncodingPending = !!savedEncoding?.payload.items.some(item =>
+    item.discount_type != null && item.discount_type !== "none" || Number(item.discount_value ?? 0) !== 0);
   const [products, setProducts] = useState<InventoryItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +85,10 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   };
   const submit = async () => {
     if (lock.current) return;
+    if (discountedEncodingPending) {
+      setFormError("An earlier discounted entry is unconfirmed. Check encoding history, then use Start a new entry. Its original request will not be changed or resubmitted here.");
+      return;
+    }
     if (mode !== "encoding" && hasUnconfirmedSale(mode)) {
       const message = new UnconfirmedSaleError(mode).message;
       setFormError(message); toast.error(message); return;
@@ -139,7 +146,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   </section>;
   const cartItems = lines.map(line => <SaleLineEditor key={line.productId} line={line} canDiscount={canDiscount} compact={isCheckout} focusPrice={isCheckout && focusProductId === line.productId}
     onChange={next => setLines(current => current.map(item => item.productId === next.productId ? next : item))} onRemove={() => setLines(current => current.filter(item => item.productId !== line.productId))}/>);
-  const summary = <div className="rounded-xl bg-slate-50 p-3 space-y-1 text-sm"><div className="flex justify-between gap-2"><span>{mode === "order" ? "Subtotal" : "Gross subtotal"}</span><span>{totals ? formatCents(totals.subtotal) : "Not entered"}</span></div>{mode === "encoding" && <div className="flex justify-between gap-2"><span>Item discounts</span><span>{totals ? formatCents(totals.discount) : "Not entered"}</span></div>}<div className="flex justify-between gap-2 font-semibold"><span>Total</span><span>{totals ? formatCents(totals.total) : "Enter item prices"}</span></div></div>;
+  const summary = <div className="rounded-xl bg-slate-50 p-3 space-y-1 text-sm"><div className="flex justify-between gap-2"><span>{isCheckout ? "Gross subtotal" : "Subtotal"}</span><span>{totals ? formatCents(totals.subtotal) : "Not entered"}</span></div><div className="flex justify-between gap-2 font-semibold"><span>Total</span><span>{totals ? formatCents(totals.total) : "Enter item prices"}</span></div></div>;
   const paymentFields = <div className={`grid ${isCheckout || mode === "order" ? (method === "cash" ? "grid-cols-2" : "grid-cols-1") : "grid-cols-1 sm:grid-cols-2"} gap-3`}>
         <label className="text-xs font-medium text-slate-600">Payment method<select aria-label="Payment method" className={input} value={method} onChange={e => { setMethod(e.target.value as typeof method); setTender(""); }}><option value="cash">Cash</option><option value="online">GCash / Online</option></select></label>
         {mode === "encoding" && <label className="text-xs font-medium text-slate-600">Payment status<select aria-label="Payment status" className={input} value={paymentStatus} onChange={e => { setPaymentStatus(e.target.value as typeof paymentStatus); setTender(""); }}><option value="pending">Pending</option><option value="paid">Paid</option></select></label>}
@@ -154,7 +161,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const actions = <div className={`flex flex-wrap justify-end gap-2 ${isCheckout ? "[&_button]:w-full" : ""}`}>
       {unconfirmed && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Review previous submission</Btn>}
       {mode === "encoding" && attempt.current && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Start a new entry</Btn>}
-      <Btn variant="primary" disabled={busy || !lines.length || unconfirmed || isCheckout && !checkoutReady} onClick={submit}>{busy ? "Saving..." : mode === "encoding" ? "Save sales entry" : mode === "order" ? "Submit & Fulfill" : "Complete Transaction"}</Btn>
+      <Btn variant="primary" disabled={busy || !lines.length || unconfirmed || discountedEncodingPending || isCheckout && !checkoutReady} onClick={submit}>{busy ? "Saving..." : mode === "encoding" ? "Save sales entry" : mode === "order" ? "Submit & Fulfill" : "Complete Transaction"}</Btn>
   </div>;
   if (loadError) return <QueryErrorMessage error={loadError} onRetry={() => setReload(value => value + 1)}/>;
   if (loading) return <div role="status" aria-label="Loading sales options" className="space-y-3"><Skeleton className="h-10 w-full"/><Skeleton className="h-40 w-full"/></div>;
@@ -195,7 +202,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
         {mode === "encoding" && <label className="block text-xs font-medium text-slate-600">Notes (optional)<textarea aria-label="Encoding notes" maxLength={2000} className={input} placeholder="Reference or reason for this entry" value={note} onChange={e => setNote(e.target.value)}/></label>}
       </fieldset>
       {errorMessage}
-      {attempt.current && !busy && <p className="text-xs text-amber-700">Your previous entry is restored. Retry it unchanged with the same request ID to avoid duplicate records. Check encoding history before starting another entry.</p>}
+      {attempt.current && !busy && <p className="text-xs text-amber-700">{discountedEncodingPending ? "An earlier discounted entry is unconfirmed. Check encoding history, then use Start a new entry. Its original request will not be changed or resubmitted here." : "Your previous entry is restored. Retry it unchanged with the same request ID to avoid duplicate records. Check encoding history before starting another entry."}</p>}
       {actions}
     </>}
     <CustomerHistory customer={historyOpen ? selectedCustomer ?? null : null} onClose={() => setHistoryOpen(false)}/>

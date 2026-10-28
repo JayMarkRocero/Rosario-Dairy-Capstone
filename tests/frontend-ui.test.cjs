@@ -70,6 +70,7 @@ const compiled = buildSync({
     export { StaffOrders } from './src/features/orders/pages/StaffOrders';
     export { StaffPOS } from './src/features/pos/pages/StaffPOS';
     export { SaleComposer } from './src/features/sales/components/SaleComposer';
+    export { encodingService } from './src/features/sales/api/encoding.service';
     export { SaleLineEditor } from './src/features/sales/components/SaleLineEditor';
     export { CustomerHistory } from './src/features/customers/components/CustomerHistory';
     export { PaymentUpdateControl } from './src/features/sales/components/PaymentUpdateControl';
@@ -2440,6 +2441,97 @@ test('inventory and user tables reclaim desktop chrome space without borrowing p
     captureLayoutEffects = false;
     global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
   }
+});
+
+for (const role of ['admin', 'staff']) {
+  test(`${role} encoding hides discounts and submits final manual prices with unchanged invoice details`, async () => {
+    const form = await composerFixture('encoding', role, 2);
+    let tree = render(ui.SaleComposer, form.props);
+    elements(tree, node => node.type === 'button' && elements(node, child => child.props.children === 'Milk 1').length)[0].props.onClick();
+    const drafts = [{ quantity: '3', unitPrice: '0.10', discountType: 'percent', discountValue: '100' },
+      { quantity: '0.33', unitPrice: '1.99', discountType: 'fixed', discountValue: '999' }];
+    elements(render(ui.SaleComposer, form.props), node => node.type === ui.SaleLineEditor).forEach((node, i) => node.props.onChange({ ...node.props.line, ...drafts[i] }));
+    tree = render(ui.SaleComposer, form.props);
+    for (const node of elements(tree, node => node.type === ui.SaleLineEditor)) {
+      assert.equal(node.props.canDiscount, false);
+      const editor = render(ui.SaleLineEditor, node.props);
+      const controls = elements(editor, item => ['input', 'select'].includes(item.type));
+      assert.deepEqual(controls.map(item => item.props['aria-label']), [`Quantity for ${node.props.line.name}`, `Selling price for ${node.props.line.name}`]);
+      assert.ok(elements(editor, item => item.props.className === 'grid grid-cols-2 gap-2').length, 'Quantity and final unit price retain their compact two-column row');
+    }
+    assert.equal(elements(tree, node => node.props.children === 'Item discounts').length, 0);
+    assert.equal(elements(tree, node => node.props.children === 'Gross subtotal').length, 0);
+    assert.ok(elements(tree, node => node.props.children === 'Subtotal').length);
+    assert.equal(elements(tree, node => node.props.children === ui.formatCents(96n)).length, 2, 'Subtotal and total equal the sum of rounded quantity-times-price lines');
+    elements(tree, node => node.type?.name === 'CustomerPicker')[0].props.onChange('906');
+    form.field('Sales date').props.onChange({ target: { value: '2000-09-15' } });
+    form.field('SI number').props.onChange({ target: { value: 'SI-FINAL-PRICE' } });
+    form.field('Encoding notes').props.onChange({ target: { value: 'Original invoice note' } });
+    form.field('Payment method').props.onChange({ target: { value: 'online' } });
+    let payload, result;
+    form.props.onSuccess = transaction => { result = transaction; };
+    const returned = { id: 91, subtotal: '0.96', discount_amount: '0.00', total_amount: '0.96', payment_status: 'pending', items: [] };
+    ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); return { status: 201, config, headers: {}, data: returned }; };
+    await form.submit();
+    assert.deepEqual(payload.items, [
+      { product_id: 385, quantity: '3.00', unit_price: '0.10', discount_type: 'none', discount_value: '0.00' },
+      { product_id: 386, quantity: '0.33', unit_price: '1.99', discount_type: 'none', discount_value: '0.00' },
+    ]);
+    assert.equal(payload.customer_id, 906); assert.equal(payload.transaction_date, '2000-09-15');
+    assert.equal(payload.si_number, 'SI-FINAL-PRICE'); assert.equal(payload.note, 'Original invoice note');
+    assert.equal(payload.payment_method, 'online'); assert.equal(payload.payment_status, 'pending'); assert.equal(payload.amount_tendered, null);
+    assert.equal('discount_type' in payload, false); assert.equal('discount_value' in payload, false);
+    assert.match(payload.request_id, /^[0-9a-f-]{36}$/); assert.equal(result, returned);
+  });
+
+  test(`${role} encoded cash payment validates the full final-price total without hidden discounts`, async () => {
+    const form = await composerFixture('encoding', role);
+    form.changeLine({ quantity: '2', unitPrice: '50', discountType: 'fixed', discountValue: '60' });
+    form.field('Payment status').props.onChange({ target: { value: 'paid' } });
+    form.field('Amount tendered').props.onChange({ target: { value: '70' } });
+    const payloads = [];
+    ui.http.defaults.adapter = async config => { payloads.push(JSON.parse(config.data)); return { status: 201, config, headers: {}, data: { id: 92 } }; };
+    await form.submit();
+    assert.equal(payloads.length, 0, 'A stale discount cannot make insufficient cash pass validation');
+    assert.match(toastErrors.at(-1)[0], /cover the total/);
+    form.field('Amount tendered').props.onChange({ target: { value: '100' } });
+    await form.submit();
+    assert.equal(payloads.length, 1); assert.equal(payloads[0].amount_tendered, '100.00');
+    assert.equal(payloads[0].payment_status, 'paid'); assert.equal(payloads[0].payment_method, 'cash');
+    assert.deepEqual(payloads[0].items[0], { product_id: 385, quantity: '2.00', unit_price: '50.00', discount_type: 'none', discount_value: '0.00' });
+  });
+}
+
+test('a restored discounted encoding cannot be silently repriced or resubmitted under its old request ID', async () => {
+  retainBrowserStorage();
+  const form = await composerFixture('encoding', 'admin');
+  const lines = [{ productId: 385, name: 'Milk', stock: 19, quantity: '2', unitPrice: '100', discountType: 'fixed', discountValue: '25' }];
+  const payload = { request_id: '550e8400-e29b-41d4-a716-446655440017', transaction_date: '2000-09-15', customer_id: null,
+    payment_method: 'online', payment_status: 'pending', amount_tendered: null, si_number: 'SI-OLD-DISCOUNT',
+    items: [{ product_id: 385, quantity: '2.00', unit_price: '100.00', discount_type: 'fixed', discount_value: '25.00' }] };
+  let writes = 0;
+  ui.http.defaults.adapter = async config => {
+    if (config.method === 'post') { writes++; throw new AxiosError('Timed out', AxiosError.ECONNABORTED); }
+    return { status: 200, config, headers: {}, data: [] };
+  };
+  await assert.rejects(ui.encodingService.create(payload, lines));
+  const original = JSON.stringify(ui.encodingService.pending());
+  effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
+  states = []; refs = []; effects = [];
+  render(ui.SaleComposer, form.props); effects[0](); await settle();
+  let tree = render(ui.SaleComposer, form.props);
+  assert.match(JSON.stringify(tree), /earlier discounted entry is unconfirmed/i);
+  assert.equal(elements(tree, node => node.type === ui.Btn && node.props.children === 'Save sales entry')[0].props.disabled, true);
+  await form.submit();
+  assert.equal(writes, 1); assert.equal(JSON.stringify(ui.encodingService.pending()), original);
+  elements(render(ui.SaleComposer, form.props), node => node.props.children === 'Start a new entry')[0].props.onClick();
+  tree = render(ui.SaleComposer, form.props);
+  const confirmation = elements(tree, node => node.type === ui.ConfirmDialog)[0];
+  assert.equal(confirmation.props.open, true);
+  confirmation.props.onConfirm();
+  assert.equal(ui.encodingService.pending(), null);
+  assert.equal(elements(render(ui.SaleComposer, form.props), node => node.type === ui.SaleLineEditor).length, 0);
+  assert.equal(writes, 1, 'History acknowledgement never submits the legacy invoice');
 });
 
 test('encoding reuses its UUID on network retries and blocks changed ambiguous submissions', async () => {

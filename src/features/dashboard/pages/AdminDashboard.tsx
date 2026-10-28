@@ -1,7 +1,6 @@
 import { KPICards } from "@/features/dashboard/components/admin/KPICards";
 import { RevenueChart } from "@/features/dashboard/components/admin/RevenueChart";
 import { ForecastChart } from "@/features/dashboard/components/admin/ForecastChart";
-import { FEFOMonitor } from "@/features/dashboard/components/admin/FEFOMonitor";
 import { SalesCategoryChart } from "@/features/dashboard/components/admin/SalesCategoryChart";
 import { BestSellersChart } from "@/features/dashboard/components/admin/BestSellersChart";
 
@@ -19,8 +18,6 @@ export function AdminDashboard() {
         <BestSellersChart />
         <SalesCategoryChart />
       </div>
-
-      <FEFOMonitor />
     </div>
   );
 }
