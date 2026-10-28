@@ -8,7 +8,7 @@ import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useRef } from "react";
-import { Plus, Eye, Edit, Trash2, Lock, KeyIcon, UserCheck } from "lucide-react";
+import { Plus, Eye, EyeOff, Edit, Trash2, Lock, KeyIcon, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { Btn } from "@/components/buttons/Btn";
@@ -41,56 +41,70 @@ interface FormState {
 const EMPTY_FORM: FormState = { username:"", firstName:"", lastName:"", email:"", password:"", phoneNumber:"", address:"" };
 
 // ─── Form — defined OUTSIDE the main component so it doesn't remount on every keystroke ──
-function UserForm({ title, form, onChange, role, onRoleChange }: {
+function UserForm({ title, form, onChange, role, onRoleChange, showPassword = false, onTogglePassword }: {
   title: string;
   form: FormState;
   onChange: (f: FormState) => void;
   role: "Staff" | "Administrator";
   onRoleChange: (r: "Staff" | "Administrator") => void;
+  showPassword?: boolean;
+  onTogglePassword?: () => void;
 }) {
   const isRegistration = title === "Add User";
+  const phoneField = <div>
+    <label htmlFor={isRegistration ? "add-user-phone" : undefined} className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Phone Number</label>
+    <input id={isRegistration ? "add-user-phone" : undefined} className={inputClass} style={inputStyle} placeholder="09XXXXXXXXX"
+      maxLength={11} value={form.phoneNumber} onChange={e=>onChange({...form,phoneNumber:e.target.value.replace(/\D/g, "")})}/>
+  </div>;
   return (
-    <div className="space-y-4">
+    <div className={isRegistration ? "grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5" : "space-y-4"}>
       <div>
-        <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Username{isRegistration && " (max. 50)"}</label>
-        <input className={inputClass} style={inputStyle} placeholder="jdelacruz"
+        <label htmlFor={isRegistration ? "add-user-username" : undefined} className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Username{isRegistration && " (max. 50)"}</label>
+        <input id={isRegistration ? "add-user-username" : undefined} className={inputClass} style={inputStyle} placeholder="jdelacruz"
           autoComplete="off" maxLength={isRegistration ? undefined : 150}
           title={isRegistration ? "Maximum 50 characters after username normalization." : undefined}
           value={form.username} onChange={e=>onChange({...form,username:e.target.value})}/>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {isRegistration && phoneField}
+      <div className={isRegistration ? "contents" : "grid grid-cols-1 sm:grid-cols-2 gap-4"}>
         <div>
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>First Name{isRegistration && " (max. 50)"}</label>
-          <input className={inputClass} style={inputStyle} placeholder="Juan"
+          <label htmlFor={isRegistration ? "add-user-first-name" : undefined} className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>First Name{isRegistration && " (max. 50)"}</label>
+          <input id={isRegistration ? "add-user-first-name" : undefined} className={inputClass} style={inputStyle} placeholder="Juan"
             title={isRegistration ? "Maximum 50 characters." : undefined}
             value={form.firstName} onChange={e=>onChange({...form,firstName:e.target.value})}/>
         </div>
         <div>
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Last Name{isRegistration && " (max. 50)"}</label>
-          <input className={inputClass} style={inputStyle} placeholder="dela Cruz"
+          <label htmlFor={isRegistration ? "add-user-last-name" : undefined} className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Last Name{isRegistration && " (max. 50)"}</label>
+          <input id={isRegistration ? "add-user-last-name" : undefined} className={inputClass} style={inputStyle} placeholder="dela Cruz"
             title={isRegistration ? "Maximum 50 characters." : undefined}
             value={form.lastName} onChange={e=>onChange({...form,lastName:e.target.value})}/>
         </div>
         <div className="sm:col-span-2">
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Email</label>
-          <input className={inputClass} style={inputStyle} placeholder="juan@rosariodairy.com"
+          <label htmlFor={isRegistration ? "add-user-email" : undefined} className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Email</label>
+          <input id={isRegistration ? "add-user-email" : undefined} className={inputClass} style={inputStyle} placeholder="juan@rosariodairy.com"
             autoComplete="off"
             value={form.email} onChange={e=>onChange({...form,email:e.target.value})}/>
         </div>
-        <div>
-  <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Phone Number</label>
-  <input className={inputClass} style={inputStyle} placeholder="09XXXXXXXXX"
-    maxLength={11}
-    value={form.phoneNumber}
-    onChange={e=>onChange({...form,phoneNumber:e.target.value.replace(/\D/g, "")})}/>
-</div>
+        {!isRegistration && phoneField}
         <div className="sm:col-span-2">
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Address</label>
-          <input className={inputClass} style={inputStyle} placeholder="Street, Barangay, City"
+          <label htmlFor={isRegistration ? "add-user-address" : undefined} className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Address</label>
+          <input id={isRegistration ? "add-user-address" : undefined} className={inputClass} style={inputStyle} placeholder="Street, Barangay, City"
             value={form.address} onChange={e=>onChange({...form,address:e.target.value})}/>
         </div>
       </div>
-      <div>
+      {isRegistration && <div className="sm:col-span-2">
+        <label htmlFor="add-user-password" className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Temporary Password (8–25)</label>
+        <div className="relative">
+          <input id="add-user-password" className={`${inputClass} pr-11`} style={inputStyle} type={showPassword ? "text" : "password"} placeholder="8–25 characters"
+            title="Between 8 and 25 characters. Password spaces are preserved." autoComplete="new-password"
+            value={form.password} onChange={e=>onChange({...form,password:e.target.value})}/>
+          <button type="button" aria-label={showPassword ? "Hide temporary password" : "Show temporary password"} aria-pressed={showPassword} aria-controls="add-user-password"
+            onClick={onTogglePassword} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" style={{color:C.muted}}>
+            {showPassword ? <EyeOff size={16} aria-hidden="true"/> : <Eye size={16} aria-hidden="true"/>}
+          </button>
+        </div>
+      </div>}
+      <div className={isRegistration ? "sm:col-span-2" : undefined}>
         <label className="text-xs font-semibold block mb-2" style={{color:C.muted}}>Role</label>
         <div className="flex gap-2">
           {(["Staff","Administrator"] as const).map(r=>(
@@ -103,15 +117,6 @@ function UserForm({ title, form, onChange, role, onRoleChange }: {
           ))}
         </div>
       </div>
-      {title==="Add User"&&(
-        <div>
-          <label className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Temporary Password (8–25)</label>
-          <input className={inputClass} style={inputStyle} type="password" placeholder="8–25 characters"
-            title="Between 8 and 25 characters. Password spaces are preserved."
-            autoComplete="new-password"
-            value={form.password} onChange={e=>onChange({...form,password:e.target.value})}/>
-        </div>
-      )}
     </div>
   );
 }
@@ -138,6 +143,7 @@ export function AdminUserManagement() {
   const [form,        setForm]        = useState<FormState>(EMPTY_FORM);
   const [deactivateReason, setDeactivateReason] = useState<DeactivationReason>("suspended");
   const [newPassword, setNewPassword] = useState("");
+  const [showTemporaryPassword, setShowTemporaryPassword] = useState(false);
 
   const summary = useMemo(() => {
     const total = users.length;
@@ -169,6 +175,7 @@ export function AdminUserManagement() {
   const openView = (u:SystemUser) => { setSelected(u); setViewOpen(true); };
 
   const openAdd = () => {
+    setShowTemporaryPassword(false);
     setForm(EMPTY_FORM);
     setRole("Staff");
     setAddOpen(true);
@@ -431,10 +438,10 @@ export function AdminUserManagement() {
         )}
       </Drawer>
 
-      <Modal busy={loading} open={addOpen} onClose={()=>setAddOpen(false)} title="Add User" size="sm"
+      <Modal busy={loading} open={addOpen} onClose={()=>{setAddOpen(false);setShowTemporaryPassword(false);}} title="Add User" size="md"
         footer={<><Btn variant="secondary" onClick={()=>setAddOpen(false)}>Cancel</Btn>
           <Btn variant="primary" onClick={handleAddSave} disabled={loading}>{loading?"Saving…":"Add User"}</Btn></>}>
-        <UserForm title="Add User" form={form} onChange={setForm} role={role} onRoleChange={setRole}/>
+        <UserForm title="Add User" form={form} onChange={setForm} role={role} onRoleChange={setRole} showPassword={showTemporaryPassword} onTogglePassword={()=>setShowTemporaryPassword(value=>!value)}/>
       </Modal>
 
       <Modal busy={loading} open={editOpen} onClose={()=>setEditOpen(false)} title="Edit User" subtitle={selected?.name} size="sm"

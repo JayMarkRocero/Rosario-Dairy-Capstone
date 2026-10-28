@@ -3626,6 +3626,42 @@ test('registration form accepts Unicode boundaries without native UTF-16 limits 
   assert.equal(payload.username, 'A'.repeat(50)); assert.equal(payload.first_name, draft.firstName); assert.equal(payload.last_name, draft.lastName); assert.equal(payload.password, draft.password);
 });
 
+test('Add User uses the compact six-row desktop layout with associated labels and mobile stacking', () => {
+  const fixture = registrationFixture(registrationDraft());
+  const component = fixture.form();
+  const tree = render(component.type, component.props);
+  const ids = ['add-user-username', 'add-user-phone', 'add-user-first-name', 'add-user-last-name', 'add-user-email', 'add-user-address', 'add-user-password'];
+  assert.deepEqual(elements(tree, node => node.type === 'input').map(node => node.props.id), ids);
+  assert.deepEqual(elements(tree, node => node.type === 'label' && node.props.htmlFor).map(node => node.props.htmlFor), ids);
+  assert.match(tree.props.className, /grid-cols-1 sm:grid-cols-2/);
+  const cells = React.Children.toArray(tree.props.children).flatMap(child => child.props.className === 'contents' ? React.Children.toArray(child.props.children) : [child]);
+  assert.equal(cells.length, 8);
+  for (const cell of cells.slice(0, 4)) assert.ok(!cell.props.className?.includes('col-span-2'));
+  for (const cell of cells.slice(4)) assert.match(cell.props.className, /sm:col-span-2/);
+  assert.deepEqual(elements(cells.at(-1), node => node.type === 'button').map(node => node.props.children), ['Staff', 'Administrator']);
+  const modal = elements(render(ui.AdminUserManagement), node => node.type === ui.Modal && node.props.title === 'Add User')[0];
+  assert.equal(modal.props.size, 'md');
+  assert.deepEqual(elements(modal.props.footer, node => node.type === ui.Btn).map(node => node.props.children), ['Cancel', 'Add User']);
+  assert.equal(typeof modal.props.onClose, 'function');
+});
+
+test('Add User password visibility toggles without changing its value and resets when reopened', () => {
+  const draft = registrationDraft();
+  const fixture = registrationFixture(draft);
+  const body = () => { const form = fixture.form(); return render(form.type, form.props); };
+  const password = () => elements(body(), node => node.props.id === 'add-user-password')[0];
+  assert.equal(password().props.type, 'password');
+  const toggle = elements(body(), node => node.props['aria-label'] === 'Show temporary password')[0];
+  assert.equal(toggle.props.type, 'button'); assert.equal(toggle.props['aria-controls'], 'add-user-password');
+  toggle.props.onClick();
+  assert.equal(password().props.type, 'text'); assert.equal(password().props.value, draft.password);
+  assert.equal(elements(body(), node => node.props['aria-label'] === 'Hide temporary password')[0].props['aria-pressed'], true);
+  const modal = elements(render(ui.AdminUserManagement), node => node.type === ui.Modal && node.props.title === 'Add User')[0];
+  elements(modal.props.footer, node => node.props.children === 'Cancel')[0].props.onClick();
+  elements(render(ui.AdminUserManagement), node => node.type === ui.Btn && node.props.children === 'Add User')[0].props.onClick();
+  assert.equal(password().props.type, 'password');
+});
+
 test('registration limits do not constrain existing account editing', async () => {
   authState.user = { id: 7, username: 'admin', email: 'admin@example.com', role: 'admin' };
   const user = { id: 8, username: 'a'.repeat(80), name: 'Long existing name', firstName: 'f'.repeat(80), lastName: 'l'.repeat(80), email: 'old@example.test', role: 'Staff', status: 'Active', last: 'Never', phone: '', address: '' };
