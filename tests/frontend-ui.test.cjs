@@ -3177,9 +3177,10 @@ test('centered forecast tabs preserve the full calendar and show separate basis 
   let tree = render(ui.ForecastChart);
   const buttons = () => elements(tree, node => node.type === 'button');
   assert.equal(buttons().find(node => node.props.children === 'Combined').props['aria-pressed'], true);
-  assert.equal(buttons().length, 4);
+  assert.equal(buttons().length, 5);
   const toolbar = elements(tree, node => node.props['aria-label'] === 'Forecast controls')[0];
-  assert.match(toolbar.props.className, /flex-wrap.*sm:flex-nowrap/);
+  assert.match(toolbar.props.className, /flex-wrap/);
+  assert.doesNotMatch(toolbar.props.className, /sm:flex-nowrap/);
   const segments = elements(toolbar, node => node.props['aria-label'] === 'Forecast sales view')[0];
   assert.match(segments.props.className, /bg-slate-100/);
   assert.match(buttons().find(node => node.props.children === 'Combined').props.className, /bg-white text-blue-600 shadow-sm/);
@@ -3225,6 +3226,97 @@ test('centered forecast tabs preserve the full calendar and show separate basis 
   tree = render(ui.ForecastChart);
   assert.equal(buttons().find(node => node.props.children === 'Milk Feeding').props['aria-pressed'], true);
   assert.equal(periodSelect().props.value, 'weekly');
+});
+
+function forecastCalendar() {
+  const tree = () => render(ui.ForecastChart);
+  const open = () => elements(tree(), node => node.props['aria-label'] === 'Forecast date range')[0].props.onClick();
+  const modal = () => elements(tree(), node => node.type === ui.Modal && node.props.title === 'Forecast date range')[0];
+  const field = label => elements(tree(), node => node.type === 'input' && node.props['aria-label'] === `Forecast ${label} date`)[0];
+  const action = label => elements(modal().props.footer, node => node.props.children === label)[0].props.onClick();
+  return { tree, open, modal, field, action };
+}
+
+function historicalForecastFixture(period = 'monthly') {
+  return JSON.parse(JSON.stringify(forecastFixture(period)).replace(/2024/g, '1998').replace(/2025/g, '1999').replace(/2026/g, '2000').replace(/2027/g, '2001').replace(/2028/g, '2002'));
+}
+
+test('forecast calendar validates drafts cancels changes and clears dates back to the unchanged default view', () => {
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, forecastFixture(), ['dashboard', 'reports']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly:2000-10-26`, historicalForecastFixture(), ['dashboard', 'reports']);
+  const form = forecastCalendar(); form.open();
+  assert.equal(form.modal().props.open, true);
+  assert.equal(form.field('from').props.type, 'date');
+  assert.match(form.field('from').props.className, /w-full/);
+  form.field('from').props.onChange({ target: { value: '2000-08-15' } });
+  form.action('Apply dates');
+  assert.match(elements(form.tree(), node => node.props.id === 'forecast-date-error')[0].props.children, /both From and To/);
+  assert.equal(elements(form.tree(), node => Array.isArray(node.props.data))[0].props.data.length, 7);
+  form.field('to').props.onChange({ target: { value: '2000-08-01' } });
+  form.action('Apply dates');
+  assert.match(elements(form.tree(), node => node.props.id === 'forecast-date-error')[0].props.children, /on or after/);
+  form.field('to').props.onChange({ target: { value: '2000-10-26' } });
+  form.action('Apply dates');
+  assert.equal(form.modal().props.open, false);
+  const rows = elements(form.tree(), node => Array.isArray(node.props.data))[0].props.data;
+  assert.equal(rows.length, 3); assert.equal(rows[0].date, '2000-08-01'); assert.equal(rows[2].end_date, '2000-10-31');
+  form.open(); form.field('from').props.onChange({ target: { value: '2000-09-01' } });
+  form.modal().props.onClose(); form.open();
+  assert.equal(form.field('from').props.value, '2000-08-15', 'Closing must discard uncommitted dates');
+  form.action('Clear dates');
+  assert.equal(elements(form.tree(), node => Array.isArray(node.props.data))[0].props.data.length, 7);
+  assert.equal(elements(form.tree(), node => node.props.label?.value === 'Current period').length, 1);
+  assert.equal(form.modal().props.open, false);
+});
+
+test('historical forecast range preserves all view period controls original series gaps and full-window evaluations', () => {
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, forecastFixture(), ['dashboard', 'reports']);
+  for (const period of ['weekly', 'monthly', 'yearly']) ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:${period}:2000-10-26`, historicalForecastFixture(period), ['dashboard', 'reports']);
+  const form = forecastCalendar(); form.open();
+  form.field('from').props.onChange({ target: { value: '1990-01-01' } });
+  form.field('to').props.onChange({ target: { value: '2000-10-26' } }); form.action('Apply dates');
+  for (const period of ['weekly', 'monthly', 'yearly']) {
+    elements(form.tree(), node => node.props['aria-label'] === 'Forecast period')[0].props.onChange({ target: { value: period } });
+    for (const [view, label] of [['combined', 'Combined'], ['regular', 'Regular Sales'], ['feeding', 'Milk Feeding']]) {
+      elements(form.tree(), node => node.type === 'button' && node.props.children === label)[0].props.onClick();
+      const tree = form.tree();
+      const points = elements(tree, node => Array.isArray(node.props.data))[0].props.data;
+      const expected = historicalForecastFixture(period).views[view].points.filter(point => point.date <= '2000-10-26');
+      assert.deepEqual(points, expected);
+      assert.match(JSON.stringify(tree), /Earlier periods outside the server window/);
+      assert.match(JSON.stringify(tree), /Server evaluations cover the full centered window/);
+      assert.equal(elements(tree, node => node.props.label?.value === 'As-of period').length, 1);
+      assert.ok(elements(tree, node => ['actual', 'past_prediction', 'future_prediction'].includes(node.props.dataKey)).every(line => line.props.connectNulls === false));
+    }
+  }
+  form.open(); form.action('Clear dates');
+  const tree = form.tree();
+  assert.equal(elements(tree, node => node.props['aria-label'] === 'Forecast period')[0].props.value, 'yearly');
+  assert.equal(elements(tree, node => node.type === 'button' && node.props.children === 'Milk Feeding')[0].props['aria-pressed'], true);
+});
+
+test('historical missing predictions remain unavailable and errors never fall back to current predictions', async () => {
+  const key = `${ui.dataCacheEpoch()}:forecast-graph:real:monthly:2000-10-26`;
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, forecastFixture(), ['dashboard', 'reports']);
+  const graph = historicalForecastFixture(); graph.status = 'refresh_required';
+  for (const view of Object.values(graph.views)) {
+    view.message = 'Refresh saved forecasts to make predictions available.';
+    view.points = view.points.map(point => ({ ...point, past_prediction: null, future_prediction: null }));
+  }
+  ui.writeDataCache(key, graph, ['dashboard', 'reports']);
+  const form = forecastCalendar(); form.open();
+  form.field('from').props.onChange({ target: { value: '2000-09-01' } });
+  form.field('to').props.onChange({ target: { value: '2000-10-26' } }); form.action('Apply dates');
+  assert.match(JSON.stringify(form.tree()), /Refresh forecast updates the current window only/);
+  assert.ok(elements(form.tree(), node => Array.isArray(node.props.data))[0].props.data.every(point => point.past_prediction === null && point.future_prediction === null));
+  assert.equal(elements(form.tree(), node => node.props.className === 'forecast-boundary-connector').length, 0);
+  form.open(); form.field('to').props.onChange({ target: { value: '2000-10-25' } }); form.action('Apply dates');
+  const errorKey = `${ui.dataCacheEpoch()}:forecast-graph:real:monthly:2000-10-25`;
+  await ui.fetchDataCache(errorKey, () => Promise.reject(new Error('Historical graph unavailable.')), ['dashboard', 'reports']).catch(() => {});
+  const tree = form.tree();
+  assert.equal(elements(tree, node => node.type === ui.EmptyState)[0].props.description, 'Historical graph unavailable.');
+  assert.equal(elements(tree, node => Array.isArray(node.props.data)).length, 0);
+  assert.equal(elements(tree, node => node.type === 'button' && node.props.children === 'Retry forecast').length, 1);
 });
 
 test('centered forecast renders all nine view/period combinations with the server calendar and current marker', () => {

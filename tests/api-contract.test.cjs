@@ -34,6 +34,7 @@ const compiled = buildSync({
     export * from './src/features/dashboard/components/admin/RevenueChart';
     export * from './src/features/dashboard/components/admin/ForecastChart';
     export * from './src/features/dashboard/api/forecasting.service';
+    export * from './src/features/dashboard/utils/forecastDateRange';
     export { forecastSeries, forecastMetric, forecastDisplayRange, forecastAmount } from './src/features/dashboard/utils/forecast';
     export * from './src/features/reports/utils/revenueWindow';
     export * from './src/features/users/api/user.service';
@@ -498,6 +499,57 @@ test('forecast periods use the graph endpoint and monthly status uses the regula
   assert.equal(api.forecastMetric(payload.metrics.prospective_regular_monthly), 'Not yet available');
   assert.equal(api.forecastMetric({ wape_percent: 0 }), '0.0% WAPE');
   assert.equal(api.forecastMetric({ wape_percent: 10, failed_rows: 1 }), 'Incomplete evaluation');
+});
+
+test('historical forecast graph requests use supported as_of only and reject a mismatched current response', async () => {
+  const signal = new AbortController().signal;
+  for (const period of ['weekly', 'monthly', 'yearly']) {
+    responseData = { period, scope: 'real', training_scope: 'real', is_demo: false, as_of: '2000-10-26', views: {} };
+    assert.equal(await api.forecastingService.getGraph(period, 'real', signal, '2000-10-26'), responseData);
+    assert.deepEqual(calls.at(-1).params, { period, scope: 'real', as_of: '2000-10-26' });
+    assert.equal(calls.at(-1).signal, signal);
+    assert.equal(calls.at(-1).method, 'get');
+    assert.equal(calls.at(-1).url, '/api/forecasting/graph/');
+    assert.notEqual(api.forecastGraphKey(period), api.forecastGraphKey(period, 'real', '2000-10-26'));
+  }
+  responseData = { ...responseData, as_of: '2000-10-27' };
+  await assert.rejects(api.forecastingService.getGraph('yearly', 'real', undefined, '2000-10-26'), { status: 502 });
+  const count = calls.length;
+  for (const date of ['', '0002-12-31', '2000-02-30', '2000-2-01', '9999-01-01']) {
+    await assert.rejects(api.forecastingService.getGraph('monthly', 'real', undefined, date), { status: 400 });
+  }
+  assert.equal(calls.length, count);
+  responseData = { period: 'monthly', scope: 'real', training_scope: 'real', is_demo: false, views: {} };
+  await api.forecastingService.getGraph('monthly');
+  assert.deepEqual(calls.at(-1).params, { period: 'monthly', scope: 'real' }, 'Default requests must remain unchanged');
+});
+
+test('forecast date range validation accepts same-day and leap dates and rejects incomplete reversed future dates', () => {
+  const today = '2000-10-26';
+  for (const date of ['0003-01-01', '2000-02-29', today]) {
+    assert.equal(api.forecastDateRangeError({ start_date: date, end_date: date }, today), '');
+  }
+  for (const range of [{ start_date: '', end_date: today }, { start_date: today, end_date: '' },
+    { start_date: today, end_date: '2000-10-25' }, { start_date: today, end_date: '2000-10-27' },
+    { start_date: '1900-02-29', end_date: today }, { start_date: '0002-01-01', end_date: today }]) {
+    assert.ok(api.forecastDateRangeError(range, today));
+  }
+  assert.equal(api.validForecastDate('2000-10-27', today), false);
+});
+
+test('forecast date filtering retains whole overlapping buckets and original values provenance and nulls', () => {
+  const points = Object.freeze([
+    Object.freeze({ date: '2000-08-01', end_date: '2000-08-31', actual: null, past_prediction: 0, future_prediction: null, prediction_basis: 'issued_forecast' }),
+    Object.freeze({ date: '2000-09-01', end_date: '2000-09-30', actual: 45, past_prediction: null, future_prediction: null, prediction_basis: 'historical_test' }),
+    Object.freeze({ date: '2000-10-01', end_date: '2000-10-31', actual: 10, past_prediction: null, future_prediction: 80, prediction_basis: 'forecast', is_current: true }),
+  ]);
+  const filtered = api.forecastPointsInRange(points, { start_date: '2000-08-31', end_date: '2000-09-01' });
+  assert.deepEqual(filtered, points.slice(0, 2));
+  assert.equal(filtered[0], points[0]);
+  assert.equal(filtered[0].actual, null); assert.equal(filtered[0].past_prediction, 0);
+  assert.equal(api.forecastPointsInRange(points), points);
+  assert.deepEqual(api.forecastPointsInRange(points, { start_date: '1999-01-01', end_date: '1999-12-31' }), []);
+  assert.deepEqual(api.forecastPointsInRange(points, { start_date: '2000-10-15', end_date: '2000-10-15' }), [points[2]]);
 });
 
 test('forecast refresh submits only an empty object and polls authenticated relative job URLs', async () => {

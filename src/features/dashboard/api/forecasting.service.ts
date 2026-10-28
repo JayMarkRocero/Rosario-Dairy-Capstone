@@ -1,4 +1,5 @@
 import http, { ApiError } from "@/lib/api";
+import { validForecastDate } from "../utils/forecastDateRange";
 
 export type ForecastPeriod = "weekly" | "monthly" | "yearly";
 export type ForecastViewKey = "combined" | "regular" | "feeding";
@@ -112,10 +113,11 @@ export const forecastGraphKey = (period: ForecastPeriod, scope: ForecastGraphSco
 export const forecastJobActive = (job: ForecastRefreshJob | null) => job?.status === "queued" || job?.status === "running";
 export const FORECAST_POLL_INTERVAL = 5_000;
 export const forecastingService = {
-  getGraph: async (period: ForecastPeriod, scope: ForecastGraphScope = "real", signal?: AbortSignal): Promise<CenteredForecastGraph> => {
+  getGraph: async (period: ForecastPeriod, scope: ForecastGraphScope = "real", signal?: AbortSignal, asOf?: string): Promise<CenteredForecastGraph> => {
     if (scope !== "real") throw new ApiError(400, "The dashboard uses real sales only.");
-    const { data } = await http.get<CenteredForecastGraph>("/api/forecasting/graph/", { params: { period, scope }, signal });
-    if (data?.scope !== "real" || data.is_demo !== false || data.training_scope !== "real" || data.period !== period) {
+    if (asOf !== undefined && !validForecastDate(asOf)) throw new ApiError(400, "Choose a valid historical forecast date (Asia/Manila).");
+    const { data } = await http.get<CenteredForecastGraph>("/api/forecasting/graph/", { params: { period, scope, ...(asOf ? { as_of: asOf } : {}) }, signal });
+    if (data?.scope !== "real" || data.is_demo !== false || data.training_scope !== "real" || data.period !== period || (asOf !== undefined && data.as_of !== asOf)) {
       throw new ApiError(502, "The server did not return the requested real-sales forecast graph.");
     }
     return data;
