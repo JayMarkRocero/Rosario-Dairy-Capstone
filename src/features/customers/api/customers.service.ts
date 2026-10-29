@@ -1,5 +1,6 @@
 import http, { getAllPages, type DjangoTransaction, type PaginatedResponse, type CreateCustomerPayload, type DjangoCustomer, type UpdateCustomerPayload } from "@/lib/api";
 import type { Customer } from "@/features/customers/types/customer";
+import { customerTotalSpent } from "../utils/totalPurchases";
 
 function manilaDate(timestamp: string): string {
   const date = new Date(timestamp);
@@ -24,6 +25,7 @@ export const customersService = {
       email: c.email ?? "",
       address: c.address ?? "",
       orders: c.transaction_count ?? 0,
+      totalSpent: customerTotalSpent(c.total_spent),
       last: c.last_sale ? manilaDate(c.last_sale) : "—",
       createdAt: manilaDate(c.created_at),
     }));
@@ -45,6 +47,7 @@ export const customersService = {
       email: data.email ?? "",
       address: data.address ?? "",
       orders: 0,
+      totalSpent: customerTotalSpent(data.total_spent),
       last: "—",
       createdAt: manilaDate(data.created_at),
     };

@@ -489,6 +489,7 @@ export interface DjangoCustomer {
   updated_at: string;
   transaction_count?: number;
   last_sale?: string | null;
+  readonly total_spent?: string | null;
 }
 
 export interface CreateCustomerPayload {

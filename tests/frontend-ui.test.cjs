@@ -427,7 +427,7 @@ test('mobile customer cards preserve record details and active/inactive actions'
   const props = { customer, onView: value => actions.push(['view', value]), onEdit: value => actions.push(['edit', value]),
     onDelete: value => actions.push(['delete', value]), onReactivate: value => actions.push(['reactivate', value]) };
   let tree = render(ui.MobileCustomerCard, props);
-  assert.deepEqual(elements(tree, node => node.type === 'dd').map(node => node.props.children), [customer.email, customer.phone, '2', customer.last]);
+  assert.deepEqual(elements(tree, node => node.type === 'dd').map(node => node.props.children), [customer.email, customer.phone, '2', 'Unavailable', customer.last]);
   const buttons = elements(tree, node => node.type === 'button');
   assert.deepEqual(buttons.map(node => node.props['aria-label']), ['View details', 'Edit', 'Delete']);
   buttons.forEach(node => node.props.onClick());
@@ -439,6 +439,52 @@ test('mobile customer cards preserve record details and active/inactive actions'
   tree = render(ui.MobileCustomerCard, { ...props, customer: inactive });
   elements(tree, node => node.props['aria-label'] === 'Reactivate customer')[0].props.onClick();
   assert.deepEqual(actions.at(-1), ['reactivate', inactive]);
+});
+
+test('customer total purchases appear in the table profile and mobile card with matching definitions', () => {
+  const customer = { id: 9, name: 'Customer', isActive: true, email: 'customer@example.test', phone: '09171234567', address: 'Batangas', orders: 2, last: '2026-10-11', createdAt: '', totalSpent: '1999999999999999999.98' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:customers:list:all`, [customer], ['customers']);
+  let tree = render(ui.AdminCustomers);
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  const column = table.props.columns.find(column => column.key === 'totalSpent');
+  assert.equal(column.header, 'Total Purchases');
+  assert.equal(column.render(customer).props.children, '₱1,999,999,999,999,999,999.98');
+  assert.match(column.render(customer).props.title, /Includes pending-payment invoices; excludes voided transactions/);
+  assert.match(column.render(customer).props['aria-label'], /Total Purchases/);
+  assert.equal(column.render({ ...customer, totalSpent: undefined }).props.children, 'Unavailable');
+  assert.equal(table.props.columns.reduce((sum, item) => sum + Number.parseInt(item.width), 0), 100);
+  table.props.onRowClick(customer); tree = render(ui.AdminCustomers);
+  const drawer = elements(tree, node => node.type === ui.Drawer && node.props.title === 'Customer Profile')[0];
+  assert.equal(drawer.props.open, true);
+  assert.match(JSON.stringify(drawer.props.children), /Total Purchases/);
+  assert.match(JSON.stringify(drawer.props.children), /₱1,999,999,999,999,999,999.98/);
+  assert.match(JSON.stringify(drawer.props.children), /Includes pending-payment invoices; excludes voided transactions/);
+  assert.ok(elements(drawer.props.footer, node => node.props.children === 'Purchase history').length);
+  const mobile = table.props.renderMobileRow(customer);
+  const card = render(ui.MobileCustomerCard, mobile.props);
+  assert.match(JSON.stringify(card), /₱1,999,999,999,999,999,999.98/);
+  const amount = elements(card, node => node.type === 'dd' && node.props.children === '₱1,999,999,999,999,999,999.98')[0];
+  assert.match(amount.props.className, /min-w-0/); assert.match(amount.props.className, /overflow-wrap:anywhere/);
+  assert.match(card.props.className, /w-full min-w-0/);
+  assert.deepEqual(elements(card, node => node.type === 'button').map(node => node.props['aria-label']), ['View details', 'Edit', 'Delete']);
+});
+
+test('customer table profile and mobile cards distinguish unavailable from a recorded zero', () => {
+  for (const totalSpent of [undefined, null, '0.00']) {
+    states = []; refs = [];
+    const customer = { id: 1, name: 'Customer', isActive: true, orders: 0, email: '', phone: '', address: '', last: '', createdAt: '', totalSpent };
+    const expected = totalSpent === '0.00' ? '₱0.00' : 'Unavailable';
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:customers:list:all`, [customer], ['customers']);
+    let tree = render(ui.AdminCustomers);
+    const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+    assert.equal(table.props.columns.find(column => column.key === 'totalSpent').render(customer).props.children, expected);
+    table.props.onRowClick(customer); tree = render(ui.AdminCustomers);
+    const drawer = elements(tree, node => node.type === ui.Drawer && node.props.title === 'Customer Profile')[0];
+    assert.ok(elements(drawer, node => node.type === 'span' && node.props.children === expected).length);
+    const card = render(ui.MobileCustomerCard, table.props.renderMobileRow(customer).props);
+    assert.ok(elements(card, node => node.type === 'dd' && node.props.children === expected).length);
+    if (totalSpent !== '0.00') assert.doesNotMatch(JSON.stringify(drawer.props.children), /₱0\.00/);
+  }
 });
 
 test('Customers shares five-record pagination between mobile cards and the desktop table', () => {

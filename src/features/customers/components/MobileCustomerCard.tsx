@@ -1,6 +1,7 @@
 import { Edit, Eye, RotateCcw, Trash2 } from "lucide-react";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import type { Customer } from "@/features/customers/types/customer";
+import { formatTotalPurchases, TOTAL_PURCHASES_NOTE } from "../utils/totalPurchases";
 
 interface Props {
   customer: Customer;
@@ -17,6 +18,7 @@ export function MobileCustomerCard({ customer, onView, onEdit, onDelete, onReact
     ["Email", customer.email || "Not recorded"],
     ["Phone", customer.phone || "Not recorded"],
     ["Transactions", String(customer.orders)],
+    ["Total Purchases", formatTotalPurchases(customer.totalSpent)],
     ["Last sale", customer.last || "No sales yet"],
   ];
   const actionClass = "inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50";
@@ -32,6 +34,7 @@ export function MobileCustomerCard({ customer, onView, onEdit, onDelete, onReact
         <dd className="w-full min-w-0 flex-1 text-right font-medium [overflow-wrap:anywhere]">{value}</dd>
       </div>)}
     </dl>
+    <p className="text-xs text-slate-500">{TOTAL_PURCHASES_NOTE}</p>
     <div className="pt-2 border-t border-slate-100 flex justify-end gap-2">
       <button type="button" aria-label="View details" title="View details" className={actionClass} onClick={() => onView(customer)}><Eye size={16} /></button>
       {customer.isActive ? <>

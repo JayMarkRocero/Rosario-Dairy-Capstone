@@ -19,6 +19,7 @@ import { type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { customersService } from "@/features/customers/api/customers.service";
 import type { Customer } from "@/features/customers/types/customer";
+import { formatTotalPurchases, TOTAL_PURCHASES_NOTE } from "../utils/totalPurchases";
 import { isValidPhoneNumber, PHONE_FORMAT_HINT } from "@/lib/validators";
 
 const inputClass = "w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors focus:border-blue-400";
@@ -145,19 +146,23 @@ export function AdminCustomers() {
   };
 
   const columns: Column<Customer>[] = [
-    { key:"name", header:"Customer", align:"left", width:"22%", sortKey:r=>r.name,
+    { key:"name", header:"Customer", align:"left", width:"17%", sortKey:r=>r.name,
       render:r=>(
         <span className="block max-w-full min-w-0 truncate font-medium text-sm" style={{color:C.text}}>{r.name}</span>
       )},
-    { key:"email", header:"Email", align:"left", width:"22%", sortKey:r=>r.email,
+    { key:"email", header:"Email", align:"left", width:"16%", sortKey:r=>r.email,
       render:r=><span className="block max-w-full min-w-0 truncate text-sm" style={{color:C.muted}}>{r.email || "Not recorded"}</span> },
-    { key:"phone", header:"Phone", align:"center", width:"16%", sortKey:r=>r.phone,
+    { key:"phone", header:"Phone", align:"center", width:"13%", sortKey:r=>r.phone,
       render:r=><span className="text-sm" style={{color:C.muted}}>{r.phone || "Not recorded"}</span> },
-    { key:"orders", header:"Transactions", align:"center", width:"13%", sortKey:r=>r.orders,
+    { key:"orders", header:"Transactions", align:"center", width:"12%", sortKey:r=>r.orders,
       render:r=><span className="font-medium text-sm" style={{color:C.text}}>{r.orders}</span> },
-    { key:"last", header:"Last Sale", align:"center", width:"12%", sortKey:r=>r.last,
+    { key:"totalSpent", header:"Total Purchases", align:"right", width:"18%",
+      render:r=><span className="block max-w-full min-w-0 truncate text-sm" style={{color:C.text}}
+        title={`${formatTotalPurchases(r.totalSpent)}. ${TOTAL_PURCHASES_NOTE}`}
+        aria-label={`Total Purchases: ${formatTotalPurchases(r.totalSpent)}. ${TOTAL_PURCHASES_NOTE}`}>{formatTotalPurchases(r.totalSpent)}</span> },
+    { key:"last", header:"Last Sale", align:"center", width:"11%", sortKey:r=>r.last,
       render:r=><span className="text-xs" style={{color:C.muted}}>{r.last}</span> },
-    { key:"actions", header:"Actions", align:"center", width:"15%",
+    { key:"actions", header:"Actions", align:"center", width:"13%",
       render:r=>(
         <div className="flex items-center justify-center gap-1" onClick={e=>e.stopPropagation()}>
           <ActionButton label="View details" onClick={()=>openView(r)}><Eye size={13}/></ActionButton>
@@ -255,12 +260,13 @@ export function AdminCustomers() {
                 </div>
               ))}
             </div>
-            {[{l:"Phone",v:selected.phone || "Not recorded"},{l:"Email",v:selected.email || "Not recorded"},{l:"Address",v:selected.address || "Not recorded"}].map(r=>(
+            {[{l:"Total Purchases",v:formatTotalPurchases(selected.totalSpent)},{l:"Phone",v:selected.phone || "Not recorded"},{l:"Email",v:selected.email || "Not recorded"},{l:"Address",v:selected.address || "Not recorded"}].map(r=>(
               <div key={r.l} className="flex flex-col gap-1 py-2 sm:flex-row sm:justify-between sm:gap-2" style={{borderBottom:`1px solid ${C.border}`}}>
                 <span className="text-sm flex-shrink-0" style={{color:C.muted}}>{r.l}</span>
                 <span className="min-w-0 break-all text-sm font-semibold sm:text-right" style={{color:C.text}}>{r.v}</span>
               </div>
             ))}
+            <p className="text-xs text-slate-500">{TOTAL_PURCHASES_NOTE}</p>
           </div>
         )}
       </Drawer>

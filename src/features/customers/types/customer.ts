@@ -6,6 +6,7 @@ export interface Customer {
   email: string;
   address: string;
   orders: number;
+  readonly totalSpent?: string | null;
   last: string;
   createdAt: string;
 }

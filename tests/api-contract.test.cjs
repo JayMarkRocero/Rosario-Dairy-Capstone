@@ -19,6 +19,7 @@ const compiled = buildSync({
     export * from './src/features/sales/api/encoding.service';
     export * from './src/features/inventory/api/outflows.service';
     export * from './src/features/customers/api/customers.service';
+    export * from './src/features/customers/utils/totalPurchases';
     export * from './src/features/orders/api/orders.service';
     export * from './src/features/sales/api/sales.service';
     export * from './src/features/inventory/utils/expiry';
@@ -1569,6 +1570,55 @@ test('product writes omit removed prices even from legacy callers and null batch
   const product = { id: 1, name: 'Milk', unit: 'unit', is_active: true, category: { name: 'Dairy', is_active: true, is_visible_to_staff: true }, unit_price: '999' };
   api.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data: config.url === '/inventory/product-batches/' ? [{ id: 2, product, status: 'available', remaining_quantity: '1', initial_quantity: '1', unit_price: null, expiration_date: '2000-01-01' }] : [] });
   assert.equal((await api.inventoryService.getExpiredBatches())[0].unitCost, null, 'A removed product price is never a cost fallback');
+});
+
+test('customer total purchases format decimal strings exactly including values above Number precision', () => {
+  for (const [raw, formatted] of [
+    ['0.00', '₱0.00'], ['0.10', '₱0.10'], ['5.10', '₱5.10'], ['1234.56', '₱1,234.56'],
+    ['1999999999999999999.98', '₱1,999,999,999,999,999,999.98'],
+    ['9999999999999999999999999999.99', '₱9,999,999,999,999,999,999,999,999,999.99'],
+    ['12', '₱12.00'], ['12.3', '₱12.30'],
+  ]) {
+    assert.equal(api.customerTotalSpent(raw), raw);
+    assert.equal(api.formatTotalPurchases(raw), formatted);
+  }
+});
+
+test('customer totals missing restricted or malformed remain unavailable rather than becoming zero', () => {
+  for (const value of [undefined, null, '', 'restricted', 'NaN', 'Infinity', '1e5', '1,234.56', '0.001', ' 12.00 ', 0, 1234.56, NaN, {}, false]) {
+    assert.equal(api.customerTotalSpent(value), null);
+    assert.equal(api.formatTotalPurchases(value), 'Unavailable');
+  }
+});
+
+test('customer list maps exact backend totals and missing values without fetching or summing sales', async () => {
+  const row = { id: 42, name: 'Customer', is_active: true, contact_number: null, email: null, address: null, transaction_count: 51, last_sale: null, created_at: '2026-10-01T00:00:00Z' };
+  responseData = [{ ...row, total_spent: '1999999999999999999.98' }, { ...row, id: 43 }, { ...row, id: 44, total_spent: null }, { ...row, id: 45, total_spent: '0.00' }];
+  const customers = await api.customersService.getAll(true);
+  assert.deepEqual(customers.map(customer => customer.totalSpent), ['1999999999999999999.98', null, null, '0.00']);
+  assert.equal(customers[0].orders, 51); assert.equal(customers[0].last, '—');
+  assert.equal(calls.length, 1); assert.equal(calls[0].url, '/sales/customers/'); assert.deepEqual(calls[0].params, { include_inactive: true, page: 1 });
+});
+
+test('customer service preserves staff-visible totals and paginated responses without widening visibility', async () => {
+  responseData = { count: 1, next: null, previous: null, results: [{ id: 42, name: 'Customer', is_active: true, total_spent: '10.00', transaction_count: 1, created_at: '2026-10-01T00:00:00Z' }] };
+  const customers = await api.customersService.getAll();
+  assert.equal(customers[0].totalSpent, '10.00');
+  assert.equal(calls.length, 1); assert.deepEqual(calls[0].params, { page: 1 });
+  assert.equal(calls[0].url, '/sales/customers/');
+});
+
+test('customer create maps returned totals and CRUD payloads never write the read-only total', async () => {
+  const input = { name: 'Customer', phone: '09171234567', email: 'customer@example.test', address: 'Batangas', totalSpent: '999.99', total_spent: '999.99' };
+  const expected = { name: input.name, contact_number: input.phone, email: input.email, address: input.address };
+  for (const total of ['0.00', undefined, '1999999999999999999.98']) {
+    responseData = { id: 42, name: input.name, is_active: true, created_at: '2026-10-01T00:00:00Z', ...(total === undefined ? {} : { total_spent: total }) };
+    assert.equal((await api.customersService.createCustomer(input)).totalSpent, total ?? null);
+    assert.deepEqual(JSON.parse(calls.at(-1).data), expected); assert.equal(calls.at(-1).method, 'post');
+  }
+  await api.customersService.updateCustomer(42, input);
+  assert.deepEqual(JSON.parse(calls.at(-1).data), expected); assert.equal(calls.at(-1).method, 'patch');
+  assert.equal(calls.at(-1).url, '/sales/customers/42/');
 });
 
 test('encoding, payment and customer-history services use the documented methods and field names', async () => {
