@@ -57,7 +57,7 @@ function UserForm({ title, form, onChange, role, onRoleChange, showPassword = fa
       maxLength={11} value={form.phoneNumber} onChange={e=>onChange({...form,phoneNumber:e.target.value.replace(/\D/g, "")})}/>
   </div>;
   return (
-    <div className={isRegistration ? "grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5" : "space-y-4"}>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5">
       <div>
         <label htmlFor={isRegistration ? "add-user-username" : undefined} className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Username{isRegistration && " (max. 50)"}</label>
         <input id={isRegistration ? "add-user-username" : undefined} className={inputClass} style={inputStyle} placeholder="jdelacruz"
@@ -65,8 +65,8 @@ function UserForm({ title, form, onChange, role, onRoleChange, showPassword = fa
           title={isRegistration ? "Maximum 50 characters after username normalization." : undefined}
           value={form.username} onChange={e=>onChange({...form,username:e.target.value})}/>
       </div>
-      {isRegistration && phoneField}
-      <div className={isRegistration ? "contents" : "grid grid-cols-1 sm:grid-cols-2 gap-4"}>
+      {phoneField}
+      <div className="contents">
         <div>
           <label htmlFor={isRegistration ? "add-user-first-name" : undefined} className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>First Name{isRegistration && " (max. 50)"}</label>
           <input id={isRegistration ? "add-user-first-name" : undefined} className={inputClass} style={inputStyle} placeholder="Juan"
@@ -85,7 +85,6 @@ function UserForm({ title, form, onChange, role, onRoleChange, showPassword = fa
             autoComplete="off"
             value={form.email} onChange={e=>onChange({...form,email:e.target.value})}/>
         </div>
-        {!isRegistration && phoneField}
         <div className="sm:col-span-2">
           <label htmlFor={isRegistration ? "add-user-address" : undefined} className="text-xs font-semibold block mb-1.5" style={{color:C.muted}}>Address</label>
           <input id={isRegistration ? "add-user-address" : undefined} className={inputClass} style={inputStyle} placeholder="Street, Barangay, City"
@@ -104,7 +103,7 @@ function UserForm({ title, form, onChange, role, onRoleChange, showPassword = fa
           </button>
         </div>
       </div>}
-      <div className={isRegistration ? "sm:col-span-2" : undefined}>
+      <div className="sm:col-span-2">
         <label className="text-xs font-semibold block mb-2" style={{color:C.muted}}>Role</label>
         <div className="flex gap-2">
           {(["Staff","Administrator"] as const).map(r=>(
@@ -214,6 +213,8 @@ export function AdminUserManagement() {
       role,
       firstName: form.firstName,
       lastName: form.lastName,
+      phoneNumber: form.phoneNumber,
+      address: form.address,
     })
       .then(() => {
         toast.success("User added successfully!");
@@ -444,7 +445,7 @@ export function AdminUserManagement() {
         <UserForm title="Add User" form={form} onChange={setForm} role={role} onRoleChange={setRole} showPassword={showTemporaryPassword} onTogglePassword={()=>setShowTemporaryPassword(value=>!value)}/>
       </Modal>
 
-      <Modal busy={loading} open={editOpen} onClose={()=>setEditOpen(false)} title="Edit User" subtitle={selected?.name} size="sm"
+      <Modal busy={loading} open={editOpen} onClose={()=>setEditOpen(false)} title="Edit User" subtitle={selected?.name} size="md"
         footer={<><Btn variant="secondary" onClick={()=>setEditOpen(false)}>Cancel</Btn>
           <Btn variant="primary" onClick={handleEditSave} disabled={loading}>{loading?"Saving…":"Save Changes"}</Btn></>}>
         <UserForm title="Edit User" form={form} onChange={setForm} role={role} onRoleChange={setRole}/>

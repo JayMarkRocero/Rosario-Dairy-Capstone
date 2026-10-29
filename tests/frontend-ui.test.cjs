@@ -3828,6 +3828,86 @@ test('registration username normalization matches Python stripping and NFKC with
   assert.equal(payload.username, 'Admin'); assert.equal(payload.first_name, ' First '); assert.equal(payload.last_name, ' Last '); assert.equal(payload.password, '  StrongPass!92  ');
 });
 
+for (const role of ['Staff', 'Administrator']) {
+  test(`Add User submits ${role} contact details and reloads them into Edit User without changing other fields`, async () => {
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:users:list`, [], ['users']);
+    const draft = { ...registrationDraft(), firstName: 'Juan Miguel', lastName: 'Dela Cruz',
+      password: '  StrongPass!92  ', phoneNumber: '09123456789', address: '  Barangay 1, Rosario  ' };
+    const fixture = registrationFixture(draft);
+    fixture.form().props.onRoleChange(role);
+    let posted, stored, listRequests = 0;
+    ui.http.defaults.adapter = async config => {
+      if (config.method === 'post' && config.url === '/accounts/register/') {
+        posted = JSON.parse(config.data);
+        stored = { id: 8, username: posted.username, email: posted.email, role: posted.role,
+          first_name: posted.first_name, last_name: posted.last_name, phone_number: posted.phone_number,
+          address: posted.address, is_active: true, deactivation_reason: 'none', last_login: null };
+        return { status: 201, config, headers: {}, data: { message: 'User registered successfully' } };
+      }
+      assert.equal(config.url, '/accounts/users/'); assert.equal(config.method, 'get');
+      listRequests++;
+      return { status: 200, config, headers: {}, data: stored ? [stored] : [] };
+    };
+    effects[0](); // Subscribe the real query to mutation invalidation and list refresh.
+    fixture.submit(); await settle();
+    assert.deepEqual(posted, { username: draft.username, email: draft.email, password: draft.password,
+      role: role === 'Staff' ? 'staff' : 'admin', first_name: draft.firstName, last_name: draft.lastName,
+      phone_number: draft.phoneNumber, address: draft.address });
+    assert.ok(listRequests > 0, 'Successful registration fetches the updated user list');
+    const page = render(ui.AdminUserManagement);
+    assert.equal(elements(page, node => node.type === ui.Modal && node.props.title === 'Add User')[0].props.open, false);
+    const table = elements(page, node => node.type === ui.EnhancedTable)[0];
+    assert.equal(table.props.data.length, 1);
+    const created = table.props.data[0];
+    assert.equal(created.phone, draft.phoneNumber); assert.equal(created.address, draft.address);
+    elements(table.props.columns.find(column => column.key === 'actions').render(created), node => node.props.label === 'Edit')[0].props.onClick();
+    const edit = elements(render(ui.AdminUserManagement), node => node.type === ui.Modal && node.props.title === 'Edit User')[0];
+    assert.equal(edit.props.open, true);
+    assert.equal(edit.props.children.props.form.phoneNumber, draft.phoneNumber);
+    assert.equal(edit.props.children.props.form.address, draft.address);
+    assert.equal(edit.props.children.props.role, role);
+    assert.equal(toastErrors.length, 0);
+  });
+}
+
+test('Add User submits blank optional phone/address as accepted blank strings', async () => {
+  const fixture = registrationFixture(registrationDraft());
+  let posted;
+  ui.http.defaults.adapter = async config => {
+    if (config.method === 'post') posted = JSON.parse(config.data);
+    return { status: config.method === 'post' ? 201 : 200, config, headers: {}, data: config.method === 'get' ? [] : {} };
+  };
+  fixture.submit(); await settle();
+  assert.equal(posted.phone_number, ''); assert.equal(posted.address, '');
+  assert.equal(toastErrors.length, 0);
+});
+
+test('registration service keeps optional contact fields optional for existing callers', async () => {
+  let posted;
+  ui.http.defaults.adapter = async config => { posted = JSON.parse(config.data); return { status: 201, config, headers: {}, data: {} }; };
+  const input = registrationDraft(); delete input.phoneNumber; delete input.address;
+  await ui.userService.createUser({ ...input, role: 'Staff' });
+  assert.equal('phone_number' in posted, false); assert.equal('address' in posted, false);
+  assert.equal(posted.username, input.username); assert.equal(posted.password, input.password);
+});
+
+test('registration contact validation errors preserve the Add User draft and existing retry flow', async () => {
+  const draft = { ...registrationDraft(), phoneNumber: '09123456789', address: 'Rosario' };
+  const fixture = registrationFixture(draft);
+  let requests = 0;
+  ui.http.defaults.adapter = async config => {
+    requests++;
+    throw new AxiosError('Bad Request', undefined, config, undefined, { status: 400, config, headers: {},
+      data: { phone_number: ['Contact details were rejected.'] } });
+  };
+  fixture.submit(); await settle();
+  const modal = elements(render(ui.AdminUserManagement), node => node.type === ui.Modal && node.props.title === 'Add User')[0];
+  assert.equal(modal.props.open, true); assert.equal(modal.props.busy, false);
+  assert.deepEqual(modal.props.children.props.form, draft);
+  assert.match(toastErrors.at(-1)[0], /Contact details were rejected/);
+  fixture.submit(); await settle(); assert.equal(requests, 2, 'Validation failures release the submission lock for correction/retry');
+});
+
 function registrationFixture(draft) {
   authState.user = { id: 7, username: 'admin', email: 'admin@example.test', role: 'admin' };
   elements(render(ui.AdminUserManagement), node => node.type === ui.Btn && node.props.children === 'Add User')[0].props.onClick();
@@ -3905,6 +3985,44 @@ test('Add User password visibility toggles without changing its value and resets
   elements(modal.props.footer, node => node.props.children === 'Cancel')[0].props.onClick();
   elements(render(ui.AdminUserManagement), node => node.type === ui.Btn && node.props.children === 'Add User')[0].props.onClick();
   assert.equal(password().props.type, 'password');
+});
+
+test('Edit User matches Add User spacing and five-row layout without reserving a password row', () => {
+  authState.user = { id: 7, username: 'admin', email: 'admin@example.com', role: 'admin' };
+  const user = { id: 8, username: 'juan', name: 'Juan Miguel Dela Cruz', firstName: 'Juan Miguel', lastName: 'Dela Cruz',
+    email: 'juan@example.test', phone: '09123456789', address: 'Rosario', role: 'Staff', status: 'Active', last: 'Never' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:users:list`, [user], ['users']);
+  const table = elements(render(ui.AdminUserManagement), node => node.type === ui.EnhancedTable)[0];
+  elements(table.props.columns.find(column => column.key === 'actions').render(user), node => node.props.label === 'Edit')[0].props.onClick();
+  const page = render(ui.AdminUserManagement);
+  const editModal = elements(page, node => node.type === ui.Modal && node.props.title === 'Edit User')[0];
+  const addModal = elements(page, node => node.type === ui.Modal && node.props.title === 'Add User')[0];
+  const resetModal = elements(page, node => node.type === ui.Modal && node.props.title === 'Reset Password')[0];
+  assert.equal(editModal.props.open, true);
+  assert.equal(editModal.props.size, addModal.props.size);
+  assert.equal(editModal.props.size, 'md');
+  assert.equal(editModal.props.subtitle, user.name);
+  assert.deepEqual(elements(editModal.props.footer, node => node.type === ui.Btn).map(node => node.props.children), ['Cancel', 'Save Changes']);
+  assert.deepEqual(elements(editModal.props.footer, node => node.type === ui.Btn).map(node => node.props.variant),
+    elements(addModal.props.footer, node => node.type === ui.Btn).map(node => node.props.variant));
+  const form = editModal.props.children;
+  const tree = render(form.type, form.props);
+  const addTree = render(addModal.props.children.type, addModal.props.children.props);
+  assert.equal(tree.props.className, addTree.props.className);
+  const cells = React.Children.toArray(tree.props.children).flatMap(child => child.props.className === 'contents' ? React.Children.toArray(child.props.children) : [child]);
+  assert.equal(cells.length, 7, 'Two paired rows followed by Email, Address and Role; no password placeholder');
+  assert.deepEqual(cells.map(cell => elements(cell, node => node.type === 'label')[0].props.children),
+    [['Username', false], 'Phone Number', ['First Name', false], ['Last Name', false], 'Email', 'Address', 'Role']);
+  for (const cell of cells.slice(0, 4)) assert.ok(!cell.props.className?.includes('col-span-2'));
+  for (const cell of cells.slice(4)) assert.equal(cell.props.className, 'sm:col-span-2');
+  const inputs = elements(tree, node => node.type === 'input');
+  assert.deepEqual(inputs.map(node => node.props.value), [user.username, user.phone, user.firstName, user.lastName, user.email, user.address]);
+  assert.ok(inputs.every(node => node.props.className === elements(addTree, element => element.type === 'input')[0].props.className));
+  assert.ok(inputs.every(node => node.props.type !== 'password'));
+  assert.equal(elements(tree, node => node.props['aria-controls'] === 'add-user-password').length, 0);
+  assert.deepEqual(elements(cells.at(-1), node => node.type === 'button').map(node => node.props.children), ['Staff', 'Administrator']);
+  assert.equal(resetModal.props.size, 'sm', 'Reset Password retains its original modal frame');
+  assert.equal(elements(resetModal.props.children, node => node.type === 'input' && node.props.type === 'password').length, 1);
 });
 
 test('registration limits do not constrain existing account editing', async () => {

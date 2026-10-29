@@ -51,6 +51,8 @@ export const userService = {
     role: "Administrator" | "Staff";
     firstName?: string;
     lastName?: string;
+    phoneNumber?: string;
+    address?: string;
   }): Promise<void> => {
     const { username, errors } = validateRegistration(input);
     if (Object.keys(errors).length) {
@@ -64,6 +66,8 @@ export const userService = {
       role: toBackendRole(input.role),
       first_name: input.firstName,
       last_name: input.lastName,
+      phone_number: input.phoneNumber,
+      address: input.address,
     };
     await http.post<{ message: string }>("/accounts/register/", payload);
   },
