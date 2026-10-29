@@ -28,6 +28,7 @@ interface Props { onLogout: () => void }
 export function StaffLayout({ onLogout }: Props) {
   const [page, setPage] = useState<StaffPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { user } = useAuth();
   const { theme } = useTheme();
 
@@ -39,6 +40,8 @@ export function StaffLayout({ onLogout }: Props) {
         onLogout={onLogout}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed(collapsed => !collapsed)}
       />
       <div className="h-dvh flex-1 flex flex-col overflow-hidden min-w-0">
         <div className="flex-shrink-0">

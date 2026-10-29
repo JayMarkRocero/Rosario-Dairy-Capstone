@@ -47,6 +47,8 @@ const compiled = buildSync({
     export { ExpiredBatchTable } from './src/features/inventory/components/ExpiredBatchTable';
     export { AdminLayout } from './src/app/layouts/AdminLayout';
     export { StaffLayout } from './src/app/layouts/StaffLayout';
+    export { AdminSidebar } from './src/app/navigation/AdminSidebar';
+    export { StaffSidebar } from './src/app/navigation/StaffSidebar';
     export { NotificationBell } from './src/components/navigation/NotificationBell';
     export { TopBar } from './src/components/navigation/TopBar';
     export { ModuleSubheading } from './src/components/navigation/ModuleSubheading';
@@ -1523,6 +1525,157 @@ test('layout notification headers do not expose inventory navigation callbacks',
     assert.equal(elements(tree, node => typeof node.props.onExpiredInventory === 'function').length, 0);
   }
 });
+
+for (const [role, Layout, Sidebar, Inventory, Wrapper] of [
+  ['Administrator', ui.AdminLayout, ui.AdminSidebar, ui.AdminInventory, ui.ProductTable],
+  ['Staff', ui.StaffLayout, ui.StaffSidebar, ui.StaffInventory, ui.StaffInventoryTable],
+]) {
+  test(`${role} desktop sidebar toggles repeatedly without replacing the active Inventory page or changing main geometry`, () => {
+    const props = { onLogout() {} };
+    const sidebar = tree => elements(tree, node => node.type === Sidebar)[0];
+    let tree = render(Layout, props);
+    sidebar(tree).props.onChange('inventory');
+    tree = render(Layout, props);
+    const originalPage = elements(tree, node => node.type === Inventory)[0];
+    const mainClass = elements(tree, node => node.type === 'main')[0].props.className;
+    const contentClass = elements(tree, node => node.props.className === 'h-dvh flex-1 flex flex-col overflow-hidden min-w-0')[0].props.className;
+    assert.equal(sidebar(tree).props.collapsed, false);
+    for (let i = 0; i < 8; i++) {
+      const logo = elements(Sidebar(sidebar(tree).props), node => node.type === 'button' && node.props['aria-controls'])[0];
+      assert.equal(logo.props.children.props.size, 36);
+      logo.props.onClick();
+      tree = render(Layout, props);
+      assert.equal(sidebar(tree).props.collapsed, i % 2 === 0);
+      assert.equal(sidebar(tree).props.isOpen, false, 'Desktop toggles do not open the mobile overlay');
+      assert.equal(sidebar(tree).props.active, 'inventory');
+      const page = elements(tree, node => node.type === Inventory)[0];
+      assert.equal(page.type, originalPage.type);
+      assert.equal(page.key, originalPage.key, 'Unchanged page type/key keeps existing child state mounted');
+      assert.deepEqual(page.props, originalPage.props);
+      assert.equal(elements(tree, node => node.type === 'main')[0].props.className, mainClass);
+      assert.equal(elements(tree, node => node.props.className === contentClass).length, 1);
+      assert.equal(elements(tree, node => node.type === ui.TopBar)[0].props.role, role);
+    }
+    assert.equal(effects.length, 0, 'Collapsing introduces no scroll-reset or resize effects in the layouts');
+  });
+
+  test(`${role} mobile overlay state remains independent of desktop collapsed preference`, () => {
+    const props = { onLogout() {} };
+    const sidebar = tree => elements(tree, node => node.type === Sidebar)[0];
+    let tree = render(Layout, props);
+    sidebar(tree).props.onToggleCollapsed();
+    tree = render(Layout, props);
+    elements(tree, node => node.type === ui.TopBar)[0].props.onMenuClick();
+    tree = render(Layout, props);
+    assert.equal(sidebar(tree).props.collapsed, true);
+    assert.equal(sidebar(tree).props.isOpen, true);
+    sidebar(tree).props.onChange('orders');
+    sidebar(tree).props.onClose();
+    tree = render(Layout, props);
+    assert.equal(sidebar(tree).props.active, 'orders');
+    assert.equal(sidebar(tree).props.isOpen, false);
+    assert.equal(sidebar(tree).props.collapsed, true);
+  });
+
+  test(`${role} sidebar keeps full mobile labels, accessible desktop icons, active indicators and logout`, () => {
+    let closed = 0, toggled = 0, loggedOut = 0, destination;
+    for (const collapsed of [false, true]) for (const isOpen of [false, true]) {
+      const tree = render(Sidebar, { active: 'inventory', collapsed, isOpen,
+        onChange: page => { destination = page; }, onClose: () => closed++,
+        onToggleCollapsed: () => toggled++, onLogout: () => loggedOut++ });
+      const aside = elements(tree, node => node.type === 'aside')[0];
+      assert.ok(aside.props.className.includes('w-[240px]'));
+      assert.ok(aside.props.className.includes(collapsed ? 'lg:w-[72px]' : 'lg:w-[240px]'));
+      assert.equal(aside.props.style.width, undefined, 'Inline widths cannot override the mobile width');
+      assert.ok(aside.props.className.includes('fixed lg:static'));
+      assert.ok(aside.props.className.includes('lg:translate-x-0'));
+      assert.ok(!/transition-(?:all|\[width\])/.test(aside.props.className));
+      const toggle = elements(tree, node => node.type === 'button' && node.props['aria-controls'])[0];
+      assert.ok(toggle.props.className.includes('hidden lg:flex'));
+      assert.equal(toggle.props['aria-expanded'], !collapsed);
+      assert.equal(toggle.props['aria-label'], collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      assert.equal(toggle.props.title, toggle.props['aria-label']);
+      assert.equal(toggle.props.type, 'button', 'Native buttons support Enter and Space activation');
+      assert.equal(typeof toggle.props.children.type, 'function');
+      assert.equal(toggle.props.children.props.size, 36);
+      assert.ok(toggle.props.className.includes('hover:ring-2'));
+      assert.ok(toggle.props.className.includes('focus-visible:ring-2'));
+      const mobileLogo = elements(tree, node => node.props.className === 'shrink-0 lg:hidden')[0];
+      assert.equal(mobileLogo.props.children.type, toggle.props.children.type);
+      assert.equal(mobileLogo.props.children.props.size, 36);
+      assert.equal(mobileLogo.props.onClick, undefined, 'The mobile logo is static; hamburger navigation is unchanged');
+      const header = elements(tree, node => node.props.style?.borderBottom)[0];
+      assert.equal(elements(header, node => node.type === 'button').length, 1, 'There is no separate toggle icon');
+      assert.ok(header.props.className.includes('py-5'), 'Header height is preserved in both states');
+      assert.equal(header.props.className.includes('lg:justify-center'), collapsed);
+      assert.equal(elements(tree, node => node.type === 'nav' && node.props.id === toggle.props['aria-controls']).length, 1);
+      toggle.props.onClick();
+      const inventory = elements(tree, node => node.type === 'button' && node.props['aria-label'] === 'Inventory')[0];
+      assert.equal(inventory.props['aria-current'], 'page');
+      assert.ok(inventory.props.style.borderLeft.startsWith('3px solid'));
+      for (const button of elements(tree, node => node.type === 'nav')[0].props.children) {
+        assert.equal(button.props.title, button.props['aria-label']);
+        const label = elements(button, node => node.type === 'span')[0];
+        assert.equal(label.props.className, collapsed ? 'lg:hidden' : undefined,
+          'Labels are never hidden below the existing lg breakpoint');
+        assert.equal(button.props.className.includes('lg:justify-center'), collapsed);
+      }
+      inventory.props.onClick();
+      assert.equal(destination, 'inventory');
+      const logout = elements(tree, node => node.type === 'button' && node.props['aria-label'] === 'Logout')[0];
+      assert.equal(logout.props.title, 'Logout'); logout.props.onClick();
+      const backdrop = elements(tree, node => node.props.className === 'fixed inset-0 bg-black/40 z-40 lg:hidden')[0];
+      assert.equal(!!backdrop, isOpen);
+      if (backdrop) backdrop.props.onClick();
+    }
+    assert.equal(toggled, 4); assert.equal(loggedOut, 4); assert.equal(closed, 6);
+  });
+
+  test(`${role} Inventory retains search, pagination and complete measured rows across repeated sidebar-width changes`, () => {
+    const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+    let resized, cleanup, rowHeight = 53;
+    const observed = [];
+    global.ResizeObserver = class { constructor(callback) { resized = callback; } observe(node) { observed.push(node); } disconnect() {} };
+    global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: '8px', paddingBottom: '8px' });
+    window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+    window.innerHeight = 768;
+    captureLayoutEffects = true;
+    try {
+      const data = Array.from({ length: 40 }, (_, id) => ({ id, name: `Milk ${id}` }));
+      const wrapper = render(Wrapper, { columns: [{ key: 'name', header: 'Product' }], data, rowKey: row => row.id, searchKeys: row => [row.name], showExport: false });
+      const props = elements(wrapper, node => node.type === ui.EnhancedTable)[0].props;
+      assert.equal(props.responsivePageSize, true); assert.equal(props.measureRenderedRows, true);
+      states = []; refs = []; layoutEffects = []; effects = [];
+      const renderTable = () => render(ui.EnhancedTable, props);
+      let tree = renderTable();
+      const surface = { clientHeight: 309, clientWidth: 1000,
+        querySelectorAll: selector => selector === 'tbody tr' ? [{ getBoundingClientRect: () => ({ height: rowHeight }) }] : [] };
+      elements(tree, node => node.props['data-table-surface'] !== undefined)[0].ref(surface);
+      elements(tree, node => node.type === 'thead')[0].ref({ getBoundingClientRect: () => ({ height: 44 }) });
+      renderTable(); cleanup = layoutEffects.at(-2)();
+      assert.ok(observed.includes(surface));
+      tree = renderTable();
+      elements(tree, node => node.type === 'input')[0].props.onChange({ target: { value: 'Milk' } });
+      tree = renderTable();
+      elements(tree, node => node.type === 'button').at(-1).props.onClick();
+      for (const width of [1168, 1000, 1168, 1000]) {
+        surface.clientWidth = width; resized(); tree = renderTable();
+        assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 5);
+        assert.equal(elements(tree, node => node.type === 'input')[0].props.value, 'Milk');
+        assert.ok(elements(tree, node => node.props.children === 'Page 2 of 8').length);
+      }
+      surface.clientWidth = 900; rowHeight = 70; resized(); tree = renderTable();
+      assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 3,
+        'Wrapping reduces capacity before a row can overlap pagination');
+      surface.clientWidth = 1168; rowHeight = 53; resized(); tree = renderTable();
+      assert.equal(elements(tree, node => node.type === 'tbody')[0].props.children.length, 5);
+      assert.ok(elements(tree, node => node.props.children === 'Page 2 of 8').length);
+    } finally {
+      cleanup?.(); captureLayoutEffects = false;
+      global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+    }
+  });
+}
 
 
 test('expired batch actions open details and a confirmation without writing stock on click', () => {
