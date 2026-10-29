@@ -7,7 +7,7 @@ const React = require('react');
 const { AxiosError } = require('axios');
 
 // Exercise real event handlers with deterministic hook state, without a browser or database writes.
-let states, refs, stateIndex, refIndex, effects, authState, toastErrors;
+let states, refs, stateIndex, refIndex, effects, authState, toastErrors, toastMessages;
 let effectCleanups = [];
 let captureLayoutEffects = false, layoutEffects = [];
 const hooks = {
@@ -41,6 +41,8 @@ const compiled = buildSync({
     export { TableCard, TABLE_CARD_CLASS_NAME } from './src/components/data-display/TableCard';
     export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
     export { ForecastChart, ForecastGraphTooltip } from './src/features/dashboard/components/admin/ForecastChart';
+    export { ForecastMetadata, ForecastAnnualDetails } from './src/features/dashboard/components/admin/ForecastMetadata';
+    export * from './src/features/dashboard/utils/forecastV6';
     export { useForecastRefresh } from './src/features/dashboard/hooks/useForecastRefresh';
     export { QueryErrorMessage } from './src/components/feedback/QueryErrorMessage';
     export { BatchDetailsFields } from './src/features/inventory/components/BatchDetailsFields';
@@ -114,7 +116,7 @@ const loaded = new Module(path.join(root, 'tests', 'ui-in-memory.cjs'), module);
 loaded.filename = path.join(root, 'tests', 'ui-in-memory.cjs');
 loaded.paths = module.paths;
 loaded.require = id => id === 'react' ? hooks : id === 'react-dom' ? { ...require(id), createPortal: children => children } : id === 'sonner' ? {
-  ...require(id), toast: Object.assign(() => {}, { error: (...args) => toastErrors.push(args), success() {}, warning() {} }),
+  ...require(id), toast: Object.assign((...args) => toastMessages.push(args), { error: (...args) => toastErrors.push(args), success() {}, warning() {} }),
 } : require(id);
 loaded._compile(compiled, loaded.filename);
 const ui = loaded.exports;
@@ -136,6 +138,7 @@ beforeEach(() => {
   states = []; refs = []; effects = []; stateIndex = refIndex = 0;
   authState = { user: { username: 'audit' }, loading: false };
   toastErrors = [];
+  toastMessages = [];
   const token = `header.${Buffer.from(JSON.stringify({ user_id: 7 })).toString('base64url')}.signature`;
   global.localStorage = { getItem: key => key === 'rosario_access_token' ? token : null, setItem() {}, removeItem() {} };
   global.window = new EventTarget();
@@ -3006,6 +3009,80 @@ test('report preview hooks isolate ranges, reuse cached navigation, and refresh 
   cleanup();
 });
 
+test('report cooldown keeps saved metrics visible and an explicit retry works only after the delay', async () => {
+  const originalNow = Date.now;
+  let now = Date.UTC(2026, 9, 29, 1), requests = 0, limited = true;
+  Date.now = () => now;
+  const summary = elements(render(ui.AdminReports), node => node.type?.name === 'ReportSummary' && node.props.type === 'daily_sales')[0];
+  states = []; refs = []; effects = [];
+  const key = `${ui.dataCacheEpoch()}:${ui.reportCacheKey('preview', 'daily_sales')}`;
+  const saved = { date: '2000-09-01', total_revenue: '123.45', transaction_count: 2 };
+  ui.writeDataCache(key, saved, ['reports', 'dashboard']);
+  ui.http.defaults.adapter = async config => {
+    requests++;
+    if (limited) throw new AxiosError('Throttled', undefined, config, undefined,
+      { status: 429, config, headers: { 'retry-after': '2' }, data: { detail: 'Wait' } });
+    return { status: 200, config, headers: {}, data: { data: { ...saved, total_revenue: '200.00' } } };
+  };
+  const tree = () => render(summary.type, summary.props);
+  let cleanup;
+  try {
+    tree(); cleanup = effects.at(-1)(); await settle(); assert.equal(requests, 0);
+    ui.invalidateDataCache(['reports']); await settle();
+    let content = tree();
+    assert.ok(JSON.stringify(content).includes('123.45'));
+    assert.deepEqual(ui.readDataCache(key).data, saved);
+    assert.equal(elements(content, node => node.props.role === 'alert').length, 0);
+    assert.match(elements(content, node => node.props.role === 'status')[0].props.children[0], /Try again in 2 seconds/);
+    elements(content, node => node.props.children === 'Retry')[0].props.onClick(); await settle();
+    window.dispatchEvent(new Event('focus')); await settle();
+    assert.equal(requests, 1, 'Retry clicks and window focus cannot bypass the cooldown');
+    now += 2000; limited = false;
+    assert.equal(requests, 1, 'No automatic request is scheduled at cooldown expiry');
+    elements(tree(), node => node.props.children === 'Retry')[0].props.onClick(); await settle();
+    content = tree(); assert.equal(requests, 2);
+    assert.ok(JSON.stringify(content).includes('200.00'));
+    assert.equal(elements(content, node => node.props.children === 'Retry').length, 0);
+    assert.equal(elements(content, node => node.props.role === 'status').length, 0);
+  } finally { cleanup?.(); Date.now = originalNow; }
+});
+
+test('an initially throttled report shows a compact retry notice instead of an empty-data fallback', async () => {
+  const summary = elements(render(ui.AdminReports), node => node.type?.name === 'ReportSummary' && node.props.type === 'customer')[0];
+  states = []; refs = []; effects = [];
+  ui.http.defaults.adapter = async config => { throw new AxiosError('Throttled', undefined, config, undefined,
+    { status: 429, config, headers: { 'retry-after': '60' }, data: { detail: 'Wait' } }); };
+  render(summary.type, summary.props); const cleanup = effects.at(-1)(); await settle();
+  const content = render(summary.type, summary.props);
+  assert.equal(elements(content, node => node.props.role === 'status').length, 1);
+  assert.equal(elements(content, node => node.props.children === 'Retry').length, 1);
+  assert.ok(!JSON.stringify(content).includes('Report data unavailable.'));
+  cleanup();
+});
+
+test('PDF throttling uses a quiet reusable notice and leaves report controls usable', async () => {
+  let requests = 0;
+  ui.http.defaults.adapter = async config => {
+    requests++;
+    throw new AxiosError('Throttled', undefined, config, undefined, { status: 429, config,
+      headers: { 'retry-after': '60' }, data: new Blob([JSON.stringify({ detail: 'Wait' })], { type: 'application/json' }) });
+  };
+  let tree = render(ui.AdminReports);
+  const button = elements(tree, node => node.type === 'button')[0];
+  await button.props.onClick();
+  tree = render(ui.AdminReports);
+  const buttons = elements(tree, node => node.type === 'button');
+  assert.equal(buttons.length, 6); assert.ok(buttons.every(node => !node.props.disabled));
+  await buttons[1].props.onClick();
+  assert.equal(requests, 1, 'A different PDF button shares the active export budget');
+  assert.equal(toastErrors.length, 0);
+  assert.equal(toastMessages.length, 2);
+  for (const [message, options] of toastMessages) {
+    assert.match(message, /PDF exports are temporarily limited/);
+    assert.equal(options.id, 'report-pdf-cooldown', 'Repeated clicks replace the same notification');
+  }
+});
+
 test('report preview validation and backend field errors produce visible errors instead of unhandled requests', async () => {
   let requests = 0;
   ui.http.defaults.adapter = async config => {
@@ -3067,6 +3144,40 @@ test('Reports resets every preview and export to backend defaults without retain
   assert.equal(requests.length, 6);
   for (const request of requests) assert.deepEqual(request.params, { type: request.params.type });
 });
+
+test('Reports cards size from their content and align footers within each responsive grid row', () => {
+  const tree = render(ui.AdminReports);
+  assert.ok(tree.props.className.includes('h-auto'));
+  assert.ok(!/lg:h-|overflow-hidden/.test(tree.props.className));
+  const grid = elements(tree, node => node.props.className?.includes('grid-cols-1 md:grid-cols-2 lg:grid-cols-3'))[0];
+  assert.ok(grid.props.className.includes('items-stretch'));
+  assert.ok(!/h-full|grid-rows-|auto-rows-fr|min-h-0|flex-1/.test(grid.props.className));
+  const cards = React.Children.toArray(grid.props.children);
+  assert.equal(cards.length, 6);
+  for (const card of cards) {
+    assert.equal(card.type, ui.Card);
+    assert.ok(!/h-full|min-h-0|overflow-hidden/.test(card.props.className));
+    const footer = elements(card, node => node.props.className?.includes('mt-auto shrink-0 pt-3'))[0];
+    assert.ok(footer, 'The fixed-size footer remains inside a naturally growing card');
+    assert.equal(elements(footer, node => node.type === 'button' && node.props.className.includes('w-full min-h-10')).length, 1);
+  }
+});
+
+for (const message of ['No published forecasts overlap the selected dates.',
+  'Saved forecasts are unavailable for this range. Missing observations and quality checks prevent publication. '.repeat(60)]) {
+  test(`Forecast report preserves the complete ${message.length > 100 ? 'long' : 'short'} warning without clipping or collapsing details`, () => {
+    const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
+    const data = Object.freeze({ ...range, status: 'no_forecasts_in_range', status_message: message,
+      range_note: 'Available predictions retain their full period values.', forecast: [] });
+    const tree = reportSummaryFixture('sarima_forecast', data, range);
+    const lines = elements(tree, node => node.type === 'p').map(node => node.props.children);
+    assert.ok(lines.includes(message)); assert.ok(lines.includes(data.range_note));
+    assert.ok(tree.props.className.includes('[overflow-wrap:anywhere]'));
+    assert.equal(elements(tree, node => /line-clamp|overflow-hidden|max-h-/.test(node.props.className ?? '')).length, 0);
+    assert.equal(elements(tree, node => node.type === 'details').length, 0, 'The full warning remains visible');
+    assert.equal(data.status_message, message);
+  });
+}
 
 function reportSummaryFixture(type, data, range) {
   const page = render(ui.AdminReports);
@@ -3473,6 +3584,163 @@ test('centered forecast tabs preserve the full calendar and show separate basis 
   assert.equal(periodSelect().props.value, 'weekly');
 });
 
+function forecastV6Fixture(period = 'monthly') {
+  const graph = forecastFixture(period);
+  const source = { status: 'stale_data', latest_observed_period: '2025-12-01', expected_latest_closed_period: '2026-09-01', missing_observation_periods: 9, period: 'monthly', coverage_verified: false };
+  const model = { name: 'ar1', display_label: 'Nonseasonal ARIMA(1,0,0)', family: 'ARIMA', order: [1, 0, 0], seasonal_order: [0, 0, 0, 0], seasonal_terms_enabled: false,
+    training_start: '2024-01-01', trained_through: '2025-12-01', training_period: 'monthly', observed_periods: 24, missing_periods: 0,
+    forecast_origin: '2026-10-01', projection_steps: 10, projection_step_unit: 'monthly', production_approved: false,
+    validation: { wape_percent: 0, periods: 3, basis: 'validation_only' }, test: null,
+    primary_backtest: { basis: 'rolling_one_period', metrics: { wape: 20, sample_count: 6 }, test_start: '2025-07-01', test_end: '2025-12-01' },
+    baseline_comparison: { result: 'worse', selected_baseline: 'last_value', model_wape_percent: 20, baseline_wape_percent: 15 }, source_freshness: source };
+  graph.readiness = { status: 'partially_available', production_approved: false, publication_status: 'research_only', source_freshness: { status: 'stale_data', coverage_verified: false, components: { regular: source, feeding: source } }, limitations: ['Server limitation: research evidence only.'] };
+  for (const [key, view] of Object.entries(graph.views)) {
+    view.readiness = { ...graph.readiness, available_prediction_points: 6, expected_prediction_points: 7 };
+    view.model_details = key === 'combined' ? { name: 'sum_of_component_predictions', components: { regular: model, feeding: { ...model, name: 'local_level', display_label: 'Local level — nonseasonal ARIMA(0,1,0)' } } } : model;
+    view.points = view.points.map(point => ({ ...point, forecast_origin: point.is_current || point.future_prediction !== null ? '2026-10-01' : point.date,
+      horizon: period === 'yearly' ? Number(point.date.slice(0, 4)) - 2026 : 1, horizon_unit: period === 'yearly' ? 'year_offset' : period,
+      outlook_basis: point.future_prediction !== null ? 'latest_closed_period_forecast' : null, issued_prediction: point.is_current ? 0 : null,
+      issued_provenance: point.is_current ? { prediction_id: 41, run_id: 7, engine_version: 'original-engine', issued_at: '2026-09-30T12:00:00Z', run_as_of: '2026-09-30', forecast_origin: '2026-09-01', cutoff_basis: 'issuing_run_calendar', source_revision: 'original-revision', revision_kind: 'graph_input_revision', horizon: 2, horizon_unit: period } : null,
+      model_details: point.prediction_basis === 'issued_forecast' ? null : view.model_details, is_nowcast: period === 'yearly' && point.is_current, annual_outlook: null }));
+  }
+  if (period !== 'yearly') {
+    const length = period === 'weekly' ? 52 : 12;
+    graph.seasonal_outlook = { period, as_of: graph.as_of, basis: 'single_origin_component_forecasts', production_approved: false, readiness: graph.readiness,
+      views: Object.fromEntries(Object.entries(graph.views).map(([key, view]) => [key, { ...view, points: Array.from({ length }, (_, index) => {
+        const date = new Date(period === 'weekly' ? '2026-10-26T00:00:00Z' : '2026-10-01T00:00:00Z');
+        if (period === 'weekly') date.setUTCDate(date.getUTCDate() + index * 7); else date.setUTCMonth(date.getUTCMonth() + index);
+        const end = new Date(date); if (period === 'weekly') end.setUTCDate(end.getUTCDate() + 6); else { end.setUTCMonth(end.getUTCMonth() + 1); end.setUTCDate(0); }
+        return { ...view.points.find(point => point.is_current), date: date.toISOString().slice(0, 10), end_date: end.toISOString().slice(0, 10),
+          is_current: index === 0, actual: index === 0 ? 0 : null, future_prediction: index === 4 ? null : 120, issued_prediction: index === 0 ? 0 : null, horizon: index + 1 };
+      }) }])) };
+    const points = graph.seasonal_outlook.views.regular.points;
+    graph.seasonal_outlook.range = { start_date: points[0].date, end_date: points.at(-1).end_date, periods: length };
+  } else graph.seasonal_outlook = null;
+  return graph;
+}
+
+test('v6 model metadata separates saved availability approval stale sources and component evidence', () => {
+  const graph = forecastV6Fixture();
+  const text = JSON.stringify(ui.ForecastMetadata({ view: graph.views.combined, graphReadiness: graph.readiness, savedStatus: graph.status, current: graph.views.combined.points[3] }));
+  for (const phrase of ['research only', 'Not production approved', 'stale data', 'Nonseasonal ARIMA(1,0,0)', 'Local level', 'worse than the reported baseline', 'Sep 2026', 'Dec 2025', '0.0% WAPE', '3 periods', '20.0% WAPE', '6 periods', 'Server limitation', 'separate from approval', 'not one fitted model']) assert.ok(text.includes(phrase), phrase);
+  assert.match(text, /Steps from last fitted bucket/);
+  assert.match(text, /These differ from the extraction-relative horizon/);
+  assert.match(text, /not establish accuracy at|do not validate the entire seasonal path/);
+});
+
+test('v6 missing metadata evidence and components remain explicitly unavailable rather than zero or approved', () => {
+  const view = forecastFixture().views.regular;
+  const text = JSON.stringify(ui.ForecastMetadata({ view }));
+  assert.match(text, /Model details unavailable/); assert.match(text, /Approval not supplied/);
+  assert.equal(ui.forecastEvidence(null), 'Not available');
+  assert.match(ui.forecastEvidence({ wape_percent: null, periods: 0 }), /WAPE unavailable.*0 periods/);
+  assert.match(ui.forecastEvidence({ wape_percent: 0, periods: 1 }), /0.0% WAPE.*1 periods/);
+  assert.equal(ui.forecastModelParts({ components: { regular: null } })[1].model, null);
+  assert.equal(ui.forecastDate('2026-02-30'), 'Unavailable');
+  assert.equal(ui.forecastHorizon(0, 'year_offset'), 'Year offset 0');
+  assert.match(ui.forecastHorizon(1, 'weekly'), /current bucket counts as 1/);
+});
+
+test('v6 display safety preserves finite values provenance nulls and backend object immutability', () => {
+  const view = forecastV6Fixture().views.regular, snapshot = structuredClone(view);
+  const points = ui.forecastV6Points(view);
+  assert.deepEqual(points, view.points); assert.deepEqual(view, snapshot);
+  assert.notEqual(points[0], view.points[0]);
+  assert.equal(points.find(point => point.is_current).issued_prediction, 0);
+  assert.deepEqual(ui.forecastV6Points(undefined), []);
+  assert.equal(ui.forecastV6Points({ points: [{ date: '2026-01-01', end_date: '2026-01-31', actual: NaN, past_prediction: undefined, future_prediction: Infinity }] })[0].actual, null);
+});
+
+test('v6 all nine centered views retain server values null gaps current membership and neutral boundary', () => {
+  for (const period of ['weekly', 'monthly', 'yearly']) {
+    const graph = forecastV6Fixture(period); ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:${period}`, graph, ['dashboard', 'reports']);
+    states = []; refs = []; effects = [];
+    let tree = render(ui.ForecastChart);
+    elements(tree, node => node.props['aria-label'] === 'Forecast period')[0].props.onChange({ target: { value: period } });
+    for (const [key, label] of [['combined', 'Combined'], ['regular', 'Regular Sales'], ['feeding', 'Milk Feeding']]) {
+      tree = render(ui.ForecastChart); elements(tree, node => node.type === 'button' && node.props.children === label)[0].props.onClick(); tree = render(ui.ForecastChart);
+      assert.deepEqual(elements(tree, node => Array.isArray(node.props.data))[0].props.data, graph.views[key].points);
+      assert.ok(elements(tree, node => ['actual', 'past_prediction', 'future_prediction'].includes(node.props.dataKey)).every(line => !line.props.connectNulls));
+      const bridge = elements(tree, node => node.props.className === 'forecast-boundary-connector')[0];
+      assert.ok(bridge); assert.notEqual(bridge.props.stroke, elements(tree, node => node.props.dataKey === 'future_prediction')[0].props.stroke);
+    }
+  }
+});
+
+test('v6 seasonal displays retain full 12-month and 52-week horizons for all three views', () => {
+  for (const period of ['monthly', 'weekly']) {
+    const graph = forecastV6Fixture(period); ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:${period}`, graph, ['dashboard', 'reports']);
+    states = []; refs = []; effects = [];
+    let tree = render(ui.ForecastChart);
+    elements(tree, node => node.props['aria-label'] === 'Forecast period')[0].props.onChange({ target: { value: period } }); tree = render(ui.ForecastChart);
+    elements(tree, node => node.props['aria-label'] === 'Forecast display')[0].props.onChange({ target: { value: 'seasonal' } });
+    for (const [key, label] of [['combined', 'Combined'], ['regular', 'Regular Sales'], ['feeding', 'Milk Feeding']]) {
+      tree = render(ui.ForecastChart); elements(tree, node => node.type === 'button' && node.props.children === label)[0].props.onClick(); tree = render(ui.ForecastChart);
+      const points = elements(tree, node => Array.isArray(node.props.data))[0].props.data;
+      assert.equal(points.length, period === 'weekly' ? 52 : 12); assert.deepEqual(points, graph.seasonal_outlook.views[key].points);
+      assert.equal(points[4].future_prediction, null); assert.match(JSON.stringify(tree), /No long-horizon score is inferred/);
+      assert.equal(new Set(points.map(point => point.forecast_origin)).size, 1);
+    }
+  }
+});
+
+test('v6 comparison toggle uses immutable original issues including zero without replacing latest outlook', () => {
+  const graph = forecastV6Fixture(); ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, graph, ['dashboard', 'reports']);
+  let tree = render(ui.ForecastChart);
+  assert.equal(elements(tree, node => node.props.dataKey === 'issued_prediction').length, 0);
+  elements(tree, node => node.type === 'input' && node.props.type === 'checkbox')[0].props.onChange({ target: { checked: true } }); tree = render(ui.ForecastChart);
+  assert.equal(elements(tree, node => node.props.dataKey === 'issued_prediction')[0].props.connectNulls, false);
+  assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data[3].future_prediction, 120);
+  const point = graph.views.regular.points[3];
+  const text = JSON.stringify(ui.ForecastGraphTooltip({ active: true, payload: [{ payload: point }] }));
+  for (const phrase of ['Original issued comparison', '₱0', 'original-engine', 'original-revision', 'issuing run calendar', 'graph input revision', 'does not inherit', 'exclusive cutoff', 'current bucket counts as 1']) assert.ok(text.includes(phrase), phrase);
+  assert.equal(point.issued_provenance.run_id, 7);
+});
+
+test('v6 unavailable seasonal components and missing issues never fall back to another view or fabricate predictions', () => {
+  const graph = forecastV6Fixture(); graph.seasonal_outlook.views.combined.points = graph.seasonal_outlook.views.combined.points.map(point => ({ ...point, future_prediction: null, issued_prediction: null, model_details: null }));
+  graph.seasonal_outlook.views.combined.model_details = null;
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, graph, ['dashboard', 'reports']);
+  let tree = render(ui.ForecastChart); elements(tree, node => node.props['aria-label'] === 'Forecast display')[0].props.onChange({ target: { value: 'seasonal' } });
+  tree = render(ui.ForecastChart); elements(tree, node => node.type === 'input' && node.props.type === 'checkbox')[0].props.onChange({ target: { checked: true } }); tree = render(ui.ForecastChart);
+  assert.ok(elements(tree, node => Array.isArray(node.props.data))[0].props.data.every(point => point.future_prediction === null));
+  assert.equal(elements(tree, node => node.props.dataKey === 'issued_prediction').length, 0); assert.match(JSON.stringify(tree), /No original issued comparisons/);
+  graph.seasonal_outlook = null; ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, graph, ['dashboard', 'reports']); tree = render(ui.ForecastChart);
+  assert.equal(elements(tree, node => node.type === ui.EmptyState)[0].props.title, 'Seasonal outlook unavailable');
+});
+
+test('v6 switching to yearly restores centered display and keeps existing refresh dates and view controls', () => {
+  for (const period of ['monthly', 'yearly']) ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:${period}`, forecastV6Fixture(period), ['dashboard', 'reports']);
+  let tree = render(ui.ForecastChart); elements(tree, node => node.props['aria-label'] === 'Forecast display')[0].props.onChange({ target: { value: 'seasonal' } }); tree = render(ui.ForecastChart);
+  elements(tree, node => node.props['aria-label'] === 'Forecast period')[0].props.onChange({ target: { value: 'yearly' } }); tree = render(ui.ForecastChart);
+  assert.equal(elements(tree, node => node.props['aria-label'] === 'Forecast display')[0].props.value, 'centered');
+  assert.equal(elements(tree, node => node.type === 'option' && node.props.value === 'seasonal')[0].props.disabled, true);
+  assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data.length, 5);
+  assert.equal(elements(tree, node => node.props['aria-label'] === 'Forecast date range').length, 1);
+  assert.equal(elements(tree, node => node.type === 'button' && node.props.title === 'Refresh using the latest completed weeks and months.').length, 1);
+});
+
+test('v6 annual explanations disclose January December missing months and actual floors without recalculation', () => {
+  for (const month of ['01', '12']) {
+    const point = { ...forecastV6Fixture('yearly').views.regular.points[2], future_prediction: 777, annual_outlook: {
+      completed_months: month === '01' ? 0 : 11, observed_revenue: 42, forecast_months: month === '01' ? 12 : 1, forecast_revenue: 735,
+      current_month: `2026-${month}-01`, current_month_actual: 100, current_month_model_prediction: 50, current_month_estimate: 100, current_month_floor_applied: true, prediction: 777, missing_completed_months: [] } };
+    let text = JSON.stringify(ui.ForecastAnnualDetails({ point }));
+    for (const phrase of ['Current-year outlook (actuals + estimates)', 'not a forecast issued in January', 'Actual floor applied', '₱777', 'Partial recorded sales', 'do not establish annual or Combined']) assert.ok(text.includes(phrase), phrase);
+    point.future_prediction = null; point.annual_outlook.prediction = null; point.annual_outlook.missing_completed_months = ['2026-02-01'];
+    text = JSON.stringify(ui.ForecastAnnualDetails({ point })); assert.match(text, /Missing completed months/); assert.match(text, /Feb 2026/); assert.match(text, /Full-year estimate unavailable/);
+    assert.equal(point.annual_outlook.observed_revenue, 42);
+  }
+});
+
+test('v6 Combined annual explanation shows server component breakdowns without inferring a missing component total', () => {
+  const point = { ...forecastV6Fixture('yearly').views.combined.points[2], future_prediction: null, annual_outlook: { components: { regular: { prediction: 99, observed_revenue: 70, forecast_revenue: 29, completed_months: 9 }, feeding: null } } };
+  const text = JSON.stringify(ui.ForecastAnnualDetails({ point }));
+  assert.match(text, /Regular sales/); assert.match(text, /Milk feeding/); assert.match(text, /Calculation details unavailable/);
+  assert.match(text, /Unavailable/); assert.equal(point.future_prediction, null);
+  assert.equal(ui.ForecastAnnualDetails({ point: { ...point, is_nowcast: false } }), null);
+});
+
 function forecastCalendar() {
   const tree = () => render(ui.ForecastChart);
   const open = () => elements(tree(), node => node.props['aria-label'] === 'Forecast date range')[0].props.onClick();
@@ -3485,6 +3753,22 @@ function forecastCalendar() {
 function historicalForecastFixture(period = 'monthly') {
   return JSON.parse(JSON.stringify(forecastFixture(period)).replace(/2024/g, '1998').replace(/2025/g, '1999').replace(/2026/g, '2000').replace(/2027/g, '2001').replace(/2028/g, '2002'));
 }
+
+test('v6 historical date selection anchors the seasonal path without trimming or relabeling saved future buckets', () => {
+  const graph = JSON.parse(JSON.stringify(forecastV6Fixture()).replace(/2024/g, '1998').replace(/2025/g, '1999').replace(/2026/g, '2000').replace(/2027/g, '2001'));
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, forecastV6Fixture(), ['dashboard', 'reports']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly:2000-10-26`, graph, ['dashboard', 'reports']);
+  const form = forecastCalendar(); form.open();
+  form.field('from').props.onChange({ target: { value: '2000-09-01' } });
+  form.field('to').props.onChange({ target: { value: '2000-10-26' } }); form.action('Apply dates');
+  assert.equal(elements(form.tree(), node => Array.isArray(node.props.data))[0].props.data.length, 2);
+  elements(form.tree(), node => node.props['aria-label'] === 'Forecast display')[0].props.onChange({ target: { value: 'seasonal' } });
+  const tree = form.tree(), points = elements(tree, node => Array.isArray(node.props.data))[0].props.data;
+  assert.deepEqual(points, graph.seasonal_outlook.views.combined.points); assert.equal(points.length, 12);
+  assert.match(JSON.stringify(tree), /no predictions are relabeled as historical issues/);
+  form.open(); form.action('Clear dates');
+  assert.deepEqual(elements(form.tree(), node => Array.isArray(node.props.data))[0].props.data, forecastV6Fixture().seasonal_outlook.views.combined.points);
+});
 
 test('forecast calendar validates drafts cancels changes and clears dates back to the unchanged default view', () => {
   ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, forecastFixture(), ['dashboard', 'reports']);

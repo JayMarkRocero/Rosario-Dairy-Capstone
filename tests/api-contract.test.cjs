@@ -501,6 +501,17 @@ test('forecast periods use the graph endpoint and monthly status uses the regula
   assert.equal(api.forecastMetric({ wape_percent: 10, failed_rows: 1 }), 'Incomplete evaluation');
 });
 
+test('forecast v6 graph responses preserve additive metadata outlooks issued provenance and annual nulls unchanged', async () => {
+  responseData = { period: 'monthly', scope: 'real', is_demo: false, training_scope: 'real', as_of: '2000-10-26', status: 'ready',
+    readiness: { status: 'unavailable', production_approved: false, publication_status: 'research_only', source_freshness: { status: 'stale_data' } },
+    seasonal_outlook: { period: 'monthly', range: { periods: 12 }, views: {} }, views: { regular: { model_details: { name: 'ar1', primary_backtest: null }, points: [{ actual: null, future_prediction: null, issued_prediction: 0, forecast_origin: '2000-10-01', horizon: 1, horizon_unit: 'monthly', issued_provenance: { run_id: 7, source_revision: 'original' }, annual_outlook: null }] } } };
+  const snapshot = structuredClone(responseData);
+  const result = await api.forecastingService.getGraph('monthly', 'real', undefined, '2000-10-26');
+  assert.equal(result, responseData); assert.deepEqual(result, snapshot);
+  assert.equal(result.views.regular.points[0].issued_prediction, 0); assert.equal(result.views.regular.points[0].future_prediction, null);
+  assert.equal(calls.length, 1); assert.deepEqual(calls[0].params, { period: 'monthly', scope: 'real', as_of: '2000-10-26' });
+});
+
 test('historical forecast graph requests use supported as_of only and reject a mismatched current response', async () => {
   const signal = new AbortController().signal;
   for (const period of ['weekly', 'monthly', 'yearly']) {
@@ -1984,6 +1995,135 @@ test('failed sales writes preserve report caches and do not signal committed sto
   assert.ok(api.readDataCache('report-preview').updatedAt > 0);
   assert.ok(api.readDataCache('report-pdf').updatedAt > 0);
   assert.equal(changes, 0);
+});
+
+for (const kind of ['preview', 'pdf']) {
+  test(`report ${kind} cooldown blocks every type/range, preserves separate budgets and retries at expiry`, async () => {
+    const originalNow = Date.now;
+    let now = Date.UTC(2026, 9, 29, 1), updates = 0;
+    Date.now = () => now;
+    const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
+    const path = kind === 'preview' ? '/api/reports/preview/' : '/api/reports/export-pdf/';
+    global.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } };
+    window.addEventListener(api.REPORTS_UPDATED, () => updates++);
+    const read = (channel, type = 'daily_sales', dates = range) => channel === 'preview'
+      ? api.reportsService.fetchReportPreview(type, undefined, dates) : api.reportsService.downloadReportPDF(type, dates);
+    api.http.defaults.adapter = async config => {
+      calls.push(config);
+      if (calls.length === 1) throw new AxiosError('Throttled', undefined, config, undefined, {
+        status: 429, config, headers: { 'retry-after': '2' }, data: kind === 'pdf'
+          ? new Blob([JSON.stringify({ detail: 'Throttled' })], { type: 'application/json' }) : { detail: 'Throttled' },
+      });
+      const data = config.url === '/api/reports/export-pdf/' ? new Blob(['%PDF-1.4'], { type: 'application/pdf' })
+        : config.url === '/api/reports/refresh/' ? { refresh_status: 'coalesced', generated_at: null, report_types: [], retry_after_seconds: 60 }
+        : { report_type: config.params.type, generated_at: '', data: { ...config.params } };
+      return { status: 200, config, headers: {}, data };
+    };
+    try {
+      await assert.rejects(read(kind), error => error.status === 429 && error.retryAfterMs === 2000 && /Try again in 2 seconds/.test(error.message));
+      for (const [type, dates] of [['daily_sales', range], ['customer', { ...range, end_date: '2000-10-01' }]]) {
+        await assert.rejects(read(kind, type, dates), error => error.status === 429 && error.retryAfterMs === 2000);
+      }
+      assert.equal(calls.length, 1, 'Changing report or dates cannot bypass an endpoint budget');
+      await read(kind === 'preview' ? 'pdf' : 'preview');
+      assert.equal(calls.length, 2, 'Preview and export budgets remain independent');
+      await api.reportsService.refreshReportCache();
+      assert.equal(updates, 1, 'A coalesced 200 with null generated_at remains a successful refresh');
+      now += 1999;
+      await assert.rejects(read(kind), error => error.status === 429 && error.retryAfterMs === 1);
+      assert.equal(calls.length, 3, 'Manual refresh cannot clear read cooldowns');
+      now++;
+      assert.equal(calls.length, 3, 'Expiry never automatically retries a request');
+      await read(kind);
+      assert.equal(calls.length, 4);
+      assert.equal(calls.at(-1).url, path);
+      assert.deepEqual(calls.at(-1).params, { type: 'daily_sales', ...range });
+    } finally { Date.now = originalNow; }
+  });
+
+  test(`report ${kind} cooldown honors HTTP-date Retry-After and resets for a new account epoch`, async () => {
+    const originalNow = Date.now, now = Date.UTC(2026, 9, 29, 1);
+    Date.now = () => now;
+    global.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } };
+    const read = () => kind === 'preview' ? api.reportsService.fetchReportPreview('daily_sales') : api.reportsService.downloadReportPDF('daily_sales');
+    api.http.defaults.adapter = async config => {
+      calls.push(config);
+      if (calls.length === 1) throw new AxiosError('Throttled', undefined, config, undefined,
+        { status: 429, config, headers: { 'retry-after': new Date(now + 5000).toUTCString() }, data: {} });
+      return { status: 200, config, headers: {}, data: kind === 'pdf' ? new Blob(['%PDF-1.4']) : { data: {} } };
+    };
+    try {
+      await assert.rejects(read(), error => error.retryAfterMs === 5000);
+      await assert.rejects(read(), error => error.retryAfterMs === 5000);
+      assert.equal(calls.length, 1);
+      api.clearDataCache();
+      await read(); assert.equal(calls.length, 2, 'A previous account cannot throttle the next account');
+    } finally { Date.now = originalNow; }
+  });
+
+  test(`late ${kind} throttling from an old session cannot block the current account`, async () => {
+    let rejectOld;
+    global.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } };
+    const read = type => kind === 'preview' ? api.reportsService.fetchReportPreview(type) : api.reportsService.downloadReportPDF(type);
+    api.http.defaults.adapter = config => {
+      calls.push(config);
+      if (calls.length === 1) return new Promise((_, reject) => { rejectOld = () => reject(new AxiosError('Throttled', undefined, config, undefined,
+        { status: 429, config, headers: { 'retry-after': '60' }, data: {} })); });
+      return Promise.resolve({ status: 200, config, headers: {}, data: kind === 'pdf' ? new Blob(['%PDF-1.4']) : { data: {} } });
+    };
+    const old = read('daily_sales');
+    const rejected = assert.rejects(old, { status: 429 });
+    await new Promise(resolve => setImmediate(resolve));
+    api.clearDataCache();
+    await read('daily_sales'); rejectOld(); await rejected;
+    await read('customer'); assert.equal(calls.length, 3);
+  });
+}
+
+test('fresh cached PDFs remain downloadable while new exports are cooling down', async () => {
+  let clicks = 0;
+  global.document = { createElement: () => ({ click() { clicks++; }, remove() {} }), body: { appendChild() {} } };
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    if (calls.length === 2) throw new AxiosError('Throttled', undefined, config, undefined,
+      { status: 429, config, headers: { 'retry-after': '60' }, data: {} });
+    return { status: 200, config, headers: {}, data: new Blob(['%PDF-1.4']) };
+  };
+  await api.reportsService.downloadReportPDF('customer');
+  await assert.rejects(api.reportsService.downloadReportPDF('daily_sales'), { status: 429 });
+  await api.reportsService.downloadReportPDF('customer');
+  assert.equal(calls.length, 2); assert.equal(clicks, 2);
+});
+
+test('concurrent report throttles retain the longest deadline instead of shortening it', async () => {
+  const rejectors = [];
+  api.http.defaults.adapter = config => new Promise((_, reject) => {
+    calls.push(config);
+    rejectors.push(seconds => reject(new AxiosError('Throttled', undefined, config, undefined,
+      { status: 429, config, headers: { 'retry-after': String(seconds) }, data: {} })));
+  });
+  const first = api.reportsService.fetchReportPreview('daily_sales');
+  const second = api.reportsService.fetchReportPreview('customer');
+  const rejectedFirst = assert.rejects(first, { status: 429 }), rejectedSecond = assert.rejects(second, { status: 429 });
+  await new Promise(resolve => setImmediate(resolve));
+  rejectors[0](60); await rejectedFirst;
+  rejectors[1](2); await rejectedSecond;
+  await assert.rejects(api.reportsService.fetchReportPreview('inventory'), error => error.retryAfterMs > 50_000);
+  assert.equal(calls.length, 2);
+});
+
+test('report failures without a usable positive Retry-After do not invent a cooldown', async () => {
+  for (const header of [undefined, '0', 'invalid']) {
+    api.clearDataCache(); calls = [];
+    api.http.defaults.adapter = async config => {
+      calls.push(config);
+      if (calls.length === 1) throw new AxiosError('Unavailable', undefined, config, undefined,
+        { status: 429, config, headers: header === undefined ? {} : { 'retry-after': header }, data: { detail: 'Please retry.' } });
+      return { status: 200, config, headers: {}, data: { data: {} } };
+    };
+    await assert.rejects(api.reportsService.fetchReportPreview('daily_sales'), { message: 'Please retry.' });
+    await api.reportsService.fetchReportPreview('daily_sales'); assert.equal(calls.length, 2);
+  }
 });
 
 test('concurrent manual report refreshes share one request and publish one cache update', async () => {

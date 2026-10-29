@@ -88,6 +88,7 @@ for (const [period, dates] of Object.entries({
       assert.equal(connector.props.dataKey, undefined);
       assert.equal(connector.props.name, undefined);
       const lines = elements(tree, node => node.type === ui.Line);
+      assert.notEqual(connector.props.stroke, lines.find(line => line.props.dataKey === 'future_prediction').props.stroke);
       assert.deepEqual(lines.map(line => line.props.dataKey), ['past_prediction', 'actual', 'future_prediction']);
       assert.ok(lines.every(line => line.props.connectNulls === false));
       assert.equal(elements(tree, node => node.type === ui.Legend).length, 1);
@@ -95,7 +96,8 @@ for (const [period, dates] of Object.entries({
       assert.deepEqual(rows, points);
       assert.notEqual(rows[0], points[0]);
       assert.deepEqual(graph, before);
-      assert.match(text(tree), /Adjacent prediction periods are connected for display/);
+      assert.match(text(tree), /neutral boundary bridge is for display only/);
+      assert.match(text(tree), /historical and latest-outlook origins can differ/);
     });
   }
 }

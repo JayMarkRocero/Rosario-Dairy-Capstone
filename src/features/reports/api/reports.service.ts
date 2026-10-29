@@ -24,6 +24,47 @@ export const REPORTS_UPDATED = "rosario:reports-updated";
 
 let manualRefresh: { session: number; retryAt: number; pending?: Promise<void> } | undefined;
 
+type ReportReadKind = "preview" | "pdf";
+class ReportCooldownError extends ApiError {
+  constructor(readonly kind: ReportReadKind, readonly retryAt: number) {
+    super(429, "");
+    this.retryAfterMs = Math.max(0, retryAt - Date.now());
+    this.message = reportRetryMessage(this);
+  }
+}
+
+export function reportRetryMessage(error: unknown): string {
+  if (!(error instanceof ReportCooldownError)) return "";
+  const label = error.kind === "preview" ? "Report previews" : "PDF exports";
+  const seconds = Math.ceil((error.retryAt - Date.now()) / 1000);
+  return seconds > 0 ? `${label} are temporarily limited. Try again in ${seconds} seconds.`
+    : `${label} can be retried now.`;
+}
+
+let readCooldowns: { session: number; preview?: ReportCooldownError; pdf?: ReportCooldownError } = { session: -1 };
+
+// The backend budgets previews and exports separately, across all report types/ranges.
+async function requestReport<T>(kind: ReportReadKind, request: () => Promise<T>): Promise<T> {
+  const session = dataCacheEpoch();
+  if (readCooldowns.session !== session) readCooldowns = { session };
+  const state = readCooldowns, blocked = state[kind];
+  if (blocked && blocked.retryAt > Date.now()) {
+    blocked.retryAfterMs = blocked.retryAt - Date.now();
+    blocked.message = reportRetryMessage(blocked);
+    throw blocked;
+  }
+  try { return await request(); }
+  catch (error) {
+    if (session === dataCacheEpoch() && error instanceof ApiError && error.status === 429
+        && error.retryAfterMs != null && Number.isFinite(error.retryAfterMs) && error.retryAfterMs > 0) {
+      const cooldown = new ReportCooldownError(kind, Math.max(state[kind]?.retryAt ?? 0, Date.now() + error.retryAfterMs));
+      state[kind] = cooldown;
+      throw cooldown;
+    }
+    throw error;
+  }
+}
+
 export const reportsService = {
   getRevenue: async (period: RevenuePeriod, startDate: string, endDate: string, signal?: AbortSignal): Promise<RevenueBucket[]> => {
     const { data } = await http.get<RevenueBucket[]>("/sales/reports/revenue/", {
@@ -33,7 +74,7 @@ export const reportsService = {
   },
   fetchReportPreview: async <T extends ReportType>(type: T, period?: ReportPeriod, range?: ReportDateRange): Promise<ReportPreviewResponse<T>> => {
     const dates = validateReportDateRange(type, range);
-    const { data } = await http.get<ReportPreviewResponse<T>>("/api/reports/preview/", { params: { type, ...(period ? { period } : {}), ...dates } });
+    const { data } = await requestReport("preview", () => http.get<ReportPreviewResponse<T>>("/api/reports/preview/", { params: { type, ...(period ? { period } : {}), ...dates } }));
     return data;
   },
 
@@ -41,9 +82,9 @@ export const reportsService = {
     const dates = validateReportDateRange(type, range);
     ensureCacheEvents();
     const blob = await fetchDataCache(`${dataCacheEpoch()}:${reportCacheKey("pdf", type, undefined, dates)}`, async () =>
-      (await http.get<Blob>("/api/reports/export-pdf/", {
+      (await requestReport("pdf", () => http.get<Blob>("/api/reports/export-pdf/", {
         params: { type, ...dates }, responseType: "blob",
-      })).data, ["reports"]);
+      }))).data, ["reports"]);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;

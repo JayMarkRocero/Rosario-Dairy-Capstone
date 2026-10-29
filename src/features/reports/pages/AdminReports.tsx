@@ -5,7 +5,7 @@ import { ArrowUpRight, BarChart2, Download, FileText, LoaderCircle, Package, Ref
 import { toast } from "sonner";
 import { Btn } from "@/components/buttons/Btn";
 import { Card } from "@/components/data-display/Card";
-import { reportsService, type ReportDateRange, type ReportType } from "@/features/reports/api/reports.service";
+import { reportsService, reportRetryMessage, type ReportDateRange, type ReportType } from "@/features/reports/api/reports.service";
 import { C } from "@/styles/tokens/colors";
 import { useReportPreview, reportNumber } from "@/features/reports/hooks/useReportPreview";
 import { forecastExplanation } from "@/features/dashboard/components/admin/ForecastChart";
@@ -23,38 +23,48 @@ const getReports = (): ReportDefinition[] => [
 ];
 
 function ReportSummary({ type, range }: { type: ReportType; range?: ReportDateRange }) {
-  const { data, loading, error } = useReportPreview(type, undefined, range);
-  if (loading) return <p role="status" className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Loading report summary…</p>;
-  if (error) return <p role="alert" className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.red}}>{error}</p>;
-  if (!data) return <p className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Report data unavailable.</p>;
-  const effectiveRange = typeof data.start_date === "string" && typeof data.end_date === "string"
-    ? `${data.start_date} to ${data.end_date}` : typeof data.date === "string" ? data.date : "Report period unavailable";
-  if (type === "sarima_forecast") return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
-    {typeof data.start_date === "string" && typeof data.end_date === "string" && <p>{effectiveRange}</p>}
-    <p>{forecastExplanation(data)}</p>
-    {typeof data.range_note === "string" && data.range_note.trim() && <p>{data.range_note}</p>}
-  </div>;
-  if (type === "inventory") {
-    const asOf = typeof data.as_of === "string" ? new Date(data.as_of) : null;
-    const timestamp = asOf && Number.isFinite(asOf.getTime())
-      ? asOf.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }) : "unavailable";
-    return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
-      <p>Stock movements: {effectiveRange}</p>
-      <p>Current health as of {timestamp} (Asia/Manila): Low stock: {reportNumber(data, "low_stock_count") ?? "Unavailable"} · Expiring batches: {reportNumber(data, "expiring_soon_batch_count") ?? "Unavailable"}</p>
+  const { data, loading, error, retryMessage, retry } = useReportPreview(type, undefined, range);
+  const renderContent = () => {
+    if (retryMessage && !data) return null;
+    if (loading) return <p role="status" className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Loading report summary…</p>;
+    if (error) return <p role="alert" className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.red}}>{error}</p>;
+    if (!data) return <p className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>Report data unavailable.</p>;
+    const effectiveRange = typeof data.start_date === "string" && typeof data.end_date === "string"
+      ? `${data.start_date} to ${data.end_date}` : typeof data.date === "string" ? data.date : "Report period unavailable";
+    if (type === "sarima_forecast") return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
+      {typeof data.start_date === "string" && typeof data.end_date === "string" && <p>{effectiveRange}</p>}
+      <p>{forecastExplanation(data)}</p>
+      {typeof data.range_note === "string" && data.range_note.trim() && <p>{data.range_note}</p>}
     </div>;
-  }
-  const money = (key: string) => {
-    const value = reportNumber(data, key);
-    return value == null ? "Unavailable" : `₱${value.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    if (type === "inventory") {
+      const asOf = typeof data.as_of === "string" ? new Date(data.as_of) : null;
+      const timestamp = asOf && Number.isFinite(asOf.getTime())
+        ? asOf.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }) : "unavailable";
+      return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
+        <p>Stock movements: {effectiveRange}</p>
+        <p>Current health as of {timestamp} (Asia/Manila): Low stock: {reportNumber(data, "low_stock_count") ?? "Unavailable"} · Expiring batches: {reportNumber(data, "expiring_soon_batch_count") ?? "Unavailable"}</p>
+      </div>;
+    }
+    const money = (key: string) => {
+      const value = reportNumber(data, key);
+      return value == null ? "Unavailable" : `₱${value.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    };
+    if (type === "customer") return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
+      <p>{effectiveRange}</p>
+      <p>Customers: {reportNumber(data, "customer_record_count") ?? "Unavailable"} · Invoice total: {money("total_revenue")}</p>
+      <p>Paid: {money("paid_amount")} · Pending: {money("pending_amount")} · Unknown: {money("unknown_amount")}</p>
+    </div>;
+    const revenue = reportNumber(data, type === "daily_sales" ? "total_revenue" : "revenue");
+    const count = reportNumber(data, "transaction_count");
+    return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}><p>{effectiveRange}</p><p>Net sales: {revenue == null ? "Unavailable" : `₱${revenue.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`} · Transactions: {count ?? "Unavailable"}</p>{count === 0 && <p>No sales recorded in this period.</p>}</div>;
   };
-  if (type === "customer") return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
-    <p>{effectiveRange}</p>
-    <p>Customers: {reportNumber(data, "customer_record_count") ?? "Unavailable"} · Invoice total: {money("total_revenue")}</p>
-    <p>Paid: {money("paid_amount")} · Pending: {money("pending_amount")} · Unknown: {money("unknown_amount")}</p>
-  </div>;
-  const revenue = reportNumber(data, type === "daily_sales" ? "total_revenue" : "revenue");
-  const count = reportNumber(data, "transaction_count");
-  return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}><p>{effectiveRange}</p><p>Net sales: {revenue == null ? "Unavailable" : `₱${revenue.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`} · Transactions: {count ?? "Unavailable"}</p>{count === 0 && <p>No sales recorded in this period.</p>}</div>;
+  const content = renderContent();
+  return retryMessage ? <>
+    <p role="status" className="min-w-0 text-xs leading-relaxed [overflow-wrap:anywhere]" style={{color:C.muted}}>
+      {retryMessage} <button type="button" onClick={retry} className="text-xs text-blue-600 hover:underline">Retry</button>
+    </p>
+    {content}
+  </> : content;
 }
 
 export function AdminReports() {
@@ -72,7 +82,9 @@ export function AdminReports() {
       await reportsService.downloadReportPDF(report.id, range);
       toast.success(`${report.title} downloaded.`);
     } catch (error) {
-      toastApiError(error, "Failed to download report.");
+      const message = reportRetryMessage(error);
+      if (message) toast(message, { id: "report-pdf-cooldown" });
+      else toastApiError(error, "Failed to download report.");
     } finally {
       actionLock.current = false;
       setExporting(null);
@@ -94,7 +106,7 @@ export function AdminReports() {
     }
   };
 
-  return <div className="w-full h-auto lg:h-[calc(100vh-80px)] min-h-0 flex flex-col justify-between gap-3 p-4 sm:p-6 lg:overflow-hidden">
+  return <div className="w-full h-auto flex flex-col gap-3 p-4 sm:p-6">
     <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3 shrink-0">
       <ModuleSubheading description="Generate real-time business intelligence reports and export downloadable PDF analytics." />
       <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
@@ -102,12 +114,12 @@ export function AdminReports() {
         <Btn variant="primary" size="sm" fullWidth icon={refreshing?<LoaderCircle size={13} className="animate-spin"/>:<RefreshCw size={13}/>} onClick={refresh} disabled={refreshing || exporting !== null}>{refreshing?"Refreshing…":"Refresh Data"}</Btn>
       </div>
     </div>
-    <div className="w-full min-w-0 lg:flex-1 lg:min-h-0 flex flex-col">
-    <Card className="w-full min-w-0 lg:h-full lg:min-h-0 flex flex-col p-4">
-    <div className="grid h-full lg:flex-1 lg:min-h-0 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr lg:grid-rows-2 gap-4">
+    <div className="w-full min-w-0 flex flex-col">
+    <Card className="w-full min-w-0 flex flex-col p-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 items-stretch gap-4">
       {reports.map(report=>{
         const downloading=exporting===report.id;
-        return <Card key={report.id} className="h-full min-w-0 lg:min-h-0 flex flex-col justify-between bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow-md transition-shadow">
+        return <Card key={report.id} className="min-w-0 flex flex-col justify-between bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex-1 min-w-0 flex flex-col justify-start space-y-1.5">
           <div className="flex shrink-0 items-start gap-3">
             <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center" style={{backgroundColor:report.color+"15",color:report.color}}>{report.icon}</div>

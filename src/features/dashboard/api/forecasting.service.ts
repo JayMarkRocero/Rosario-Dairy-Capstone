@@ -5,6 +5,109 @@ export type ForecastPeriod = "weekly" | "monthly" | "yearly";
 export type ForecastViewKey = "combined" | "regular" | "feeding";
 export type ForecastGraphScope = "real";
 export type PredictionBasis = "issued_forecast" | "historical_test" | "forecast" | "fixed_origin_demo";
+export interface ForecastSourceFreshness {
+  status?: "current" | "stale_data" | "unavailable";
+  latest_observed_period?: string | null;
+  expected_latest_closed_period?: string | null;
+  missing_observation_periods?: number | null;
+  period?: "weekly" | "monthly";
+  coverage_verified?: boolean;
+  basis?: string;
+  components?: Partial<Record<"regular" | "feeding", ForecastSourceFreshness>>;
+}
+export interface ForecastEvidence {
+  wape_percent?: number | null;
+  periods?: number | null;
+  basis?: string | null;
+  wape?: number | null;
+  sample_count?: number | null;
+}
+export interface ForecastModelDetails {
+  name?: string | null;
+  display_label?: string | null;
+  family?: string | null;
+  order?: number[] | null;
+  seasonal_order?: number[] | null;
+  seasonal_terms_enabled?: boolean;
+  forecast_origin?: string | null;
+  training_start?: string | null;
+  trained_through?: string | null;
+  training_period?: "weekly" | "monthly";
+  observed_periods?: number;
+  missing_periods?: number;
+  projection_steps?: number | null;
+  projection_step_start?: number | null;
+  projection_step_end?: number | null;
+  projection_step_unit?: string;
+  missing_observation_periods_before_current?: number | null;
+  source_freshness?: ForecastSourceFreshness;
+  selection_basis?: string | null;
+  model_basis?: string | null;
+  primary_model_id?: number | null;
+  candidate_models?: string[];
+  validation?: ForecastEvidence | null;
+  validation_basis?: string | null;
+  test?: ForecastEvidence | null;
+  primary_backtest?: {
+    basis?: string;
+    metrics?: ForecastEvidence | null;
+    baseline_metrics?: ForecastEvidence | null;
+    selected_baseline?: string;
+    validation_start?: string;
+    validation_end?: string;
+    test_start?: string;
+    test_end?: string;
+  } | null;
+  baseline_comparison?: {
+    selected_baseline?: string | null;
+    model_wape_percent?: number | null;
+    baseline_wape_percent?: number | null;
+    result?: "better" | "worse" | "equal" | "not_available";
+    basis?: string | null;
+  };
+  evaluation_period?: "weekly" | "monthly";
+  production_approved?: boolean;
+  components?: Partial<Record<"regular" | "feeding", ForecastModelDetails | null>>;
+}
+export interface ForecastReadiness {
+  status?: "available" | "partially_available" | "unavailable";
+  available_prediction_points?: number;
+  expected_prediction_points?: number;
+  production_approved?: boolean;
+  source_freshness?: ForecastSourceFreshness;
+  publication_status?: string;
+  primary_monthly_status_url?: string;
+  limitations?: string[];
+}
+export interface ForecastIssuedProvenance {
+  prediction_id?: number;
+  run_id?: number;
+  engine_version?: string;
+  issued_at?: string;
+  run_as_of?: string;
+  forecast_origin?: string;
+  cutoff_basis?: string;
+  source_revision?: string;
+  revision_kind?: string;
+  horizon?: number;
+  horizon_unit?: string;
+}
+export interface ForecastAnnualOutlook {
+  completed_months?: number;
+  missing_completed_months?: string[];
+  invalid_completed_months?: string[];
+  invalid_current_month_actual?: boolean;
+  observed_revenue?: number | null;
+  forecast_months?: number;
+  forecast_revenue?: number | null;
+  current_month?: string;
+  current_month_actual?: number | null;
+  current_month_model_prediction?: number | null;
+  current_month_estimate?: number | null;
+  current_month_floor_applied?: boolean;
+  prediction?: number | null;
+  components?: Partial<Record<"regular" | "feeding", ForecastAnnualOutlook | null>>;
+}
 export interface ForecastGraphPoint {
   date: string;
   end_date: string;
@@ -14,6 +117,15 @@ export interface ForecastGraphPoint {
   prediction_basis: PredictionBasis;
   is_current: boolean;
   is_partial_period: boolean;
+  forecast_origin?: string | null;
+  horizon?: number;
+  horizon_unit?: string;
+  outlook_basis?: string | null;
+  issued_prediction?: number | null;
+  issued_provenance?: ForecastIssuedProvenance | null;
+  is_nowcast?: boolean;
+  annual_outlook?: ForecastAnnualOutlook | null;
+  model_details?: ForecastModelDetails | null;
 }
 export interface ForecastEvaluation {
   periods: number;
@@ -26,6 +138,17 @@ export interface ForecastGraphView {
   points: ForecastGraphPoint[];
   evaluation: Partial<Record<PredictionBasis, ForecastEvaluation>>;
   message: string | null;
+  model_details?: ForecastModelDetails | null;
+  readiness?: ForecastReadiness;
+}
+export interface ForecastSeasonalOutlook {
+  period: "weekly" | "monthly";
+  as_of: string;
+  range: { start_date: string; end_date: string; periods: number };
+  basis?: string;
+  production_approved?: boolean;
+  readiness?: ForecastReadiness;
+  views: Partial<Record<ForecastViewKey, ForecastGraphView>>;
 }
 export interface CenteredForecastGraph {
   scope: ForecastGraphScope;
@@ -39,6 +162,8 @@ export interface CenteredForecastGraph {
   views: Record<ForecastViewKey, ForecastGraphView>;
   status: "ready" | "refresh_required";
   model_id: number | null;
+  readiness?: ForecastReadiness;
+  seasonal_outlook?: ForecastSeasonalOutlook | null;
 }
 export interface ForecastMetrics {
   wape_percent?: number | null;
