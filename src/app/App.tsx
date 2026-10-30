@@ -11,6 +11,7 @@ import { ThemeProvider, useTheme } from "@/styles/ThemeProvider";
 import { EmptyState, Skeleton } from "@/components/EmptyState";
 import { Btn } from "@/components/buttons/Btn";
 import { AppErrorBoundary } from "@/components/feedback/AppErrorBoundary";
+import { useLiveUpdates } from "@/hooks/useLiveUpdates";
 
 type View = "landing" | "Login";
 
@@ -19,6 +20,7 @@ export function AppShell() {
   const { user, loading, authError, retrySession, sessionExpired, logout, clearSessionExpiredFlag } = useAuth();
   const [view, setView] = useState<View>("landing");
   const reducedMotion = useReducedMotion();
+  useLiveUpdates(!loading && !authError && !!user);
 
   useEffect(() => {
     if (sessionExpired) {

@@ -86,15 +86,14 @@ export const notificationsService = {
     type ExpiryBatch = { id: number; expiration_date: string; expiry_status?: 'critical' | 'near_expiry' };
     const feeds = await Promise.allSettled([
       http.get<ExpiryBatch[]>('/inventory/expiring/products/'),
-      http.get<ExpiryBatch[]>('/inventory/expiring/ingredients/'),
     ]);
     if (session !== dataCacheEpoch() || accountId !== getSessionUserId()) return [];
     const details = new Map<string, NonNullable<AppNotification['expiry']>>();
-    feeds.forEach((feed, index) => {
+    feeds.forEach(feed => {
       if (feed.status !== 'fulfilled') return;
       for (const batch of feed.value.data) {
         if (batch.expiry_status !== 'critical' && batch.expiry_status !== 'near_expiry') continue;
-        details.set(`expiry-${index === 0 ? 'product' : 'ingredient'}-${batch.id}`, {
+        details.set(`expiry-product-${batch.id}`, {
           status: batch.expiry_status, daysLeft: daysUntilExpiry(batch.expiration_date),
         });
       }

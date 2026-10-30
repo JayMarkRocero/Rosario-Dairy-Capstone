@@ -77,6 +77,8 @@ const compiled = buildSync({
     export { encodingService } from './src/features/sales/api/encoding.service';
     export { SaleLineEditor } from './src/features/sales/components/SaleLineEditor';
     export { CustomerHistory } from './src/features/customers/components/CustomerHistory';
+    export { TransactionDetails } from './src/features/sales/components/TransactionDetails';
+    export { toSale } from './src/features/sales/api/sales.service';
     export { PaymentUpdateControl } from './src/features/sales/components/PaymentUpdateControl';
     export { InventoryOutflows } from './src/features/inventory/components/InventoryOutflows';
     export { SalesEncoding } from './src/features/sales/pages/SalesEncoding';
@@ -107,6 +109,7 @@ const compiled = buildSync({
     export { InventoryAlert } from './src/features/dashboard/components/staff/InventoryAlert';
     export * from './src/lib/dataCache';
     export { useCachedQuery } from './src/hooks/useCachedQuery';
+    export { useLiveUpdates } from './src/hooks/useLiveUpdates';
   `, resolveDir: root },
   define: { 'import.meta.env': '{}' }, bundle: true, platform: 'node', format: 'cjs',
   loader: { '.jpg': 'dataurl' },
@@ -1833,10 +1836,8 @@ test('batch details use serializer values, preserve zero, and omit null and plac
   values = rows(render(ui.BatchDetailsFields, { batch: { ...batch, source: { ...source, unit_price: '0.00', notes: 'Keep refrigerated' } } }));
   assert.equal(values['Unit cost'], '0.00');
   assert.equal(values.Notes, 'Keep refrigerated');
-  const ingredient = { ...source, ingredient: { name: 'Cream', unit: 'liter' } };
-  delete ingredient.product;
-  values = rows(render(ui.BatchDetailsFields, { batch: { ...batch, kind: 'ingredient', category: 'Ingredients', source: ingredient } }));
-  assert.equal(values['Product name'], 'Cream');
+  const missingCategory = { ...source, product: { ...source.product, category: null } };
+  values = rows(render(ui.BatchDetailsFields, { batch: { ...batch, source: missingCategory } }));
   assert.equal('Category' in values, false);
 });
 
@@ -1877,9 +1878,9 @@ test('mobile ProductTable keeps five products per page despite a legacy one-row 
 });
 
 test('shared ProductTable keeps batch edits scoped to batches and uses five-row catalog pagination', async () => {
-  const batch = { id: 7, itemId: 1, key: 'ingredient-7', kind: 'ingredient', name: 'Cream', batch: 'EX-7',
+  const batch = { id: 7, itemId: 1, key: 'product-7', kind: 'product', name: 'Cream', batch: 'EX-7',
     quantity: 5, unit: 'liter', expiry: '2000-01-01', status: 'available', unitCost: '10.00' };
-  const row = { id: 1, catalogKey: 'expired-ingredient-7', name: 'Cream', cat: 'Ingredients', price: 10, stock: 5,
+  const row = { id: 1, catalogKey: 'expired-product-7', name: 'Cream', cat: 'Dairy', price: 10, stock: 5,
     expiry: batch.expiry, low: false, expiredBatch: batch };
   const props = { data: [row], rowKey: item => item.id, columns: [
     { key: 'name', header: 'Product' }, { key: 'cat', header: 'Category' }, { key: 'price', header: 'Price' },
@@ -1904,7 +1905,7 @@ test('shared ProductTable keeps batch edits scoped to batches and uses five-row 
   ui.http.defaults.adapter = async config => { requests.push(config); return { status: 200, config, headers: {}, data: {} }; };
   await elements(elements(tree, node => node.props.title === 'Edit batch')[0], node => node.type === 'button')[0].props.onClick();
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(requests[0].url, '/inventory/ingredient-batches/7/');
+  assert.equal(requests[0].url, '/inventory/product-batches/7/');
   assert.deepEqual(JSON.parse(requests[0].data), { unit_price: 12.5, notes: '' });
 });
 
@@ -3578,10 +3579,10 @@ test('User Management edits preserve backend multi-word name fields while changi
   assert.equal(updated.email, 'new@example.com'); assert.equal(updated.first_name, 'Juan Miguel'); assert.equal(updated.last_name, 'Dela Cruz');
 });
 
-test('staff inventory counts unique products separately from expired product and ingredient batches', () => {
+test('staff inventory counts unique products separately from their expired product batches', () => {
   const product = { id: 1, name: 'Milk', cat: 'Dairy', stock: 5, expiry: '2099-01-01', low: true };
   const expired = (kind, id) => ({ ...product, catalogKey: `${kind}-${id}`, stock: 1, low: false, expiry: '2000-01-01', expiredBatch: { kind, id, key: `${kind}-${id}` } });
-  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:staff`, [product, { ...product, id: 2, low: false }, expired('product', 10), expired('product', 11), expired('ingredient', 10)], ['inventory']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:staff`, [product, { ...product, id: 2, low: false }, expired('product', 10), expired('product', 11), expired('product', 12)], ['inventory']);
   const cards = elements(render(ui.StaffInventory), node => node.type?.name === 'SummaryCard');
   assert.deepEqual(cards.map(card => [card.props.label, card.props.value]), [['Products', 2], ['Low stock', 1], ['Near expiry', 0], ['Expired', 3]]);
 });
@@ -4452,4 +4453,142 @@ test('registration limits do not constrain existing account editing', async () =
   const modal = elements(render(ui.AdminUserManagement), node => node.type === ui.Modal && node.props.title === 'Edit User')[0];
   elements(modal.props.footer, node => node.props.children === 'Save Changes')[0].props.onClick(); await settle();
   assert.equal(payload.username, user.username); assert.equal(payload.first_name, user.firstName); assert.equal(payload.last_name, user.lastName);
+});
+
+function liveReceipt(id = 42, total = '100.00', status = 'pending') {
+  return { id, transaction_number: `SI-${id}`, created_at: '2026-10-01T08:00:00Z', payment_method: 'cash', payment_status: status,
+    total_amount: total, subtotal: total, discount_amount: '0.00', amount_tendered: null, change_due: null,
+    handled_by: { id: 7, username: 'cashier' }, customer: null, items: [], is_manually_encoded: true, encoded_at: '2026-10-01T08:00:00Z' };
+}
+for (const [component, key, raw] of [
+  ['AdminSalesHistory', 'sales:history:', false], ['StaffSalesHistory', 'sales:mine:7', false], ['SalesEncoding', 'sales:encoding:::', true],
+]) test(`${component} keeps an open transaction current by ID and handles removed records safely`, () => {
+  authState.user = { id: 7, username: 'cashier', role: component === 'StaffSalesHistory' ? 'staff' : 'admin' };
+  const cacheKey = `${ui.dataCacheEpoch()}:${key}`, first = liveReceipt();
+  ui.writeDataCache(cacheKey, raw ? [first] : [ui.toSale(first)], ['sales']);
+  let tree = render(ui[component]); effects.splice(0).forEach(effect => effect());
+  elements(tree, node => node.type === ui.EnhancedTable)[0].props.renderMobileRow(ui.toSale(first)).props.onView(ui.toSale(first));
+  const detail = () => elements(render(ui[component]), node => node.type === ui.TransactionDetails)[0];
+  assert.equal(detail().props.sale.transaction.total_amount, '100.00');
+  const changed = liveReceipt(42, '200.00', 'paid');
+  ui.writeDataCache(cacheKey, raw ? [changed] : [ui.toSale(changed)], ['sales']);
+  assert.equal(detail().props.sale.transaction.total_amount, '200.00');
+  assert.equal(detail().props.sale.transaction.payment_status, 'paid');
+  assert.equal(detail().props.unavailable, false);
+  ui.writeDataCache(cacheKey, [], ['sales']);
+  assert.equal(detail().props.sale, null); assert.equal(detail().props.unavailable, true);
+  ui.writeDataCache(cacheKey, raw ? [changed] : [ui.toSale(changed)], ['sales']);
+  assert.equal(detail().props.sale.transaction.id, 42, 'Selection survives a temporary absence');
+  detail().props.onClose(); assert.equal(detail().props.unavailable, false); assert.equal(detail().props.sale, null);
+});
+
+for (const component of ['AdminOrders', 'StaffOrders']) test(`${component} refreshes an open order without losing selection or exposing removed records`, () => {
+  authState.user = { id: 7, username: 'cashier', role: component === 'StaffOrders' ? 'staff' : 'admin' };
+  const key = `${ui.dataCacheEpoch()}:orders:list`;
+  const first = { id: 8, customer: 'Customer', customerId: 1, customerEmail: '', customerPhone: '', invoiceNumber: 'SI8',
+    staffId: 7, staff: 'cashier', isHistorical: false, status: 'Fulfilled', paymentStatus: 'pending', total: 100, subtotal: 100, discountAmount: 0, items: [] };
+  ui.writeDataCache(key, [first], ['orders']);
+  let tree = render(ui[component]); effects.splice(0).forEach(effect => effect());
+  elements(tree, node => node.type === ui.EnhancedTable)[0].props.onRowClick(first);
+  const drawer = () => elements(render(ui[component]), node => node.type === ui.Drawer && node.props.title === 'Order Details')[0];
+  assert.equal(drawer().props.open, true);
+  ui.writeDataCache(key, [{ ...first, total: 200, status: 'Cancelled', paymentStatus: 'paid' }], ['orders']);
+  assert.equal(drawer().props.open, true);
+  assert.equal(elements(drawer(), node => node.props.status === 'Cancelled').length, 1);
+  assert.equal(elements(drawer(), node => node.props.status === 'paid').length, 1);
+  assert.equal(elements(drawer().props.footer, node => node.props.children === 'Cancel Order').length, 0);
+  ui.writeDataCache(key, [], ['orders']);
+  assert.equal(drawer().props.open, true); assert.match(JSON.stringify(drawer().props.children), /not available in the current results/);
+  assert.equal(elements(drawer(), node => node.props.status === 'Cancelled').length, 0);
+});
+
+test('Customer History refreshes its open receipt by ID and never substitutes another page/customer record', () => {
+  const customer = { id: 9, name: 'Customer' }, first = liveReceipt(), key = `${ui.dataCacheEpoch()}:customers:history:9:1:false`;
+  ui.writeDataCache(key, { count: 1, results: [first] }, ['customers', 'sales']);
+  let tree = render(ui.CustomerHistory, { customer, onClose() {} }); effects.splice(0).forEach(effect => effect());
+  elements(tree, node => node.type === 'button')[0].props.onClick();
+  const detail = () => elements(render(ui.CustomerHistory, { customer, onClose() {} }), node => node.type === ui.TransactionDetails)[0];
+  assert.equal(detail().props.sale.transaction.payment_status, 'pending');
+  ui.writeDataCache(key, { count: 1, results: [liveReceipt(42, '200.00', 'paid')] }, ['customers', 'sales']);
+  assert.equal(detail().props.sale.transaction.payment_status, 'paid');
+  ui.writeDataCache(key, { count: 1, results: [liveReceipt(43)] }, ['customers', 'sales']);
+  assert.equal(detail().props.sale, null); assert.equal(detail().props.unavailable, true);
+});
+
+test('unavailable transaction details keep an accessible closeable dialog without stale financial values', () => {
+  let tree = render(ui.TransactionDetails, { sale: null, unavailable: true, onClose() {} });
+  assert.equal(tree.type, ui.Modal); assert.equal(tree.props.open, true);
+  assert.match(JSON.stringify(tree.props.children), /not available in the current results/);
+  assert.doesNotMatch(JSON.stringify(tree.props.children), /100.00|PaymentUpdateControl/);
+  assert.equal(elements(tree.props.footer, node => node.props.children === 'Close').length, 1);
+});
+
+test('live sales option updates preserve an unfinished cart, tender and customer draft', async () => {
+  const form = await composerFixture(); form.changeLine({ unitPrice: '50', quantity: '2' });
+  elements(render(ui.SaleComposer, form.props), node => node.type?.name === 'CustomerPicker')[0].props.onChange('906');
+  form.field('Amount tendered').props.onChange({ target: { value: '100' } });
+  const key = `${ui.dataCacheEpoch()}:sale-options:7:staff`;
+  const initial = ui.readDataCache(key).data;
+  ui.writeDataCache(key, [[{ ...initial[0][0], stock: 8 }], initial[1]], ['inventory', 'customers']);
+  const tree = render(ui.SaleComposer, form.props), line = elements(tree, node => node.type === ui.SaleLineEditor)[0];
+  assert.equal(line.props.line.unitPrice, '50'); assert.equal(line.props.line.quantity, '2');
+  assert.equal(form.field('Amount tendered').props.value, '100');
+  assert.equal(elements(tree, node => node.type?.name === 'CustomerPicker')[0].props.value, '906');
+  assert.equal(elements(tree, node => node.type === ui.QueryErrorMessage).length, 0);
+});
+
+test('the live hook rechecks permission changes through existing auth and retires administrator caches', async () => {
+  const previousFetch = global.fetch;
+  let stream, currentUser, calls = [];
+  global.document = new EventTarget(); document.visibilityState = 'visible';
+  authState.user = { id: 7, username: 'cashier', role: 'admin' };
+  authState.setCurrentUser = value => { currentUser = value; };
+  ui.writeDataCache('admin-only', ['private'], ['users']);
+  global.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return new Response(new ReadableStream({ start(controller) { stream = controller; } }), { headers: { 'Content-Type': 'text/event-stream' } });
+  };
+  ui.http.defaults.adapter = async config => {
+    assert.equal(config.url, '/accounts/user/'); assert.equal(config.method, 'get');
+    return { config, status: 200, headers: {}, data: { id: 7, username: 'cashier', role: 'staff' } };
+  };
+  try {
+    render(() => { ui.useLiveUpdates(true); return null; });
+    effects.splice(0).forEach(effect => effect()); await settle();
+    assert.equal(calls.length, 1);
+    stream.enqueue(new TextEncoder().encode('event: auth_required\ndata: {"reason":"session_expired_or_changed"}\n\n'));
+    await settle();
+    assert.equal(currentUser.role, 'staff');
+    assert.equal(ui.readDataCache('admin-only').data, undefined);
+    assert.equal(calls[0].options.signal.aborted, true);
+  } finally { effectCleanups.splice(0).forEach(cleanup => cleanup()); global.fetch = previousFetch; }
+});
+
+test('customer-history live updates preserve a valid page and recover an out-of-range page without stale receipts', async () => {
+  const customer = { id: 9, name: 'Customer' }, props = { customer, onClose() {} };
+  const prefix = `${ui.dataCacheEpoch()}:customers:history:9:`;
+  ui.writeDataCache(`${prefix}1:false`, { count: 11, results: [liveReceipt()] }, ['customers', 'sales']);
+  ui.writeDataCache(`${prefix}2:false`, { count: 11, results: [liveReceipt(43)] }, ['customers', 'sales']);
+  let tree = render(ui.CustomerHistory, props);
+  elements(tree, node => node.type === ui.Btn && node.props.children === 'Next')[0].props.onClick();
+  tree = render(ui.CustomerHistory, props); effects.at(-1)();
+  assert.equal(elements(tree, node => node.type === ui.Btn && node.props.children === 'Previous')[0].props.disabled, false);
+  // A deletion/void can make the backend reject a previously valid final page.
+  await assert.rejects(ui.fetchDataCache(`${prefix}2:false`, () => Promise.reject({ status: 404 }), ['customers', 'sales'], true));
+  tree = render(ui.CustomerHistory, props); effects.at(-1)();
+  assert.equal(ui.readDataCache(`${prefix}2:false`).data, undefined);
+  tree = render(ui.CustomerHistory, props);
+  assert.equal(elements(tree, node => node.type === ui.Btn && node.props.children === 'Previous')[0].props.disabled, true);
+});
+
+test('receipt payment updates survive wrapper rerenders but never override a newly fetched transaction', () => {
+  const source = liveReceipt(), props = { sale: ui.toSale(source), onClose() {} };
+  let tree = render(ui.TransactionDetails, props);
+  elements(tree, node => node.type === ui.PaymentUpdateControl)[0].props.onUpdated({ ...source, payment_status: 'paid' });
+  tree = render(ui.TransactionDetails, { ...props, sale: ui.toSale(source) });
+  assert.equal(elements(tree, node => node.type === ui.PaymentUpdateControl)[0].props.transaction.payment_status, 'paid');
+  const fresh = { ...source, payment_status: 'pending', total_amount: '200.00' };
+  tree = render(ui.TransactionDetails, { ...props, sale: ui.toSale(fresh) });
+  const control = elements(tree, node => node.type === ui.PaymentUpdateControl)[0];
+  assert.equal(control.props.transaction.payment_status, 'pending'); assert.equal(control.props.transaction.total_amount, '200.00');
 });

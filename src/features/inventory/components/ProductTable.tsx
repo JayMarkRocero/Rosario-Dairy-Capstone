@@ -45,7 +45,7 @@ export function ProductTable(props: Props) {
     if (parsedPrice !== null && (!Number.isFinite(parsedPrice) || parsedPrice < 0)) { toast.error('Enter a valid nonnegative inventory cost.'); return; }
     submissionLock.current = true; setSaving(true);
     try {
-      const update = editBatch.kind === 'product' ? inventoryService.updateProductBatch : inventoryService.updateIngredientBatch;
+      const update = inventoryService.updateProductBatch;
       await update(editBatch.id, { unit_price: parsedPrice, notes: editDraft.notes });
       setEditBatch(null); toast.success('Batch updated.');
     } catch (error) { toastApiError(error, 'Unable to update this batch.'); }

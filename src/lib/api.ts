@@ -369,61 +369,6 @@ export type UpdateProductBatchPayload = Partial<
   Omit<CreateProductBatchPayload, "product_id" | "quantity">
 >;
 
-export interface DjangoIngredient {
-  id: number;
-  name: string;
-  unit: string;
-  unit_price: string;
-  shelf_life: number;
-  ingredient_type: "raw_milk" | "processing" | "packaging";
-  readonly low_stock_threshold: number;
-  is_active: boolean;
-  total_stock: string | number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateIngredientPayload {
-  name: string;
-  unit: string;
-  unit_price: string | number;
-  shelf_life: number;
-  ingredient_type?: DjangoIngredient["ingredient_type"];
-}
-
-export type UpdateIngredientPayload = Partial<CreateIngredientPayload>;
-
-export interface DjangoIngredientBatch {
-  id: number;
-  ingredient: DjangoIngredient;
-  batch_number: string;
-  grade: string | null;
-  unit_price: string | null;
-  initial_quantity: string;
-  remaining_quantity: string;
-  expiration_date: string;
-  expiry_status?: "critical" | "near_expiry";
-  date_received: string;
-  status: string;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateIngredientBatchPayload {
-  ingredient_id: number;
-  quantity: number;
-  expiration_date: string;
-  grade?: string | null;
-  unit_price?: number | null;
-  date_received?: string;
-  notes?: string | null;
-}
-
-export type UpdateIngredientBatchPayload = Partial<
-  Omit<CreateIngredientBatchPayload, "ingredient_id" | "quantity">
->;
-
 export interface CreateCategoryPayload {
   name: string;
   description: string;

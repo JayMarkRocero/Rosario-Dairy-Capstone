@@ -124,12 +124,11 @@ export interface InventoryReport extends ReportPreviewBase, ReportDateRange {
   ledger: InventoryLedger;
   as_of: string;
   total_products: number;
-  total_ingredients: number;
   low_stock_count: number;
   expired_batch_count: number;
   expiring_soon_batch_count: number;
   items: Array<{
-    item_type: "product" | "ingredient";
+    item_type: "product";
     id: number;
     name: string;
     unit: string;

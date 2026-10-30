@@ -7,12 +7,12 @@ function stock(value: unknown, unit: string | undefined): string | undefined {
 
 export function BatchDetailsFields({ batch }: { batch: ExpiredInventoryBatch }) {
   const source = batch.source;
-  const item = source ? "product" in source ? source.product : source.ingredient : undefined;
+  const item = source?.product;
   const unit = item?.unit ?? batch.unit;
   const fields: Array<[string, unknown]> = [
     ["Product name", source ? item?.name : batch.name],
     ["Batch number", source ? source.batch_number : batch.batch],
-    ["Category", source ? "product" in source ? source.product.category?.name : undefined : batch.kind === "product" ? batch.category : undefined],
+    ["Category", source ? item?.category?.name : batch.category],
     ["Expiry date", source ? source.expiration_date : batch.expiry],
     ["Remaining stock", stock(source ? source.remaining_quantity : batch.quantity, unit)],
     ["Initial stock", stock(source ? source.initial_quantity : batch.initialQuantity, unit)],

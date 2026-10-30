@@ -137,7 +137,7 @@ export function AdminInventory() {
 }, [items, catFilter, statusFilter]);
 
   const stats = useMemo(() => {
-    const totalProducts = new Set(items.filter(item => item.expiredBatch?.kind !== 'ingredient').map(item => item.id)).size;
+    const totalProducts = new Set(items.map(item => item.id)).size;
     const lowStock = items.filter(i => getInventoryWarnings(i).lowStock).length;
     const expired = items.filter(i => getStatus(i) === "Expired").length;
     const nearExpiry = items.filter(i => getInventoryWarnings(i).nearExpiry).length;
@@ -162,7 +162,7 @@ export function AdminInventory() {
   const restockMatches = useMemo(() => {
     const query = restockQuery.trim().toLowerCase();
     if (!query || (selected && restockQuery === selected.name)) return [];
-    return items.filter(item => item.expiredBatch?.kind !== "ingredient" && `${item.name} ${item.cat}`.toLowerCase().includes(query))
+    return items.filter(item => `${item.name} ${item.cat}`.toLowerCase().includes(query))
       .filter((item, index, rows) => rows.findIndex(row => row.id === item.id) === index)
       .sort((a, b) => a.name.localeCompare(b.name)).slice(0, 8);
   }, [items, restockQuery, selected]);
@@ -325,7 +325,6 @@ export function AdminInventory() {
       >
         <option value="All">All Categories</option>
         {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-        {items.some(item => item.cat === "Ingredients") && !categories.some(c => c.name === "Ingredients") && <option value="Ingredients">Ingredients</option>}
       </select>
       <select
         value={statusFilter}

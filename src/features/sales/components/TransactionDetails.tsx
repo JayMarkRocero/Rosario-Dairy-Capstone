@@ -6,18 +6,21 @@ import { Modal } from "@/components/overlays/Modal";
 import { Btn } from "@/components/buttons/Btn";
 import { receiptDetails } from "@/features/sales/utils/receiptDetails";
 
-export function TransactionDetails({ sale, onClose }: {
-  sale: Sale | null; onClose: () => void;
+export function TransactionDetails({ sale, onClose, unavailable = false }: {
+  sale: Sale | null; onClose: () => void; unavailable?: boolean;
 }) {
-  const [updated, setUpdated] = useState<Sale | null>(null);
-  useEffect(() => setUpdated(null), [sale]);
-  if (!sale) return null;
-  const current = updated?.transaction.id === sale.transaction.id ? updated : sale;
+  const [updated, setUpdated] = useState<{ source: Sale["transaction"]; value: Sale } | null>(null);
+  useEffect(() => setUpdated(null), [sale?.transaction]);
+  if (!sale) return unavailable ? <Modal open onClose={onClose} title="Transaction Details" size="lg"
+    footer={<Btn variant="primary" onClick={onClose}>Close</Btn>}>
+    <p role="status" className="text-sm text-slate-500">This transaction is not available in the current results. Adjust the filters or close this dialog.</p>
+  </Modal> : null;
+  const current = updated?.source === sale.transaction ? updated.value : sale;
   const receipt = receiptDetails(current);
   return <Modal open onClose={onClose} title="Transaction Details" subtitle={sale.receipt} size="lg"
     footer={<Btn variant="primary" onClick={onClose}>Close</Btn>}>
     <div className="space-y-5">
-      <PaymentUpdateControl key={current.transaction.id} transaction={current.transaction} onUpdated={transaction => setUpdated(toSale(transaction))}/>
+      <PaymentUpdateControl key={current.transaction.id} transaction={current.transaction} onUpdated={transaction => setUpdated({ source: sale.transaction, value: toSale(transaction) })}/>
       <h3 className="text-base font-semibold text-slate-800">{receipt.title}</h3>
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">{receipt.fields.map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="text-sm font-medium break-words">{value}</dd></div>)}</dl>
       {(receipt.note || receipt.lineAmountNote) && <p className="text-xs text-slate-500">{[receipt.note, receipt.lineAmountNote].filter(Boolean).join(" ")}</p>}

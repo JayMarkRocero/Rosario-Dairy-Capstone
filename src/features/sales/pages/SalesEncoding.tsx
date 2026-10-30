@@ -27,6 +27,7 @@ export function SalesEncoding() {
   const [endDate, setEndDate] = useState("");
   const query = useCachedQuery(`sales:encoding:${payment}:${startDate}:${endDate}`, () => encodingService.list({ payment_status: payment || undefined, start_date: startDate || undefined, end_date: endDate || undefined }), ["sales", "orders", "customers"]);
   const data = useMemo(() => (query.data ?? []).map(toSale), [query.data]);
+  const selectedRecord = data.find(record => record.transaction.id === selected?.transaction.id) ?? null;
   const columns: Column<Sale>[] = [
     { key: "receipt", header: "SI Number", width: "14%", render: sale => <span className="block truncate tabular-nums text-xs" title={sale.receipt}>{sale.receipt}</span> },
     { key: "customer", header: "Customer", width: "20%", render: sale => <span className="block truncate text-sm" title={sale.customer}>{sale.customer}</span> },
@@ -56,6 +57,6 @@ export function SalesEncoding() {
       </div>
     }/>}</TableCard>
     <Modal open={open} busy={busy} onClose={() => { if (!busy) setOpen(false); }} title="Encode a sales invoice" subtitle="Use the date on the original invoice. Current stock is deducted through FEFO." size="lg"><SaleComposer mode="encoding" onBusyChange={setBusy} onSuccess={transaction => { setOpen(false); setSelected(toSale(transaction)); }}/></Modal>
-    <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>
+    <TransactionDetails unavailable={!!selected && !selectedRecord} sale={selectedRecord} onClose={() => setSelected(null)}/>
   </div>;
 }

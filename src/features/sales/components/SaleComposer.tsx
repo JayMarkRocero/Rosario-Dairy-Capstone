@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { OverlayPortal } from "@/components/overlays/OverlayPortal";
 import { acknowledgeUnconfirmedSale, hasUnconfirmedSale, pendingSale, UnconfirmedSaleError } from "@/lib/saleSubmission";
 import { isDefiniteRequestFailure } from "../api/pendingRequest";
+import { dataCacheEpoch, fetchDataCache, readDataCache, subscribeDataCache } from "@/lib/dataCache";
 import { Skeleton } from "@/components/EmptyState";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { useAuth } from "@/features/auth/context/AuthContext";
@@ -61,11 +62,23 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const attempt = useRef<{ fingerprint: string; payload: EncodingPayload } | null>(savedEncoding ? { fingerprint: encodingFingerprint(savedEncoding.payload), payload: savedEncoding.payload } : null);
   useEffect(() => {
     let active = true;
-    setLoading(true); setLoadError(undefined);
-    Promise.all([inventoryService.getAll(user?.role === "staff"), customersService.getAll()])
-      .then(([items, people]) => { if (active) { setProducts(items.filter(item => item.stock > 0 && !isExpiredProduct(item))); setCustomers(people); } })
-      .catch(error => { if (active) setLoadError(error); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    const epoch = dataCacheEpoch(), key = `${epoch}:sale-options:${user?.id}:${user?.role}`;
+    const load = () => Promise.all([inventoryService.getAll(user?.role === "staff"), customersService.getAll()]);
+    type Options = Awaited<ReturnType<typeof load>>;
+    const sync = () => {
+      if (!active || epoch !== dataCacheEpoch()) return;
+      const snapshot = readDataCache<Options>(key);
+      if (snapshot.data) {
+        setProducts(snapshot.data[0].filter(item => item.stock > 0 && !isExpiredProduct(item))); setCustomers(snapshot.data[1]);
+      }
+      setLoading(!snapshot.data && !snapshot.error); setLoadError(snapshot.data ? undefined : snapshot.error);
+      if (!snapshot.updatedAt && !snapshot.error) void fetchDataCache(key, load, ["inventory", "customers"]).catch(() => {});
+    };
+    const unsubscribe = subscribeDataCache(key, sync);
+    sync();
+    // Explicit retry may follow an initial error; background events never reset the cart.
+    void fetchDataCache(key, load, ["inventory", "customers"], true).catch(() => {});
+    return () => { active = false; unsubscribe(); };
   }, [reload, user?.id, user?.role]);
   let totals: ReturnType<typeof priceSale> | null = null;
   try { totals = priceSale(lines, canDiscount); } catch { /* Show a draft summary until all lines are complete. */ }

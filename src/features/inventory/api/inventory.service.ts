@@ -4,18 +4,12 @@ import { REPORTS_UPDATED } from "@/features/reports/api/reports.service";
 import http, {
   ApiError, getApiErrorMessage,
   type CreateCategoryPayload,
-  type CreateIngredientBatchPayload,
-  type CreateIngredientPayload,
   type CreateProductBatchPayload,
   type CreateProductPayload,
   type DjangoCategory,
-  type DjangoIngredient,
-  type DjangoIngredientBatch,
   type DjangoProduct,
   type DjangoProductBatch,
   type UpdateCategoryPayload,
-  type UpdateIngredientBatchPayload,
-  type UpdateIngredientPayload,
   type UpdateProductBatchPayload,
   type UpdateProductPayload,
 } from "@/lib/api";
@@ -30,25 +24,17 @@ export interface CategoryIconOption { value: CategoryIconKey; label: string }
 
 export interface ExpiredInventoryBatch {
   /** Original serializer response for null-safe batch details, without catalog fallbacks. */
-  source?: DjangoProductBatch | DjangoIngredientBatch;
+  source?: DjangoProductBatch;
   itemId: number;
   id: number; status: string; unitCost: string | null; initialQuantity: number;
   dateReceived: string; grade: string | null; notes: string | null;
-  key: string; kind: 'product' | 'ingredient'; name: string; category: string;
+  key: string; kind: 'product'; name: string; category: string;
   batch: string; quantity: number; unit: string; expiry: string;
 }
 
 export function canDisposeExpiredBatch(batch: ExpiredInventoryBatch): boolean {
-  return isExpiredStockBatch({ status: batch.status, remaining_quantity: batch.quantity,
+  return batch.kind === 'product' && isExpiredStockBatch({ status: batch.status, remaining_quantity: batch.quantity,
     expiration_date: batch.expiry, date_received: batch.dateReceived });
-}
-
-// Explicit writable fields also keep legacy runtime callers from forwarding
-// read-only threshold values copied from an ingredient response.
-function ingredientPayload(input: UpdateIngredientPayload): UpdateIngredientPayload {
-  return Object.fromEntries(["name", "unit", "unit_price", "shelf_life", "ingredient_type"]
-    .filter(key => input[key as keyof UpdateIngredientPayload] !== undefined)
-    .map(key => [key, input[key as keyof UpdateIngredientPayload]]));
 }
 
 function daysUntil(dateStr: string): number {
@@ -64,35 +50,28 @@ function fefoStatus(days: number, settings?: InventorySettings, expiryStatus?: D
 
 export const inventoryService = {
   getExpiredBatches: async (staffVisibleOnly = false, allowPartial = false, productBatches?: Promise<DjangoProductBatch[]>): Promise<ExpiredInventoryBatch[]> => {
-    const feeds = await Promise.allSettled([
-      productBatches ? productBatches.then(data => ({ data })) : http.get<DjangoProductBatch[]>('/inventory/product-batches/'),
-      http.get<DjangoIngredientBatch[]>('/inventory/ingredient-batches/'),
-    ]);
-    if (!allowPartial) for (const feed of feeds) if (feed.status === 'rejected') throw feed.reason;
-    const products = feeds[0].status === 'fulfilled' ? feeds[0].value : { data: [] };
-    const ingredients = feeds[1].status === 'fulfilled' ? feeds[1].value : { data: [] };
-    const hasExpiredStock = (batch: DjangoProductBatch | DjangoIngredientBatch) => isExpiredStockBatch(batch);
-    return [
-      ...products.data.filter(batch => hasExpiredStock(batch) && (!staffVisibleOnly ||
-        batch.product.is_active && batch.product.category.is_active && batch.product.category.is_visible_to_staff))
-        .map(batch => ({ source: batch, key: `product-${batch.id}`, kind: 'product' as const,
-          name: [batch.product.name, batch.product.variant].filter(Boolean).join(' '), category: batch.product.category.name,
-          id: batch.id, itemId: batch.product.id, status: batch.status, unitCost: batch.unit_price,
-          initialQuantity: Number(batch.initial_quantity), dateReceived: batch.date_received, grade: batch.grade, notes: batch.notes,
-          batch: batch.batch_number, quantity: Number(batch.remaining_quantity), unit: batch.product.unit, expiry: batch.expiration_date })),
-      ...ingredients.data.filter(hasExpiredStock).map(batch => ({ source: batch, key: `ingredient-${batch.id}`, kind: 'ingredient' as const,
-        name: batch.ingredient.name, category: 'Ingredients', batch: batch.batch_number,
-        id: batch.id, itemId: batch.ingredient.id, status: batch.status, unitCost: batch.unit_price ?? batch.ingredient.unit_price,
+    let products: DjangoProductBatch[];
+    try { products = await (productBatches ?? http.get<DjangoProductBatch[]>('/inventory/product-batches/').then(({ data }) => data)); }
+    catch (error) { if (allowPartial) return []; throw error; }
+    return products.filter(batch => isExpiredStockBatch(batch) && (!staffVisibleOnly ||
+      batch.product.is_active && batch.product.category.is_active && batch.product.category.is_visible_to_staff))
+      .map(batch => ({ source: batch, key: `product-${batch.id}`, kind: 'product' as const,
+        name: [batch.product.name, batch.product.variant].filter(Boolean).join(' '), category: batch.product.category.name,
+        id: batch.id, itemId: batch.product.id, status: batch.status, unitCost: batch.unit_price,
         initialQuantity: Number(batch.initial_quantity), dateReceived: batch.date_received, grade: batch.grade, notes: batch.notes,
-        quantity: Number(batch.remaining_quantity), unit: batch.ingredient.unit, expiry: batch.expiration_date })),
-    ].sort((a, b) => a.expiry.localeCompare(b.expiry));
+        batch: batch.batch_number, quantity: Number(batch.remaining_quantity), unit: batch.product.unit, expiry: batch.expiration_date }));
   },
   getCatalogOverview: async (staff = false): Promise<InventoryItem[]> => {
     // Share this request only within this load; later refreshes still read fresh batches.
     const productBatches = http.get<DjangoProductBatch[]>('/inventory/product-batches/').then(({ data }) => data);
-    const [products, batches] = await Promise.all([
+    const [productFeed, batchFeed] = await Promise.allSettled([
       inventoryService.getOverview(staff, productBatches), inventoryService.getExpiredBatches(staff, false, productBatches),
     ]);
+    // Settle both consumers before exposing a failure so an immediate retry
+    // cannot inherit a still-rejecting nested product-cache request.
+    if (productFeed.status === 'rejected') throw productFeed.reason;
+    if (batchFeed.status === 'rejected') throw batchFeed.reason;
+    const products = productFeed.value, batches = batchFeed.value;
     // Keep the sellable catalog/POS mapping separate from expired batch stock.
     const rows = products.map(item => item.stock <= 0 && batches.some(batch => batch.kind === 'product' && batch.itemId === item.id)
       ? { ...item, expiry: '', nearestBatch: undefined, expiryStatus: undefined } : item);
@@ -107,8 +86,9 @@ export const inventoryService = {
     });
   },
   disposeExpiredBatch: async (item: ExpiredInventoryBatch): Promise<void> => {
-    const route = item.kind === 'product' ? 'product-batches' : 'ingredient-batches';
-    const { data: batch } = await http.get<DjangoProductBatch | DjangoIngredientBatch>(`/inventory/${route}/${item.id}/`);
+    if (item.kind !== "product") throw new ApiError(400, "Select a product batch.");
+    const route = 'product-batches';
+    const { data: batch } = await http.get<DjangoProductBatch>(`/inventory/${route}/${item.id}/`);
     if (!isExpiredStockBatch(batch)) {
       invalidateDataCache(['inventory']);
       throw new Error('Only received, expired batches with remaining stock can be disposed. Refresh the inventory and check its status.');
@@ -118,12 +98,12 @@ export const inventoryService = {
       invalidateDataCache(['inventory']);
       throw new Error('Batch stock has changed. Close this confirmation, refresh the inventory, and confirm the current quantity.');
     }
-    const unitCost = ('product' in batch ? batch.unit_price : batch.unit_price ?? batch.ingredient?.unit_price) ?? '0.00';
+    const unitCost = batch.unit_price ?? '0.00';
     if (!Number.isFinite(Number(unitCost)) || Number(unitCost) < 0) {
       throw new Error('A valid batch unit cost is required to record this write-off.');
     }
     await http.post('/inventory/stock-adjustments/', {
-      [item.kind === 'product' ? 'product_batch_id' : 'ingredient_batch_id']: item.id,
+      product_batch_id: item.id,
       adjustment_type: 'expired', quantity: batch.remaining_quantity, unit_cost: unitCost,
       reason: `Expired batch ${batch.batch_number}: full remaining stock disposed.`,
     });
@@ -244,18 +224,8 @@ export const inventoryService = {
   },
 
   /** @deprecated No active UI caller; retained for API contract compatibility. */
-  getLowStockIngredients: async (): Promise<DjangoIngredient[]> => {
-    const { data } = await http.get<Array<{ ingredient: DjangoIngredient; remaining_quantity: string }>>("/inventory/low-stock/ingredients/");
-    return data.map(({ ingredient, remaining_quantity }) => ({ ...ingredient, total_stock: remaining_quantity }));
-  },
-
   getExpiringProducts: async (): Promise<DjangoProductBatch[]> => {
     return (await http.get<DjangoProductBatch[]>("/inventory/expiring/products/")).data;
-  },
-
-  /** @deprecated No active UI caller; retained for API contract compatibility. */
-  getExpiringIngredients: async (): Promise<DjangoIngredientBatch[]> => {
-    return (await http.get<DjangoIngredientBatch[]>("/inventory/expiring/ingredients/")).data;
   },
 
   /** @deprecated No active UI caller; retained for API contract compatibility. */
@@ -387,44 +357,4 @@ export const inventoryService = {
     return data;
   },
 
-  /** @deprecated No active UI caller; retained for API contract compatibility. */
-  getIngredients: async (includeInactive = false): Promise<DjangoIngredient[]> => fetchDataCache(`${dataCacheEpoch()}:inventory:ingredients:${includeInactive}`, async () => {
-    const { data } = await http.get<DjangoIngredient[]>("/inventory/ingredients/", {
-      params: includeInactive ? { include_inactive: true } : undefined,
-    });
-    return data;
-  }, ["inventory"]),
-
-  /** @deprecated No active UI caller; retained for API contract compatibility. */
-  createIngredient: async (payload: CreateIngredientPayload): Promise<DjangoIngredient> => {
-    const { data } = await http.post<DjangoIngredient>("/inventory/ingredients/", ingredientPayload(payload));
-    return data;
-  },
-
-  /** @deprecated No active UI caller; retained for API contract compatibility. */
-  updateIngredient: async (ingredientId: number, payload: UpdateIngredientPayload): Promise<DjangoIngredient> => {
-    const { data } = await http.patch<DjangoIngredient>(`/inventory/ingredients/${ingredientId}/`, ingredientPayload(payload));
-    return data;
-  },
-
-  /** @deprecated No active UI caller; retained for API contract compatibility. */
-  deactivateIngredient: async (ingredientId: number): Promise<void> => {
-    await http.post(`/inventory/ingredients/${ingredientId}/deactivate/`, {});
-  },
-
-  /** @deprecated No active UI caller; retained for API contract compatibility. */
-  reactivateIngredient: async (ingredientId: number): Promise<void> => {
-    await http.post<DjangoIngredient>(`/inventory/ingredients/${ingredientId}/reactivate/`, {});
-  },
-
-  /** @deprecated No active UI caller; retained for API contract compatibility. */
-  createIngredientBatch: async (payload: CreateIngredientBatchPayload): Promise<DjangoIngredientBatch> => {
-    const { data } = await http.post<DjangoIngredientBatch>("/inventory/ingredient-batches/", payload);
-    return data;
-  },
-
-  updateIngredientBatch: async (batchId: number, payload: UpdateIngredientBatchPayload): Promise<DjangoIngredientBatch> => {
-    const { data } = await http.patch<DjangoIngredientBatch>(`/inventory/ingredient-batches/${batchId}/`, payload);
-    return data;
-  },
 };

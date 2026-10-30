@@ -30,7 +30,8 @@ export function StaffOrders() {
     ? (cachedOrders ?? []).filter(order => order.staffId === userId && !order.isHistorical)
     : [], [cachedOrders, userId, authLoading]);
   const [status, setStatus] = useState("All");
-  const [selected, setSelected] = useState<OrderListItem | null>(null);
+  const [selection, setSelected] = useState<OrderListItem | null>(null);
+  const selected = orders.find(order => order.id === selection?.id) ?? null;
   const [viewOpen, setViewOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -54,6 +55,7 @@ export function StaffOrders() {
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
     <StaffOrdersTable errorContent={error ? <QueryErrorMessage error={error} onRetry={() => void refresh({ force: true })} /> : undefined} columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} />} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md">
+      {!selected && <p role="status" className="text-sm text-slate-500">This order is not available in the current results.</p>}
       {selected&&<div className="space-y-5">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>
         <StatusBadge status={selected.status}/> <PaymentStatusBadge status={selected.paymentStatus}/>

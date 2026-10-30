@@ -24,7 +24,7 @@ export function StaffInventory() {
   const [category, setCategory] = useState("All");
   const [status, setStatus] = useState("All");
   const stats = useMemo(() => {
-    const products = items.filter(item => item.expiredBatch?.kind !== "ingredient");
+    const products = items;
     const countProducts = (predicate: (item: InventoryItem) => boolean) => new Set(products.filter(predicate).map(item => item.id)).size;
     return {
       products: countProducts(() => true),

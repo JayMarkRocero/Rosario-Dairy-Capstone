@@ -13,8 +13,8 @@ import { PersonalProfileSettings } from "@/features/settings/components/Personal
 import { formInputClass } from "@/styles/controlClasses";
 
 const liveAlerts: { key: keyof NotificationSettings; label: string; description: string; icon: typeof AlertTriangle }[] = [
-  { key: "low_stock_alerts", label: "Low stock", description: "Show an alert when product or ingredient stock is at or below the global threshold.", icon: AlertTriangle },
-  { key: "near_expiry_alerts", label: "Batches nearing expiry", description: "Show alerts for product and ingredient batches approaching expiry.", icon: Calendar },
+  { key: "low_stock_alerts", label: "Low stock", description: "Show an alert when product stock is at or below the global threshold.", icon: AlertTriangle },
+  { key: "near_expiry_alerts", label: "Batches nearing expiry", description: "Show alerts for product batches approaching expiry.", icon: Calendar },
   { key: "new_order_alerts", label: "Fulfilled orders", description: "Show the two most recent fulfilled orders in the notification bell.", icon: ClipboardList },
 ];
 
@@ -217,7 +217,7 @@ export function AdminSettings() {
     <Card className="overflow-hidden">
       {saved.inventory && inventoryDraft ? <form onSubmit={saveInventory} noValidate className="p-4 sm:p-5">
         <h3 className="text-base font-semibold text-slate-800">Inventory alerts</h3>
-        <p className="mt-1 text-xs text-slate-500">These global thresholds apply to all products and ingredients. Stock is low at or below the threshold, using each item's stock unit. Expiry windows include today.</p>
+        <p className="mt-1 text-xs text-slate-500">These global thresholds apply to all products. Stock is low at or below the threshold, using each item's stock unit. Expiry windows include today.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           {inventoryFields.map(({ key, label }) => <div key={key}>
             <label htmlFor={key} className="mb-1.5 block text-xs font-semibold">{label}</label>

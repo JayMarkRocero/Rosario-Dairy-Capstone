@@ -14,7 +14,7 @@ const expiredBadge = <span className="inline-flex whitespace-nowrap bg-red-50 te
 const categoryBadge = (category: string) => <span className="inline-flex bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-medium">{category}</span>;
 const itemTitle = (item: ExpiredInventoryBatch) => <div className="flex items-center gap-3 min-w-0">
   <span className="bg-blue-50 text-blue-500 p-2 rounded-lg shrink-0"><Box size={16} aria-hidden="true" /></span>
-  <div className="min-w-0"><span className="font-medium text-sm text-slate-900 break-words">{item.name}</span><p className="text-xs text-slate-500 mt-0.5">{item.kind === 'product' ? 'Product' : 'Ingredient'}</p></div>
+  <div className="min-w-0"><span className="font-medium text-sm text-slate-900 break-words">{item.name}</span><p className="text-xs text-slate-500 mt-0.5">Product</p></div>
 </div>;
 
 /** @deprecated Active inventory uses ProductTable; retained for regression-test consumers. */
@@ -55,7 +55,7 @@ export function ExpiredBatchTable({ staff = false, category = 'All', extraContro
     </div>;
   };
   const columns: Column<ExpiredInventoryBatch>[] = [
-    { key: 'name', header: 'Product / Ingredient', align: 'left', width: '22%', render: itemTitle },
+    { key: 'name', header: 'Product', align: 'left', width: '22%', render: itemTitle },
     { key: 'category', header: 'Category', align: 'center', width: '14%', render: item => categoryBadge(item.category) },
     { key: 'batch', align: 'center', width: '14%', header: 'Batch', render: item => <span className="text-xs">{item.batch}</span> },
     { key: 'quantity', align: 'center', width: '14%', header: 'Remaining stock', render: item => <span className="text-sm">{item.quantity} {item.unit}</span> },

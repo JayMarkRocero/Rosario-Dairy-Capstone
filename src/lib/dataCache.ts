@@ -1,8 +1,9 @@
 export const INVENTORY_UPDATED = "rosario:inventory-updated";
 export const DEFAULT_STALE_TIME = 3 * 60 * 1000;
-export type CacheGroup = "dashboard" | "orders" | "sales" | "inventory" | "categories" | "customers" | "reports" | "users" | "settings";
+export const CACHE_GROUPS = ["dashboard", "orders", "sales", "inventory", "categories", "customers", "reports", "users", "settings"] as const;
+export type CacheGroup = typeof CACHE_GROUPS[number];
 export interface CacheSnapshot<T> { data?: T; error?: unknown; updatedAt: number; }
-interface Entry { snapshot: CacheSnapshot<unknown>; groups: Set<CacheGroup>; revision: number; pending?: Promise<unknown>; }
+interface Entry { snapshot: CacheSnapshot<unknown>; groups: Set<CacheGroup>; revision: number; pending?: Promise<unknown>; revalidate?: boolean; }
 const entries = new Map<string, Entry>();
 const listeners = new Map<string, Set<() => void>>();
 let epoch = 0;
@@ -18,7 +19,7 @@ function notify(key: string) { listeners.get(key)?.forEach(listener => listener(
 export function readDataCache<T>(key: string): CacheSnapshot<T> { return entry(key).snapshot as CacheSnapshot<T>; }
 export function writeDataCache<T>(key: string, data: T, groups: CacheGroup[]) {
   const value = entry(key);
-  value.revision++; value.pending = undefined;
+  value.revision++; value.pending = undefined; value.revalidate = false;
   groups.forEach(group => value.groups.add(group));
   value.snapshot = { data, updatedAt: Date.now() }; notify(key);
 }
@@ -39,18 +40,25 @@ export function fetchDataCache<T>(key: string, fetcher: () => Promise<T>, groups
   }, error => {
     if (session === epoch && revision === value.revision) {
       const status = (error as { status?: number })?.status;
-      value.snapshot = status === 401 || status === 403 ? { updatedAt: 0, error } : { ...value.snapshot, error };
+      value.snapshot = [401, 403, 404, 410].includes(status ?? 0) ? { updatedAt: 0, error } : { ...value.snapshot, error };
       notify(key);
     }
     throw error;
-  }).finally(() => { if (value.pending === pending) value.pending = undefined; });
+  }).finally(() => {
+    if (value.pending !== pending) return;
+    value.pending = undefined;
+    if (value.revalidate && session === epoch) { value.revalidate = false; notify(key); }
+  });
   value.pending = pending;
   return pending;
 }
-export function invalidateDataCache(groups: CacheGroup[]) {
+export function invalidateDataCache(groups: CacheGroup[], { deferPending = false } = {}) {
   for (const [key, value] of entries) {
     if (!groups.some(group => value.groups.has(group))) continue;
-    value.revision++; value.pending = undefined;
+    if (deferPending && value.pending && value.revalidate) continue;
+    value.revision++;
+    if (deferPending && value.pending) value.revalidate = true;
+    else { value.pending = undefined; value.revalidate = false; }
     value.snapshot = { ...value.snapshot, updatedAt: 0, error: undefined };
     notify(key);
   }

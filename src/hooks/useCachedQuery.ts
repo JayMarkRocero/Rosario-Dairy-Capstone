@@ -24,7 +24,10 @@ export function useCachedQuery<T>(key: string, fetcher: () => Promise<T>, groups
     };
     const unsubscribe = subscribeDataCache(key, sync);
     sync();
-    const refreshStale = () => { if (session === dataCacheEpoch()) void fetchDataCache(key, load, groups).catch(() => {}); };
+    const refreshStale = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden" || typeof navigator !== "undefined" && navigator.onLine === false) return;
+      if (session === dataCacheEpoch()) void fetchDataCache(key, load, groups).catch(() => {});
+    };
     refreshStale();
     window.addEventListener("focus", refreshStale);
     const timer = setInterval(refreshStale, DEFAULT_STALE_TIME);

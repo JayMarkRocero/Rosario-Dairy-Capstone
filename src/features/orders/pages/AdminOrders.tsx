@@ -28,7 +28,8 @@ export function AdminOrders() {
   const { data: cachedOrders, loading: loadingList, refresh: load } = query;
   const orders = cachedOrders ?? [];
   const [status, setStatus] = useState("All");
-  const [selected, setSelected] = useState<OrderListItem | null>(null);
+  const [selection, setSelected] = useState<OrderListItem | null>(null);
+  const selected = orders.find(order => order.id === selection?.id) ?? null;
   const [viewOpen, setViewOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -76,6 +77,7 @@ export function AdminOrders() {
       extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md"
       footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn>{selected?.status==="Fulfilled"&&!selected.isHistorical&&<Btn variant="secondary" onClick={()=>setCancelOpen(true)}>Cancel Order</Btn>}</>}>
+      {!selected && <p role="status" className="text-sm text-slate-500">This order is not available in the current results.</p>}
       {selected&&<div className="space-y-5">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>
         <StatusBadge status={selected.status}/> <PaymentStatusBadge status={selected.paymentStatus}/>

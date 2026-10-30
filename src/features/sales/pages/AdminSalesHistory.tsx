@@ -21,6 +21,7 @@ export function AdminSalesHistory() {
     () => salesService.getAll({ startDate: dateFilter || undefined, endDate: dateFilter || undefined }), ["sales"]);
   const { data: cachedRecords, loading: recordsLoading } = query;
   const records = cachedRecords ?? [];
+  const selectedRecord = records.find(record => record.transaction.id === selected?.transaction.id) ?? null;
 
   const filteredRecords = useMemo(() => {
     return records.filter(s => paymentFilter === "All" || s.payment === paymentFilter);
@@ -138,7 +139,7 @@ export function AdminSalesHistory() {
           />}
         </div>
       </TableCard>
-      <TransactionDetails sale={selected} onClose={() => setSelected(null)}/>
+      <TransactionDetails unavailable={!!selected && !selectedRecord} sale={selectedRecord} onClose={() => setSelected(null)}/>
     </div>
   );
 }
