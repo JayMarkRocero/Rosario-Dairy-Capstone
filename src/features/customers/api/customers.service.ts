@@ -13,8 +13,8 @@ function manilaDate(timestamp: string): string {
 }
 
 export const customersService = {
-  getTransactions: async (customerId: number, page = 1, includeVoided = false): Promise<PaginatedResponse<DjangoTransaction>> =>
-    (await http.get<PaginatedResponse<DjangoTransaction>>(`/sales/customers/${customerId}/transactions/`, { params: { page, page_size: 10, include_voided: includeVoided } })).data,
+  getTransactions: async (customerId: number, page = 1, includeVoided = false, signal?: AbortSignal): Promise<PaginatedResponse<DjangoTransaction>> =>
+    (await http.get<PaginatedResponse<DjangoTransaction>>(`/sales/customers/${customerId}/transactions/`, { params: { page, page_size: 10, include_voided: includeVoided }, signal })).data,
   getAll: async (includeInactive = false): Promise<Customer[]> => {
     const customers = await getAllPages<DjangoCustomer>("/sales/customers/", includeInactive ? { include_inactive: true } : undefined);
     return customers.map(c => ({

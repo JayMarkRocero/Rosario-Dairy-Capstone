@@ -18,7 +18,7 @@ export function AdminSalesHistory() {
   const [selected, setSelected] = useState<Sale | null>(null);
 
   const query = useCachedQuery(`sales:history:${dateFilter}`,
-    () => salesService.getAll({ startDate: dateFilter || undefined, endDate: dateFilter || undefined }), ["sales"]);
+    signal => salesService.getAll({ startDate: dateFilter || undefined, endDate: dateFilter || undefined }, signal), ["sales"], true, { cancelable: true });
   const { data: cachedRecords, loading: recordsLoading } = query;
   const records = cachedRecords ?? [];
   const selectedRecord = records.find(record => record.transaction.id === selected?.transaction.id) ?? null;

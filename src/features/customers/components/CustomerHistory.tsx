@@ -17,7 +17,7 @@ export function CustomerHistory({ customer, onClose }: { customer: Customer | nu
   const page = paging.customerId === customer?.id ? paging.page : 1;
   const id = customer?.id;
   useEffect(() => { setPaging({ customerId: id, page: 1 }); setSelected(null); }, [id]);
-  const query = useCachedQuery(`customers:history:${id}:${page}:${includeVoided}`, () => customersService.getTransactions(id!, page, includeVoided), ["customers", "sales"], !!id);
+  const query = useCachedQuery(`customers:history:${id}:${page}:${includeVoided}`, signal => customersService.getTransactions(id!, page, includeVoided, signal), ["customers", "sales"], !!id, { cancelable: true });
   const selectedRecord = selected && selected.customerId === customer?.id
     ? query.data?.results.find(record => record.id === selected.sale.transaction.id) : undefined;
   const pages = Math.max(1, Math.ceil((query.data?.count ?? 0) / 10));

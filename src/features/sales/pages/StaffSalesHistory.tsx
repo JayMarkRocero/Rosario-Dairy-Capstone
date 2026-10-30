@@ -27,7 +27,7 @@ export function StaffSalesHistory() {
   const [selected, setSelected] = useState<Sale | null>(null);
 
   const query = useCachedQuery(`sales:mine:${userId ?? user?.username ?? "anonymous"}`,
-    async () => (await salesService.getMine(userId ?? undefined)).map(sale => ({ ...sale, date: staffSalesDate(sale.transaction.created_at) })), ["sales"], !!user);
+    async signal => (await salesService.getMine(userId ?? undefined, signal)).map(sale => ({ ...sale, date: staffSalesDate(sale.transaction.created_at) })), ["sales"], !!user, { cancelable: true });
   const { data: cachedRecords, loading: recordsLoading } = query;
   const myRecords = cachedRecords ?? [];
   const selectedRecord = myRecords.find(record => record.transaction.id === selected?.transaction.id) ?? null;

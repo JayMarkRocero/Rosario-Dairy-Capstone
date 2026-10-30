@@ -1984,10 +1984,12 @@ test('Orders, Sales and Inventory retries recover into a valid empty state only 
     const failed = render(Page);
     const error = elements(failed, node => node.type === ui.QueryErrorMessage)[0];
     assert.ok(error);
+    const cleanups = effects.map(effect => effect());
     error.props.onRetry();
     await settle();
     assert.deepEqual(ui.readDataCache(cacheKey).data, []);
     assert.equal(ui.readDataCache(cacheKey).error, undefined);
+    cleanups.reverse().forEach(cleanup => cleanup?.());
     states = []; refs = []; effects = [];
     assert.equal(elements(render(Page), node => node.type === ui.QueryErrorMessage).length, 0);
   }
@@ -2073,9 +2075,11 @@ test('Staff Orders and Inventory preserve card styling while showing fetch error
     assert.equal(error.props.error.message, 'Service unavailable');
     assert.equal(elements(failed, node => node.type === ui.EnhancedTable).length, 0);
     const frame = elements(failed, node => node.type === 'div' && node.props.className?.includes('bg-white rounded-xl'))[0].props.className;
+    const cleanups = effects.map(effect => effect());
     error.props.onRetry(); await settle();
     assert.deepEqual(ui.readDataCache(cacheKey).data, []);
     assert.equal(ui.readDataCache(cacheKey).error, undefined);
+    cleanups.reverse().forEach(cleanup => cleanup?.());
     states = []; refs = []; effects = [];
     const recovered = elements(render(Page), node => node.type === Wrapper)[0];
     const success = render(Wrapper, recovered.props);
@@ -4591,4 +4595,74 @@ test('receipt payment updates survive wrapper rerenders but never override a new
   tree = render(ui.TransactionDetails, { ...props, sale: ui.toSale(fresh) });
   const control = elements(tree, node => node.type === ui.PaymentUpdateControl)[0];
   assert.equal(control.props.transaction.payment_status, 'pending'); assert.equal(control.props.transaction.total_amount, '200.00');
+});
+
+test('cancellable queries stop on filter changes and never show an old result or cancellation toast', async () => {
+  const requests = [];
+  const fetcher = signal => new Promise(resolve => requests.push({ signal, resolve }));
+  const view = key => ui.useCachedQuery(key, fetcher, ['sales'], true, { cancelable: true });
+  render(() => view('filter:old')); const leaveOld = effects.at(-1)(); await settle();
+  assert.equal(requests.length, 1);
+  leaveOld(); assert.equal(requests[0].signal.aborted, true);
+  render(() => view('filter:new')); const leaveNew = effects.at(-1)(); await settle();
+  requests[1].resolve(['current']); await settle();
+  requests[0].resolve(['obsolete']); await settle();
+  assert.deepEqual(render(() => view('filter:new')).data, ['current']);
+  assert.equal(render(() => view('filter:new')).error, undefined);
+  assert.equal(toastErrors.length, 0); leaveNew();
+});
+
+test('mounted cancellable queries resync immediately while preserving loaded content', async () => {
+  const key = 'live-cancel:test', requests = [];
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, ['existing'], ['sales']);
+  const view = () => ui.useCachedQuery(key, signal => new Promise(resolve => requests.push({ signal, resolve })), ['sales'], true, { cancelable: true });
+  render(view); const cleanup = effects.at(-1)(); await settle();
+  assert.equal(requests.length, 0);
+  ui.invalidateDataCache(['sales']); await settle(); assert.equal(requests.length, 1);
+  ui.invalidateDataCache(['sales'], { deferPending: true }); await settle();
+  assert.equal(requests[0].signal.aborted, true); assert.equal(requests.length, 2);
+  assert.deepEqual(render(view).data, ['existing']); assert.equal(render(view).loading, false);
+  requests[1].resolve(['latest']); await settle(); requests[0].resolve(['stale']); await settle();
+  assert.deepEqual(render(view).data, ['latest']); assert.equal(toastErrors.length, 0);
+  cleanup();
+  await render(view).refresh({ force: true }); await settle();
+  assert.equal(requests.length, 2, 'A departed screen cannot restart its query');
+});
+
+test('all visible history/order consumers cancel their GET on departure', async () => {
+  authState = { user: { id: 7, username: 'audit', role: 'admin' }, loading: false };
+  const screens = [ui.AdminSalesHistory, ui.StaffSalesHistory, ui.AdminOrders, ui.StaffOrders, ui.SalesEncoding,
+    props => ui.CustomerHistory({ customer: { id: 3, name: 'Customer' }, onClose() {}, ...props }), ui.StaffRecentOrders];
+  for (const screen of screens) {
+    states = []; refs = []; effects = []; ui.clearDataCache();
+    const requests = [], finish = [];
+    ui.http.defaults.adapter = config => new Promise(resolve => { requests.push(config); finish.push(() => resolve({ data: { count: 100, results: [], next: 'next' }, status: 200, config, headers: {} })); });
+    render(screen); const cleanups = effects.map(effect => effect()); await settle();
+    assert.equal(requests.length, 1, screen.name);
+    assert.equal(requests[0].signal?.aborted, false);
+    cleanups.reverse().forEach(cleanup => cleanup?.());
+    assert.equal(requests[0].signal.aborted, true);
+    finish.forEach(done => done()); await settle();
+    assert.equal(requests.length, 1, 'No extra history page after navigation');
+  }
+  assert.equal(toastErrors.length, 0);
+});
+
+test('pending-payment KPI still counts every order page with its existing meaning', async () => {
+  const orderPages = [];
+  ui.http.defaults.adapter = async config => {
+    let data = [];
+    if (config.url === '/sales/orders/') {
+      orderPages.push(config.params.page);
+      data = { count: 3, next: config.params.page === 1 ? 'next' : null, results: config.params.page === 1
+        ? [{ status: 'fulfilled', transaction: { payment_status: 'pending' } }, { status: 'cancelled', transaction: { payment_status: 'pending' } }]
+        : [{ status: 'fulfilled', transaction: { payment_status: 'pending' } }] };
+    }
+    return { status: 200, config, headers: {}, data };
+  };
+  render(ui.KPICards); const cleanup = effects.at(-1)(); await settle();
+  assert.deepEqual(orderPages, [1, 2]);
+  const card = elements(render(ui.KPICards), node => node.type === 'section' && node.props['aria-label'] === 'Pending Orders')[0];
+  assert.ok(elements(card, node => node.type === 'div' && node.props.children === '2').length);
+  cleanup();
 });

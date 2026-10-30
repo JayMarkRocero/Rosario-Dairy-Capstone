@@ -25,7 +25,7 @@ const STATUSES = ["Fulfilled", "Cancelled"];
 export function StaffOrders() {
   const { user, loading: authLoading } = useAuth();
   const userId = user ? getSessionUserId(user) : null;
-  const { data: cachedOrders, loading, refresh, error } = useCachedQuery("orders:list", ordersService.getAll, ["orders"], !authLoading && userId !== null);
+  const { data: cachedOrders, loading, refresh, error } = useCachedQuery("orders:list", ordersService.getAll, ["orders"], !authLoading && userId !== null, { cancelable: true });
   const orders = useMemo(() => !authLoading && userId !== null
     ? (cachedOrders ?? []).filter(order => order.staffId === userId && !order.isHistorical)
     : [], [cachedOrders, userId, authLoading]);

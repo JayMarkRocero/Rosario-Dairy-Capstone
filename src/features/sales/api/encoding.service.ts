@@ -27,7 +27,7 @@ export const encodingService = {
     } catch { return null; }
   },
   clearPending: () => { const pending = encodingService.pending(); if (pending && !active.has(pending.key)) clearPendingRequest(pending); },
-  list: (filters?: Record<string, unknown>) => getAllPages<DjangoTransaction>("/sales/encoding/", { page_size: 200, ...filters }),
+  list: (filters?: Record<string, unknown>, signal?: AbortSignal) => getAllPages<DjangoTransaction>("/sales/encoding/", { page_size: 200, ...filters }, signal),
   /** @deprecated No active UI caller; retained for API contract compatibility. */
   get: async (id: number) => (await http.get<DjangoTransaction>(`/sales/encoding/${id}/`)).data,
   create: (payload: EncodingPayload, lines: SaleLineDraft[] = []): Promise<DjangoTransaction> => {

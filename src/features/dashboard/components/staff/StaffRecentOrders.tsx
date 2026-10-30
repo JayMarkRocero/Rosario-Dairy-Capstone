@@ -11,7 +11,7 @@ import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 const RECENT_ORDER_LIMIT = 5;
 
 export function StaffRecentOrders() {
-  const query = useCachedQuery("dashboard:recent-orders:5", () => ordersService.getRecent(RECENT_ORDER_LIMIT), ["dashboard", "orders"]);
+  const query = useCachedQuery("dashboard:recent-orders:5", signal => ordersService.getRecent(RECENT_ORDER_LIMIT, signal), ["dashboard", "orders"], true, { cancelable: true });
   const orders = (query.data ?? []).slice(0, RECENT_ORDER_LIMIT);
   const loading = query.loading;
 

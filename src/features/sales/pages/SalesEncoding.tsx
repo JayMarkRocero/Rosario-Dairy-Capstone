@@ -25,7 +25,7 @@ export function SalesEncoding() {
   const [payment, setPayment] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const query = useCachedQuery(`sales:encoding:${payment}:${startDate}:${endDate}`, () => encodingService.list({ payment_status: payment || undefined, start_date: startDate || undefined, end_date: endDate || undefined }), ["sales", "orders", "customers"]);
+  const query = useCachedQuery(`sales:encoding:${payment}:${startDate}:${endDate}`, signal => encodingService.list({ payment_status: payment || undefined, start_date: startDate || undefined, end_date: endDate || undefined }, signal), ["sales", "orders", "customers"], true, { cancelable: true });
   const data = useMemo(() => (query.data ?? []).map(toSale), [query.data]);
   const selectedRecord = data.find(record => record.transaction.id === selected?.transaction.id) ?? null;
   const columns: Column<Sale>[] = [

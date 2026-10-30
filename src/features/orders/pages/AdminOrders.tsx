@@ -24,7 +24,7 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 const STATUSES = ["Fulfilled", "Cancelled"];
 
 export function AdminOrders() {
-  const query = useCachedQuery("orders:list", ordersService.getAll, ["orders"]);
+  const query = useCachedQuery("orders:list", ordersService.getAll, ["orders"], true, { cancelable: true });
   const { data: cachedOrders, loading: loadingList, refresh: load } = query;
   const orders = cachedOrders ?? [];
   const [status, setStatus] = useState("All");

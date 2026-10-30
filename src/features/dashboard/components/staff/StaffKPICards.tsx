@@ -24,22 +24,25 @@ export function StaffKPICards() {
   const userId = user ? getSessionUserId(user) : null;
   const identityUnavailable = !authLoading && userId === null;
 
-  const { data: metrics, loading, error } = useCachedQuery(`dashboard:staff-kpis:${userId}:${todayStr()}`, async () => {
+  const { data: metrics, loading, error } = useCachedQuery(`dashboard:staff-kpis:${userId}:${todayStr()}`, async signal => {
     const today = todayStr();
     let deadline: ReturnType<typeof setTimeout>;
+    let cancel: () => void;
     const timeout = new Promise<never>((_, reject) => {
       deadline = setTimeout(() => reject(new Error("Dashboard metrics took too long to load. Please refresh and try again.")), 30000);
+      cancel = () => reject(new DOMException("Request canceled", "AbortError"));
+      signal?.addEventListener("abort", cancel, { once: true });
     });
     const request = Promise.resolve().then(() => {
       return Promise.all([
-        salesService.getAll({ startDate: today, endDate: today, handledBy: userId ?? undefined }),
-        ordersService.getAll(),
+        salesService.getAll({ startDate: today, endDate: today, handledBy: userId ?? undefined }, signal),
+        ordersService.getAll(signal),
         inventoryService.getAll(true),
       ]);
     });
 
-    return Promise.race([request, timeout]).finally(() => clearTimeout(deadline));
-  }, ["dashboard"], !authLoading && userId !== null);
+    return Promise.race([request, timeout]).finally(() => { clearTimeout(deadline); signal?.removeEventListener("abort", cancel); });
+  }, ["dashboard"], !authLoading && userId !== null, { cancelable: true });
   const [sales, orders, products] = metrics ?? [[], [], []];
   const failed = !!error;
 

@@ -18,9 +18,11 @@ export function TransactionDetails({ sale, onClose, unavailable = false }: {
   const current = updated?.source === sale.transaction ? updated.value : sale;
   const receipt = receiptDetails(current);
   return <Modal open onClose={onClose} title="Transaction Details" subtitle={sale.receipt} size="lg"
-    footer={<Btn variant="primary" onClick={onClose}>Close</Btn>}>
-    <div className="space-y-5">
+    footer={<div className="flex items-center justify-end gap-3">
       <PaymentUpdateControl key={current.transaction.id} transaction={current.transaction} onUpdated={transaction => setUpdated({ source: sale.transaction, value: toSale(transaction) })}/>
+      <Btn variant="primary" onClick={onClose}>Close</Btn>
+    </div>}>
+    <div className="space-y-5">
       <h3 className="text-base font-semibold text-slate-800">{receipt.title}</h3>
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">{receipt.fields.map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="text-sm font-medium break-words">{value}</dd></div>)}</dl>
       {(receipt.note || receipt.lineAmountNote) && <p className="text-xs text-slate-500">{[receipt.note, receipt.lineAmountNote].filter(Boolean).join(" ")}</p>}

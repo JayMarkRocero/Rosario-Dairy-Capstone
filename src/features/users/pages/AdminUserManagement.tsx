@@ -8,7 +8,7 @@ import { filterSelectClass } from "@/styles/controlClasses";
 import { ActionButton } from "@/components/buttons/ActionButton";
 import { SummaryCard } from "@/components/data-display/SummaryCard";
 import { useState, useMemo, useRef } from "react";
-import { Plus, Eye, EyeOff, Edit, Trash2, Lock, KeyIcon, UserCheck } from "lucide-react";
+import { Plus, Eye, EyeOff, Edit, Trash2, KeyIcon, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { Btn } from "@/components/buttons/Btn";
@@ -432,9 +432,6 @@ export function AdminUserManagement() {
                 <span className="min-w-0 break-words text-sm font-semibold sm:text-right" style={{color:C.text}}>{r.v}</span>
               </div>
             ))}
-            <Btn variant="secondary" size="sm" icon={<Lock size={12}/>} onClick={()=>{setViewOpen(false);setResetOpen(true);}}>
-              Reset Password
-            </Btn>
           </div>
         )}
       </Drawer>

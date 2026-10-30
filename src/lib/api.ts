@@ -137,11 +137,17 @@ export function refreshAccessToken(): Promise<string> {
 }
 
 export interface PaginatedResponse<T> { count: number; results: T[]; previous?: string | null; next?: string | null }
-export async function getAllPages<T>(url: string, params?: Record<string, unknown>): Promise<T[]> {
+export async function getAllPages<T>(url: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<T[]> {
   const rows: T[] = [];
+  const generation = sessionGeneration;
+  const checkCanceled = () => {
+    if (signal?.aborted || generation !== sessionGeneration) throw new axios.CanceledError("Obsolete history request");
+  };
   let page = 1;
   while (true) {
-    const { data } = await axiosInstance.get<T[] | PaginatedResponse<T>>(url, { params: { ...params, page } });
+    checkCanceled();
+    const { data } = await axiosInstance.get<T[] | PaginatedResponse<T>>(url, { params: { ...params, page }, signal });
+    checkCanceled();
     if (Array.isArray(data)) return [...rows, ...data];
     rows.push(...data.results);
     if (!data.results.length || rows.length >= data.count || data.next === null) return rows;
@@ -219,6 +225,8 @@ axiosInstance.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
+    // An obsolete GET must not renew tokens or report a user-facing API error.
+    if (axios.isCancel(error) || error.config?.signal?.aborted) return Promise.reject(new axios.CanceledError());
     synchronizeSessionStorage();
     if (!error.response) return Promise.reject(error);
 

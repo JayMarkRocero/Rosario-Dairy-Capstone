@@ -21,8 +21,8 @@ function sendOrder(body: CreateOrderPayload, recover = false): Promise<Order & {
 }
 
 export const ordersService = {
-  getAll: async (): Promise<OrderListItem[]> => {
-    const orders = await getAllPages<OrderListResponse>("/sales/orders/", { page_size: 500 });
+  getAll: async (signal?: AbortSignal): Promise<OrderListItem[]> => {
+    const orders = await getAllPages<OrderListResponse>("/sales/orders/", { page_size: 500 }, signal);
     // Sort the complete list before either Orders view filters or paginates it.
     return [...orders].sort((a, b) => b.id - a.id).map(mapOrder);
   },
@@ -54,8 +54,8 @@ export const ordersService = {
     return data;
   },
 
-  getRecent: async (limit = 5): Promise<OrderListItem[]> => {
-    const { data } = await http.get<PaginatedResponse<OrderListResponse>>("/sales/orders/", { params: { page: 1, page_size: limit } });
+  getRecent: async (limit = 5, signal?: AbortSignal): Promise<OrderListItem[]> => {
+    const { data } = await http.get<PaginatedResponse<OrderListResponse>>("/sales/orders/", { params: { page: 1, page_size: limit }, signal });
     return data.results.map(mapOrder);
   },
 };

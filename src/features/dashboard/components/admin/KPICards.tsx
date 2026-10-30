@@ -28,15 +28,15 @@ const php = (value: number) => `₱${value.toLocaleString("en-PH", { minimumFrac
 const neutralBadge = "text-slate-600 bg-slate-100";
 
 export function KPICards({ pendingOrderCount }: Props = {}) {
-  const { data: metrics, loading, error } = useCachedQuery<Metrics>(`dashboard:admin-kpis:${businessDate()}:${pendingOrderCount ?? "api"}`, async () => {
+  const { data: metrics, loading, error } = useCachedQuery<Metrics>(`dashboard:admin-kpis:${businessDate()}:${pendingOrderCount ?? "api"}`, async signal => {
     const today = businessDate();
     const yesterday = businessDate(-1);
     const [todayTransactions, yesterdayTransactions, products, batches, orders] = await Promise.all([
-      getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: today, end_date: today }),
-      getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: yesterday, end_date: yesterday }),
+      getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: today, end_date: today }, signal),
+      getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: yesterday, end_date: yesterday }, signal),
       inventoryService.getLowStockProducts(),
       inventoryService.getExpiringProducts(),
-      pendingOrderCount === undefined ? getAllPages<OrderListResponse>("/sales/orders/") : Promise.resolve([]),
+      pendingOrderCount === undefined ? getAllPages<OrderListResponse>("/sales/orders/", undefined, signal) : Promise.resolve([]),
     ]);
     const total = (rows: DjangoTransaction[]) => rows.reduce((sum, row) => sum + Number(row.total_amount), 0);
     return {
@@ -46,7 +46,7 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
           && Number(batch.remaining_quantity) > 0 && batch.expiration_date >= today).length,
         pendingOrders: orders.filter(order => order.status === "fulfilled" && order.transaction?.payment_status === "pending").length,
     };
-  }, ["dashboard"]);
+  }, ["dashboard"], true, { cancelable: true });
   const failed = !!error;
 
   const available = !failed;

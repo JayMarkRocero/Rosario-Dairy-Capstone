@@ -53,17 +53,17 @@ export function toSale(t: DjangoTransaction): Sale {
 }
 
 export const salesService = {
-  getMine: async (knownUserId?: number): Promise<Sale[]> => {
+  getMine: async (knownUserId?: number, signal?: AbortSignal): Promise<Sale[]> => {
     const userId = knownUserId ?? await authService.getCurrentUserId();
-    const sales = await salesService.getAll({ handledBy: userId });
+    const sales = await salesService.getAll({ handledBy: userId }, signal);
     return sales.filter(sale => sale.transaction.handled_by.id === userId);
   },
-  getAll: async (filters?: { startDate?: string; endDate?: string; handledBy?: number; customerId?: number; paymentStatus?: "pending" | "paid" | "unknown"; includeVoided?: boolean }): Promise<Sale[]> => {
+  getAll: async (filters?: { startDate?: string; endDate?: string; handledBy?: number; customerId?: number; paymentStatus?: "pending" | "paid" | "unknown"; includeVoided?: boolean }, signal?: AbortSignal): Promise<Sale[]> => {
     const transactions = await getAllPages<DjangoTransaction>("/sales/transactions/", {
       start_date: filters?.startDate, end_date: filters?.endDate,
       handled_by: filters?.handledBy, customer_id: filters?.customerId, payment_status: filters?.paymentStatus, include_voided: filters?.includeVoided,
       page_size: 200,
-    });
+    }, signal);
 
     return transactions.map(toSale);
   },
