@@ -115,7 +115,7 @@ const compiled = buildSync({
 const loaded = new Module(path.join(root, 'tests', 'ui-in-memory.cjs'), module);
 loaded.filename = path.join(root, 'tests', 'ui-in-memory.cjs');
 loaded.paths = module.paths;
-loaded.require = id => id === 'react' ? hooks : id === 'react-dom' ? { ...require(id), createPortal: children => children } : id === 'sonner' ? {
+loaded.require = id => id === 'react' ? hooks : id === 'framer-motion' ? { ...require(id), useReducedMotion: () => false } : id === 'react-dom' ? { ...require(id), createPortal: children => children } : id === 'sonner' ? {
   ...require(id), toast: Object.assign((...args) => toastMessages.push(args), { error: (...args) => toastErrors.push(args), success() {}, warning() {} }),
 } : require(id);
 loaded._compile(compiled, loaded.filename);
@@ -135,6 +135,14 @@ beforeEach(() => {
   captureLayoutEffects = false; layoutEffects = [];
   effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
   ui.clearDataCache();
+  // Node 26 exposes persistent browser storage. Each test gets a fresh tab;
+  // production pending-sale persistence remains exercised within each test.
+  const session = new Map();
+  Object.defineProperty(global, 'sessionStorage', { configurable: true, writable: true, value: {
+    getItem: key => session.get(key) ?? null,
+    setItem: (key, value) => session.set(key, String(value)),
+    removeItem: key => session.delete(key), clear: () => session.clear(),
+  } });
   states = []; refs = []; effects = []; stateIndex = refIndex = 0;
   authState = { user: { username: 'audit' }, loading: false };
   toastErrors = [];
@@ -485,6 +493,36 @@ test('customer table profile and mobile cards distinguish unavailable from a rec
     assert.ok(elements(card, node => node.type === 'dd' && node.props.children === expected).length);
     if (totalSpent !== '0.00') assert.doesNotMatch(JSON.stringify(drawer.props.children), /₱0\.00/);
   }
+});
+
+test('an open customer profile follows fresh server records without losing its drawer or filter state', () => {
+  const customer = { id: 9, name: 'Customer', isActive: true, orders: 2, email: '', phone: '', address: '', last: '', totalSpent: '100.00' };
+  const key = `${ui.dataCacheEpoch()}:customers:list:all`;
+  ui.writeDataCache(key, [customer], ['customers']);
+  let tree = render(ui.AdminCustomers);
+  effects.forEach(effect => effect()); effects = [];
+  elements(tree, node => node.type === ui.EnhancedTable)[0].props.onRowClick(customer);
+  elements(tree, node => node.type === ui.EnhancedTable)[0].props.extraControls.props.onChange({ target: { value: 'Repeat' } });
+  const profile = () => elements(render(ui.AdminCustomers), node => node.type === ui.Drawer && node.props.title === 'Customer Profile')[0];
+  assert.match(JSON.stringify(profile().props.children), /₱100\.00/);
+  for (const totalSpent of ['200.00', '1999999999999999999.98', undefined]) {
+    ui.writeDataCache(key, [{ ...customer, orders: 0, totalSpent }], ['customers']);
+    const drawer = profile();
+    assert.equal(drawer.props.open, true);
+    const table = elements(render(ui.AdminCustomers), node => node.type === ui.EnhancedTable)[0];
+    assert.equal(table.props.extraControls.props.value, 'Repeat');
+    assert.equal(table.props.data.length, 0, 'A UI-filtered customer still resolves from the full server list');
+    const expected = totalSpent === undefined ? 'Unavailable' : totalSpent === '200.00' ? '₱200.00' : '₱1,999,999,999,999,999,999.98';
+    assert.ok(elements(drawer, node => node.type === 'span' && node.props.children === expected).length);
+    assert.doesNotMatch(JSON.stringify(drawer.props.children), /₱100\.00/);
+  }
+  // A server-removed/restricted record must not leave stale personal data/actions visible.
+  ui.writeDataCache(key, [], ['customers']);
+  const missing = profile();
+  assert.equal(missing.props.open, true);
+  assert.match(JSON.stringify(missing.props.children), /customer is currently unavailable/);
+  assert.equal(elements(missing.props.footer, node => node.props.children === 'Purchase history')[0].props.disabled, true);
+  assert.equal(elements(missing.props.footer, node => node.props.children === 'Edit').length, 0);
 });
 
 test('Customers shares five-record pagination between mobile cards and the desktop table', () => {
@@ -3211,13 +3249,14 @@ test('Reports cards size from their content and align footers within each respon
 
 for (const message of ['No published forecasts overlap the selected dates.',
   'Saved forecasts are unavailable for this range. Missing observations and quality checks prevent publication. '.repeat(60)]) {
-  test(`Forecast report preserves the complete ${message.length > 100 ? 'long' : 'short'} warning without clipping or collapsing details`, () => {
+  test(`Forecast report replaces the ${message.length > 100 ? 'long' : 'short'} technical warning with accurate client copy`, () => {
     const range = { start_date: '2000-09-01', end_date: '2000-09-30' };
     const data = Object.freeze({ ...range, status: 'no_forecasts_in_range', status_message: message,
       range_note: 'Available predictions retain their full period values.', forecast: [] });
     const tree = reportSummaryFixture('sarima_forecast', data, range);
     const lines = elements(tree, node => node.type === 'p').map(node => node.props.children);
-    assert.ok(lines.includes(message)); assert.ok(lines.includes(data.range_note));
+    assert.ok(lines.includes('No forecast is available for the selected dates.'));
+    assert.equal(lines.includes(message), false); assert.equal(lines.includes(data.range_note), false);
     assert.ok(tree.props.className.includes('[overflow-wrap:anywhere]'));
     assert.equal(elements(tree, node => /line-clamp|overflow-hidden|max-h-/.test(node.props.className ?? '')).length, 0);
     assert.equal(elements(tree, node => node.type === 'details').length, 0, 'The full warning remains visible');
@@ -3253,19 +3292,21 @@ test('Forecast report summary preserves no-overlap status and explains full-peri
   const tree = reportSummaryFixture('sarima_forecast', data, range);
   const lines = elements(tree, node => node.type === 'p').map(node => React.Children.toArray(node.props.children).join(''));
   assert.equal(lines[0], '2000-09-01 to 2000-09-30');
-  assert.equal(lines[1], data.status_message);
-  assert.equal(lines[2], data.range_note);
+  assert.equal(lines[1], 'No forecast is available for the selected dates.');
+  assert.equal(lines.length, 2);
+  assert.equal(data.range_note, 'Available predictions keep their full period values; amounts are not prorated.');
   assert.doesNotMatch(lines.join(' '), /₱0|approved live forecast/i);
 });
 
-test('Report date dialog explains the all-report date contract without changing control classes', () => {
-  const tree = render(ui.ReportDateRangeControl, { onApply() {} });
-  const modal = elements(tree, node => node.type === ui.Modal)[0];
-  assert.match(modal.props.subtitle, /all six reports/);
-  const help = elements(tree, node => node.props.id === 'report-date-help')[0];
-  assert.match(help.props.children, /stock health remains current/);
-  assert.match(help.props.children, /without prorating or fitting a new model/);
-  assert.equal(help.props.className, 'text-xs leading-relaxed text-slate-500');
+test('Report date dialog stays compact and references only a displayed validation error', () => {
+  const props = { onApply() {} };
+  let tree = render(ui.ReportDateRangeControl, props);
+  assert.equal(elements(tree, node => node.props.id === 'report-date-help').length, 0);
+  assert.ok(elements(tree, node => node.type === 'input').every(node => node.props['aria-describedby'] === undefined));
+  elements(elements(tree, node => node.type === ui.Modal)[0].props.footer, node => node.props.children === 'Apply dates')[0].props.onClick();
+  tree = render(ui.ReportDateRangeControl, props);
+  assert.equal(elements(tree, node => node.props.id === 'report-date-error').length, 1);
+  assert.ok(elements(tree, node => node.type === 'input').every(node => node.props['aria-describedby'] === 'report-date-error'));
 });
 
 test('POS blocks blind retries after an interrupted write and requires history review before a new transaction', async () => {
@@ -3285,6 +3326,33 @@ test('POS blocks blind retries after an interrupted write and requires history r
   confirmation.props.onConfirm();
   assert.equal(ui.hasUnconfirmedSale('checkout'), false);
   assert.equal(elements(render(ui.SaleComposer, form.props), node => node.type === ui.SaleLineEditor).length, 0, 'The old cart cannot be accidentally resent');
+});
+
+for (const mode of ['checkout', 'order']) test(`${mode} offers explicit saved recovery after remount without submitting the empty new draft`, async () => {
+  const form = await composerFixture(mode);
+  if (mode === 'order') elements(render(ui.SaleComposer, form.props), node => node.type?.name === 'CustomerPicker')[0].props.onChange('906');
+  form.changeLine({ unitPrice: '50' }); form.field('Amount tendered').props.onChange({ target: { value: '100' } });
+  const options = ui.http.defaults.adapter, writes = [], completed = [];
+  form.props.onSuccess = sale => completed.push(sale);
+  const saved = { id: 78, subtotal: '50', total_amount: '50', change_due: '50' };
+  ui.http.defaults.adapter = async config => {
+    if (config.method !== 'post') return options(config);
+    const body = JSON.parse(config.data);
+    writes.push({ body, key: body.request_id });
+    if (writes.length === 1) throw new AxiosError('timeout', AxiosError.ECONNABORTED);
+    return { config, status: 200, headers: {}, data: mode === 'order' ? { id: 2, transaction: saved } : saved };
+  };
+  await form.submit(); assert.equal(writes.length, 1); assert.equal(completed.length, 0);
+  effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
+  states = []; refs = []; effects = []; ui.clearDataCache();
+  render(ui.SaleComposer, form.props); effects[0](); await settle();
+  const tree = render(ui.SaleComposer, form.props);
+  assert.equal(elements(tree, node => node.type === ui.SaleLineEditor).length, 0);
+  const recover = elements(tree, node => node.type === ui.Btn && node.props.children === 'Recover saved submission')[0];
+  assert.ok(recover);
+  const first = recover.props.onClick(), second = recover.props.onClick(); await Promise.all([first, second]);
+  assert.equal(writes.length, 2); assert.deepEqual(writes[1], writes[0]);
+  assert.deepEqual(completed, [saved]); assert.equal(ui.hasUnconfirmedSale(mode), false);
 });
 
 test('logout from stale account UI does not clear or blacklist a newer cross-tab login', async () => {
@@ -3574,7 +3642,7 @@ function forecastFixture(period = 'monthly') {
     }])) };
 }
 
-test('centered forecast tabs preserve the full calendar and show separate basis evaluations in the compact toolbar', () => {
+test('centered forecast tabs preserve the full calendar and simple client controls without technical evaluations', () => {
   ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, forecastFixture(), ['dashboard', 'reports']);
   let tree = render(ui.ForecastChart);
   const buttons = () => elements(tree, node => node.type === 'button');
@@ -3607,16 +3675,13 @@ test('centered forecast tabs preserve the full calendar and show separate basis 
   assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data.length, 7);
   assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data[1].actual, null);
   assert.ok(!JSON.stringify(tree).includes('10.6% WAPE'));
-  assert.match(JSON.stringify(tree), /Not yet available/);
+  assert.equal(elements(tree, node => node.props['aria-label'] === 'Forecast evaluation by prediction basis').length, 0);
   assert.ok(!JSON.stringify(tree).includes('Approved live forecast currently unavailable'));
   buttons().find(node => node.props.children === 'Regular Sales').props.onClick();
   tree = render(ui.ForecastChart);
-  assert.match(JSON.stringify(tree), /10.6% WAPE/);
-  assert.match(JSON.stringify(tree), /20.0% WAPE/);
-  assert.match(JSON.stringify(tree), /Original issued forecast/);
-  assert.match(JSON.stringify(tree), /Reconstructed historical test/);
-  assert.ok(elements(tree, node => node.type === 'p' && Array.isArray(node.props.children) && node.props.children.includes(' completed '))
-    .some(node => node.props.children.join('').includes('2 completed periods')));
+  assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data.length, 7);
+  assert.doesNotMatch(JSON.stringify(tree), /10.6% WAPE|20.0% WAPE|Model evidence and limitations/);
+  assert.equal(elements(tree, node => node.type === 'input' && node.props.type === 'checkbox').length, 0);
   buttons().find(node => node.props.children === 'Milk Feeding').props.onClick();
   tree = render(ui.ForecastChart);
   assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data[0].actual, 15);
@@ -3665,19 +3730,24 @@ function forecastV6Fixture(period = 'monthly') {
   return graph;
 }
 
-test('v6 model metadata separates saved availability approval stale sources and component evidence', () => {
-  const graph = forecastV6Fixture();
+test('v6 client status preserves availability and approval facts while keeping model evidence internal', () => {
+  const graph = forecastV6Fixture(), snapshot = structuredClone(graph);
   const text = JSON.stringify(ui.ForecastMetadata({ view: graph.views.combined, graphReadiness: graph.readiness, savedStatus: graph.status, current: graph.views.combined.points[3] }));
-  for (const phrase of ['research only', 'Not production approved', 'stale data', 'Nonseasonal ARIMA(1,0,0)', 'Local level', 'worse than the reported baseline', 'Sep 2026', 'Dec 2025', '0.0% WAPE', '3 periods', '20.0% WAPE', '6 periods', 'Server limitation', 'separate from approval', 'not one fitted model']) assert.ok(text.includes(phrase), phrase);
-  assert.match(text, /Steps from last fitted bucket/);
-  assert.match(text, /These differ from the extraction-relative horizon/);
-  assert.match(text, /not establish accuracy at|do not validate the entire seasonal path/);
+  assert.match(text, /For planning only/); assert.match(text, /Some estimates are unavailable/);
+  assert.match(text, /Recent sales records are missing/);
+  assert.doesNotMatch(text, /Model evidence|WAPE|baseline|Primary model|Source:|research_only/);
+  // Diagnostic fields remain available internally, including zero and nullable evidence.
+  const model = graph.views.regular.model_details;
+  assert.equal(ui.forecastModelName(model), model.display_label);
+  assert.match(ui.forecastEvidence(model.validation), /0.0% WAPE.*3 periods/);
+  assert.equal(model.baseline_comparison.result, 'worse');
+  assert.deepEqual(graph, snapshot);
 });
 
 test('v6 missing metadata evidence and components remain explicitly unavailable rather than zero or approved', () => {
   const view = forecastFixture().views.regular;
   const text = JSON.stringify(ui.ForecastMetadata({ view }));
-  assert.match(text, /Model details unavailable/); assert.match(text, /Approval not supplied/);
+  assert.match(text, /Approval unavailable/); assert.match(text, /For planning only/); assert.doesNotMatch(text, /Production approved/);
   assert.equal(ui.forecastEvidence(null), 'Not available');
   assert.match(ui.forecastEvidence({ wape_percent: null, periods: 0 }), /WAPE unavailable.*0 periods/);
   assert.match(ui.forecastEvidence({ wape_percent: 0, periods: 1 }), /0.0% WAPE.*1 periods/);
@@ -3697,7 +3767,7 @@ test('v6 display safety preserves finite values provenance nulls and backend obj
   assert.equal(ui.forecastV6Points({ points: [{ date: '2026-01-01', end_date: '2026-01-31', actual: NaN, past_prediction: undefined, future_prediction: Infinity }] })[0].actual, null);
 });
 
-test('v6 all nine centered views retain server values null gaps current membership and neutral boundary', () => {
+test('v6 all nine centered views retain server values null gaps current membership and orange boundary', () => {
   for (const period of ['weekly', 'monthly', 'yearly']) {
     const graph = forecastV6Fixture(period); ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:${period}`, graph, ['dashboard', 'reports']);
     states = []; refs = []; effects = [];
@@ -3708,7 +3778,10 @@ test('v6 all nine centered views retain server values null gaps current membersh
       assert.deepEqual(elements(tree, node => Array.isArray(node.props.data))[0].props.data, graph.views[key].points);
       assert.ok(elements(tree, node => ['actual', 'past_prediction', 'future_prediction'].includes(node.props.dataKey)).every(line => !line.props.connectNulls));
       const bridge = elements(tree, node => node.props.className === 'forecast-boundary-connector')[0];
-      assert.ok(bridge); assert.notEqual(bridge.props.stroke, elements(tree, node => node.props.dataKey === 'future_prediction')[0].props.stroke);
+      assert.ok(bridge);
+      const past = elements(tree, node => node.props.dataKey === 'past_prediction')[0];
+      assert.equal(bridge.props.stroke, past.props.stroke); assert.equal(bridge.props.strokeWidth, 2.5); assert.equal(bridge.props.strokeDasharray, '5 4');
+      assert.notEqual(bridge.props.stroke, elements(tree, node => node.props.dataKey === 'future_prediction')[0].props.stroke);
     }
   }
 });
@@ -3724,23 +3797,25 @@ test('v6 seasonal displays retain full 12-month and 52-week horizons for all thr
       tree = render(ui.ForecastChart); elements(tree, node => node.type === 'button' && node.props.children === label)[0].props.onClick(); tree = render(ui.ForecastChart);
       const points = elements(tree, node => Array.isArray(node.props.data))[0].props.data;
       assert.equal(points.length, period === 'weekly' ? 52 : 12); assert.deepEqual(points, graph.seasonal_outlook.views[key].points);
-      assert.equal(points[4].future_prediction, null); assert.match(JSON.stringify(tree), /No long-horizon score is inferred/);
+      assert.equal(points[4].future_prediction, null); assert.equal(elements(tree, node => node.props['aria-label'] === 'Forecast evaluation by prediction basis').length, 0);
       assert.equal(new Set(points.map(point => point.forecast_origin)).size, 1);
     }
   }
 });
 
-test('v6 comparison toggle uses immutable original issues including zero without replacing latest outlook', () => {
-  const graph = forecastV6Fixture(); ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, graph, ['dashboard', 'reports']);
-  let tree = render(ui.ForecastChart);
+test('v6 ordinary client removes issued comparisons but retains immutable issues and provenance internally', () => {
+  const graph = forecastV6Fixture(), snapshot = structuredClone(graph);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, graph, ['dashboard', 'reports']);
+  const tree = render(ui.ForecastChart);
   assert.equal(elements(tree, node => node.props.dataKey === 'issued_prediction').length, 0);
-  elements(tree, node => node.type === 'input' && node.props.type === 'checkbox')[0].props.onChange({ target: { checked: true } }); tree = render(ui.ForecastChart);
-  assert.equal(elements(tree, node => node.props.dataKey === 'issued_prediction')[0].props.connectNulls, false);
-  assert.equal(elements(tree, node => Array.isArray(node.props.data))[0].props.data[3].future_prediction, 120);
-  const point = graph.views.regular.points[3];
-  const text = JSON.stringify(ui.ForecastGraphTooltip({ active: true, payload: [{ payload: point }] }));
-  for (const phrase of ['Original issued comparison', '₱0', 'original-engine', 'original-revision', 'issuing run calendar', 'graph input revision', 'does not inherit', 'exclusive cutoff', 'current bucket counts as 1']) assert.ok(text.includes(phrase), phrase);
+  assert.equal(elements(tree, node => node.type === 'input' && node.props.type === 'checkbox').length, 0);
+  const point = elements(tree, node => Array.isArray(node.props.data))[0].props.data[3];
+  assert.equal(point.future_prediction, 120); assert.equal(point.issued_prediction, 0);
   assert.equal(point.issued_provenance.run_id, 7);
+  const tooltip = JSON.stringify(ui.ForecastGraphTooltip({ active: true, payload: [{ payload: point }] }));
+  assert.match(tooltip, /Estimated sales/);
+  assert.doesNotMatch(tooltip, /Original issuer|original-engine|original-revision|exclusive cutoff|Source:/);
+  assert.deepEqual(graph, snapshot);
 });
 
 test('v6 unavailable seasonal components and missing issues never fall back to another view or fabricate predictions', () => {
@@ -3748,11 +3823,11 @@ test('v6 unavailable seasonal components and missing issues never fall back to a
   graph.seasonal_outlook.views.combined.model_details = null;
   ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, graph, ['dashboard', 'reports']);
   let tree = render(ui.ForecastChart); elements(tree, node => node.props['aria-label'] === 'Forecast display')[0].props.onChange({ target: { value: 'seasonal' } });
-  tree = render(ui.ForecastChart); elements(tree, node => node.type === 'input' && node.props.type === 'checkbox')[0].props.onChange({ target: { checked: true } }); tree = render(ui.ForecastChart);
+  tree = render(ui.ForecastChart);
   assert.ok(elements(tree, node => Array.isArray(node.props.data))[0].props.data.every(point => point.future_prediction === null));
-  assert.equal(elements(tree, node => node.props.dataKey === 'issued_prediction').length, 0); assert.match(JSON.stringify(tree), /No original issued comparisons/);
+  assert.equal(elements(tree, node => node.props.dataKey === 'issued_prediction').length, 0); assert.equal(elements(tree, node => node.type === 'input' && node.props.type === 'checkbox').length, 0);
   graph.seasonal_outlook = null; ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, graph, ['dashboard', 'reports']); tree = render(ui.ForecastChart);
-  assert.equal(elements(tree, node => node.type === ui.EmptyState)[0].props.title, 'Seasonal outlook unavailable');
+  assert.equal(elements(tree, node => node.type === ui.EmptyState)[0].props.title, 'Forecast unavailable for these dates');
 });
 
 test('v6 switching to yearly restores centered display and keeps existing refresh dates and view controls', () => {
@@ -3811,7 +3886,8 @@ test('v6 historical date selection anchors the seasonal path without trimming or
   elements(form.tree(), node => node.props['aria-label'] === 'Forecast display')[0].props.onChange({ target: { value: 'seasonal' } });
   const tree = form.tree(), points = elements(tree, node => Array.isArray(node.props.data))[0].props.data;
   assert.deepEqual(points, graph.seasonal_outlook.views.combined.points); assert.equal(points.length, 12);
-  assert.match(JSON.stringify(tree), /no predictions are relabeled as historical issues/);
+  assert.equal(elements(tree, node => node.type === 'option' && node.props.value === 'seasonal')[0].props.children, 'Next 12 months');
+  assert.match(JSON.stringify(tree), /Oct 2000|Oct 1, 2000/);
   form.open(); form.action('Clear dates');
   assert.deepEqual(elements(form.tree(), node => Array.isArray(node.props.data))[0].props.data, forecastV6Fixture().seasonal_outlook.views.combined.points);
 });
@@ -3822,10 +3898,13 @@ test('forecast calendar validates drafts cancels changes and clears dates back t
   const form = forecastCalendar(); form.open();
   assert.equal(form.modal().props.open, true);
   assert.equal(form.field('from').props.type, 'date');
+  assert.equal(elements(form.tree(), node => node.props.id === 'forecast-date-help').length, 0);
+  assert.equal(form.field('from').props['aria-describedby'], undefined);
   assert.match(form.field('from').props.className, /w-full/);
   form.field('from').props.onChange({ target: { value: '2000-08-15' } });
   form.action('Apply dates');
   assert.match(elements(form.tree(), node => node.props.id === 'forecast-date-error')[0].props.children, /both From and To/);
+  assert.equal(form.field('from').props['aria-describedby'], 'forecast-date-error');
   assert.equal(elements(form.tree(), node => Array.isArray(node.props.data))[0].props.data.length, 7);
   form.field('to').props.onChange({ target: { value: '2000-08-01' } });
   form.action('Apply dates');
@@ -3858,8 +3937,8 @@ test('historical forecast range preserves all view period controls original seri
       const points = elements(tree, node => Array.isArray(node.props.data))[0].props.data;
       const expected = historicalForecastFixture(period).views[view].points.filter(point => point.date <= '2000-10-26');
       assert.deepEqual(points, expected);
-      assert.match(JSON.stringify(tree), /Earlier periods outside the server window/);
-      assert.match(JSON.stringify(tree), /Server evaluations cover the full centered window/);
+      assert.match(JSON.stringify(tree), /Earlier dates are unavailable/);
+      assert.equal(elements(tree, node => node.props['aria-label'] === 'Forecast evaluation by prediction basis').length, 0);
       assert.equal(elements(tree, node => node.props.label?.value === 'As-of period').length, 1);
       assert.ok(elements(tree, node => ['actual', 'past_prediction', 'future_prediction'].includes(node.props.dataKey)).every(line => line.props.connectNulls === false));
     }
@@ -3882,7 +3961,10 @@ test('historical missing predictions remain unavailable and errors never fall ba
   const form = forecastCalendar(); form.open();
   form.field('from').props.onChange({ target: { value: '2000-09-01' } });
   form.field('to').props.onChange({ target: { value: '2000-10-26' } }); form.action('Apply dates');
-  assert.match(JSON.stringify(form.tree()), /Refresh forecast updates the current window only/);
+  assert.match(JSON.stringify(form.tree()), /No forecast available for these dates/);
+  const clientText = elements(form.tree(), node => node.type === 'p').map(node => React.Children.toArray(node.props.children).join('')).join(' ');
+  assert.doesNotMatch(clientText, /Refresh saved forecasts to make predictions available/);
+  assert.equal(graph.views.combined.message, 'Refresh saved forecasts to make predictions available.', 'Backend metadata remains intact internally');
   assert.ok(elements(form.tree(), node => Array.isArray(node.props.data))[0].props.data.every(point => point.past_prediction === null && point.future_prediction === null));
   assert.equal(elements(form.tree(), node => node.props.className === 'forecast-boundary-connector').length, 0);
   form.open(); form.field('to').props.onChange({ target: { value: '2000-10-25' } }); form.action('Apply dates');
@@ -3917,11 +3999,11 @@ test('centered graph tooltips distinguish partial actuals, full estimates and or
   let tooltip = ui.ForecastGraphTooltip({ active: true, payload: [{ payload: point }] });
   let text = JSON.stringify(tooltip);
   assert.match(text, /partial period/); assert.match(text, /full-period estimate/);
-  assert.match(text, /₱0/); assert.match(text, /₱1,500/); assert.match(text, /Original issued forecast/);
+  assert.match(text, /₱0/); assert.match(text, /₱1,500/); assert.match(text, /Estimated sales/);
   assert.ok(!text.includes('Reconstructed historical test'));
   tooltip = ui.ForecastGraphTooltip({ active: true, payload: [{ payload: { ...point, prediction_basis: 'historical_test', is_current: false } }] });
   text = JSON.stringify(tooltip);
-  assert.match(text, /Reconstructed historical test/); assert.match(text, /not a forecast issued before the period/);
+  assert.match(text, /Historical comparison estimate/); assert.doesNotMatch(text, /Original issuer|run_id/);
   assert.equal(ui.ForecastGraphTooltip({ active: false, payload: [{ payload: point }] }), null);
 });
 
@@ -3932,9 +4014,9 @@ test('refresh-required graph retains recorded points and issued predictions and 
   fixture.views.combined.points = fixture.views.combined.points.map((point, index) => ({ ...point, actual: index === 0 ? 0 : null, past_prediction: index === 0 ? 90 : null, future_prediction: null }));
   ui.writeDataCache(`${ui.dataCacheEpoch()}:forecast-graph:real:monthly`, fixture, ['dashboard', 'reports']);
   let tree = render(ui.ForecastChart);
-  assert.match(JSON.stringify(tree), /Saved forecasts need refreshing/);
-  assert.match(JSON.stringify(tree), /Not enough sales history yet/);
-  assert.match(JSON.stringify(tree), /No completed-period evaluation/);
+  assert.match(JSON.stringify(tree), /Saved estimates need updating/);
+  assert.doesNotMatch(JSON.stringify(tree), /No completed-period evaluation/);
+  assert.equal(elements(tree, node => node.props['aria-label'] === 'Forecast evaluation by prediction basis').length, 0);
   const points = elements(tree, node => Array.isArray(node.props.data))[0].props.data;
   assert.equal(points[0].actual, 0); assert.equal(points[0].past_prediction, 90); assert.equal(points[1].actual, null);
   assert.equal(points.length, 7);

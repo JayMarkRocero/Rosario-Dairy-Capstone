@@ -74,7 +74,9 @@ export function AdminCustomers() {
   const [viewOpen,   setViewOpen]   = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selected,   setSelected]   = useState<Customer | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const selected = list.find(customer => customer.id === selectedId) ?? null;
+  const setSelected = (customer: Customer) => setSelectedId(customer.id);
   const [form,       setForm]       = useState<FormState>(EMPTY);
   const [loading,    setLoading]    = useState(false);
 
@@ -238,8 +240,9 @@ export function AdminCustomers() {
       <CustomerHistory customer={historyOpen ? selected : null} onClose={() => setHistoryOpen(false)}/>
       <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Customer Profile"
         subtitle={selected?.name} size="md"
-        footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn><Btn variant="secondary" onClick={()=>{setViewOpen(false);setHistoryOpen(true);}}>Purchase history</Btn>
+        footer={<><Btn variant="secondary" onClick={()=>setViewOpen(false)}>Close</Btn><Btn variant="secondary" disabled={!selected} onClick={()=>{setViewOpen(false);setHistoryOpen(true);}}>Purchase history</Btn>
           {selected?.isActive && <Btn variant="primary" onClick={()=>{setViewOpen(false);selected&&openEdit(selected);}}>Edit</Btn>}</>}>
+        {!selected && <p role="status" className="text-sm" style={{color:C.muted}}>This customer is currently unavailable. Close the profile and refresh the customer list.</p>}
         {selected&&(
           <div className="space-y-5">
             <div className="flex items-center gap-4 p-4 rounded-2xl" style={{backgroundColor:C.bg}}>

@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Btn } from "@/components/buttons/Btn";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { OverlayPortal } from "@/components/overlays/OverlayPortal";
-import { acknowledgeUnconfirmedSale, hasUnconfirmedSale, UnconfirmedSaleError } from "@/lib/saleSubmission";
+import { acknowledgeUnconfirmedSale, hasUnconfirmedSale, pendingSale, UnconfirmedSaleError } from "@/lib/saleSubmission";
 import { isDefiniteRequestFailure } from "../api/pendingRequest";
 import { Skeleton } from "@/components/EmptyState";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
@@ -118,6 +118,18 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
     } catch (error) { if (isDefiniteRequestFailure(error)) attempt.current = null; const message = getApiErrorMessage(error, "Unable to save this transaction."); setFormError(message); toast.error(message); }
     finally { lock.current = false; setBusy(false); onBusyChange?.(false); }
   };
+  const recoverSubmission = async () => {
+    if (mode === "encoding" || lock.current) return;
+    lock.current = true; setBusy(true); onBusyChange?.(true); setFormError("");
+    try {
+      // Recovery ignores the current form: only the original saved payload may be replayed.
+      const result = mode === "order" ? await ordersService.retryPending() : await checkoutService.retryPending();
+      setLines([]); setTender(""); setReload(value => value + 1);
+      toast.success("Previous transaction recovered.");
+      onSuccess(result.transaction);
+    } catch (error) { const message = getApiErrorMessage(error, "Unable to confirm the previous transaction."); setFormError(message); toast.error(message); }
+    finally { lock.current = false; setBusy(false); onBusyChange?.(false); }
+  };
   const registerCustomer = async () => {
     if (lock.current || !newCustomerName.trim()) return;
     lock.current = true; setBusy(true); onBusyChange?.(true);
@@ -159,6 +171,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   </div>;
   const errorMessage = formError && <p role="alert" className="break-words text-sm text-red-600">{formError}</p>;
   const actions = <div className={`flex flex-wrap justify-end gap-2 ${isCheckout ? "[&_button]:w-full" : ""}`}>
+      {mode !== "encoding" && unconfirmed && !busy && pendingSale(mode) && <Btn variant="secondary" onClick={recoverSubmission}>Recover saved submission</Btn>}
       {unconfirmed && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Review previous submission</Btn>}
       {mode === "encoding" && attempt.current && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Start a new entry</Btn>}
       <Btn variant="primary" disabled={busy || !lines.length || unconfirmed || discountedEncodingPending || isCheckout && !checkoutReady} onClick={submit}>{busy ? "Saving..." : mode === "encoding" ? "Save sales entry" : mode === "order" ? "Submit & Fulfill" : "Complete Transaction"}</Btn>
@@ -210,7 +223,9 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
       description="An interrupted request may already have recorded the sale and deducted stock. Check Orders and Sales History before continuing. Start a new transaction only after confirming whether the previous one was recorded."
       confirmLabel="History checked — start new transaction" onConfirm={() => {
         if (lock.current) return;
-        if (mode !== "encoding") acknowledgeUnconfirmedSale(mode);
+        if (mode !== "encoding") {
+          if (!acknowledgeUnconfirmedSale(mode)) { setFormError("The saved submission could not be cleared. Check browser storage and try again."); return; }
+        }
         else { encodingService.clearPending(); attempt.current = null; setSi(""); setNote(""); }
         setReviewOpen(false); setLines([]); setTender(""); setFormError(""); setReload(value => value + 1);
       }} /></OverlayPortal>

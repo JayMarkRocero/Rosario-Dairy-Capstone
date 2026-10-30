@@ -65,12 +65,20 @@ export function forecastMetric(value?: ForecastMetrics | null): string {
 }
 
 export function forecastExplanation(data: Record<string, unknown> | null): string {
-  if (!data) return "Forecast status is unavailable.";
-  const message = typeof data.status_message === "string" && data.status_message.trim()
-    ? data.status_message : `Forecast withheld: ${String(data.status ?? "unavailable").replace(/_/g, " ")}.`;
-  const gate = data.quality_gate as { reasons?: unknown } | undefined;
-  const reasons = Array.isArray(gate?.reasons) ? gate.reasons.filter((reason): reason is string => typeof reason === "string") : [];
-  return reasons.length ? `${message} Quality checks: ${reasons.map(reason => reason.replace(/_/g, " ")).join("; ")}.` : message;
+  const messages: Record<string, string> = {
+    stale_data: "A current forecast is unavailable because recent sales records are missing.",
+    research_only: "The forecast is still being checked and is not ready to use.",
+    refresh_required: "The forecast needs updating.",
+    training_required: "There is not enough sales history to prepare a forecast yet.",
+    pending_update: "There is not enough sales history to prepare a forecast yet.",
+    insufficient_history: "There is not enough sales history to prepare a forecast yet.",
+    insufficient_data: "There is not enough sales history to prepare a forecast yet.",
+    unsupported_horizon: "A forecast is not available for this period.",
+    no_forecasts_in_range: "No forecast is available for the selected dates.",
+    ready: "A forecast is available for the selected period.",
+  };
+  return typeof data?.status === "string" && Object.prototype.hasOwnProperty.call(messages, data.status)
+    ? messages[data.status] : "Forecast information is currently unavailable.";
 }
 
 // Keep missing observations null even when the chart visually connects known points.

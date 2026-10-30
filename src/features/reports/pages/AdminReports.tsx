@@ -18,7 +18,7 @@ const getReports = (): ReportDefinition[] => [
   { id:"weekly_sales", title:"Weekly Sales Report", desc:"7-day sales summary and comparison", icon:<TrendingUp size={20}/>, color:C.green },
   { id:"monthly_sales", title:"Monthly Sales Report", desc:"Monthly revenue, growth, and analysis", icon:<FileText size={20}/>, color:C.navy },
   { id:"inventory", title:"Inventory Report", desc:"Current stock levels and FEFO status", icon:<Package size={20}/>, color:C.orange },
-  { id:"sarima_forecast", title:"Sales Forecast Report", desc:"Published forecasts and evaluation status", icon:<ArrowUpRight size={20}/>, color:C.purple },
+  { id:"sarima_forecast", title:"Sales Forecast Report", desc:"Available sales estimates", icon:<ArrowUpRight size={20}/>, color:C.purple },
   { id:"customer", title:"Customer Report", desc:"Customer activity and lifetime value", icon:<Users size={20}/>, color:C.teal },
 ];
 
@@ -34,7 +34,6 @@ function ReportSummary({ type, range }: { type: ReportType; range?: ReportDateRa
     if (type === "sarima_forecast") return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
       {typeof data.start_date === "string" && typeof data.end_date === "string" && <p>{effectiveRange}</p>}
       <p>{forecastExplanation(data)}</p>
-      {typeof data.range_note === "string" && data.range_note.trim() && <p>{data.range_note}</p>}
     </div>;
     if (type === "inventory") {
       const asOf = typeof data.as_of === "string" ? new Date(data.as_of) : null;

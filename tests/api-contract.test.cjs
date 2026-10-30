@@ -56,6 +56,10 @@ let responseData;
 let responseStatus;
 beforeEach(() => {
   api.clearDataCache();
+  const session = new Map();
+  Object.defineProperty(global, 'sessionStorage', { configurable: true, writable: true, value: {
+    getItem: key => session.get(key) ?? null, setItem: (key, value) => session.set(key, String(value)), removeItem: key => session.delete(key), clear: () => session.clear(),
+  } });
   const storage = new Map();
   global.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
   global.window = new EventTarget();
@@ -171,7 +175,7 @@ test('sales dates use the Manila business day across UTC midnight and timestamp 
     ['2026-10-13T15:59:59Z', '2026-10-13'],
     ['invalid', ''],
   ]) assert.equal(api.toSale({ ...transaction, created_at }).date, expected);
-  assert.equal(api.forecastExplanation({ status: 'new_model_status' }), 'Forecast withheld: new model status.');
+  assert.equal(api.forecastExplanation({ status: 'new_model_status' }), 'Forecast information is currently unavailable.');
 });
 
 test('FEFO includes stocked expired batches, excludes disposed stock and orders by expiry', async () => {
@@ -495,7 +499,8 @@ test('forecast periods use the graph endpoint and monthly status uses the regula
   const payload = { status: 'research_only', status_message: 'Publication is withheld pending review.',
     quality_gate: { reasons: ['needs_12_prospective_reviewed_months'] },
     metrics: { retrospective_regular_monthly: { wape_percent: 10.6433, periods: 12 }, prospective_regular_monthly: { wape_percent: null, periods: 0 } } };
-  assert.match(api.forecastExplanation(payload), /Publication is withheld.*needs 12 prospective reviewed months/);
+  assert.equal(api.forecastExplanation(payload), "The forecast is still being checked and is not ready to use.");
+  assert.equal(payload.quality_gate.reasons[0], "needs_12_prospective_reviewed_months");
   assert.equal(api.forecastMetric(payload.metrics.retrospective_regular_monthly), '10.6% WAPE');
   assert.equal(api.forecastMetric(payload.metrics.prospective_regular_monthly), 'Not yet available');
   assert.equal(api.forecastMetric({ wape_percent: 0 }), '0.0% WAPE');
@@ -636,7 +641,9 @@ test('forecast revenue ticks and tooltips retain accurate currency at small and 
 test('checkout sends decimal strings without an automatic report-refresh request', async () => {
   responseData = { id: 7, subtotal: '43.00', total_amount: '43.00', change_due: '7.00' };
   const result = await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80', discount_type: 'fixed', discount_value: '1.50' }], payment_method: 'cash', amount_tendered: '50.00' });
-  assert.deepEqual(JSON.parse(calls[0].data), { customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80', discount_type: 'fixed', discount_value: '1.50' }], payment_method: 'cash', amount_tendered: '50.00' });
+  const { request_id, ...body } = JSON.parse(calls[0].data);
+  assert.match(request_id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(body, { customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80', discount_type: 'fixed', discount_value: '1.50' }], payment_method: 'cash', amount_tendered: '50.00' });
   assert.equal(calls.length, 1);
   assert.equal(result.totalAmount, 43);
   assert.equal(result.changeDue, 7);
@@ -1055,7 +1062,25 @@ test('published forecast requires ready status and finite nonplaceholder values'
   assert.equal(api.publishedForecast({status:'ready',forecast:[{...point,predicted_revenue:'NaN'}]}), null);
   assert.equal(api.publishedForecast({status:'ready',forecast:[{...point,predicted_revenue:null}]}), null);
   assert.deepEqual(api.publishedForecast({status:'ready',forecast:[point]}), point);
-  assert.equal(api.forecastExplanation({status:'ready',status_message:'Published regular monthly forecast.'}), 'Published regular monthly forecast.');
+  assert.equal(api.forecastExplanation({status:'ready',status_message:'Published regular monthly forecast.'}), 'A forecast is available for the selected period.');
+});
+
+for (const [status, expected] of Object.entries({
+  stale_data: 'A current forecast is unavailable because recent sales records are missing.',
+  research_only: 'The forecast is still being checked and is not ready to use.',
+  refresh_required: 'The forecast needs updating.',
+  training_required: 'There is not enough sales history to prepare a forecast yet.',
+  pending_update: 'There is not enough sales history to prepare a forecast yet.',
+  insufficient_history: 'There is not enough sales history to prepare a forecast yet.',
+  unsupported_horizon: 'A forecast is not available for this period.',
+  no_forecasts_in_range: 'No forecast is available for the selected dates.',
+  ready: 'A forecast is available for the selected period.',
+  unexpected: 'Forecast information is currently unavailable.',
+})) test(`client forecast copy maps ${status} without exposing or changing backend diagnostics`, () => {
+  const data = Object.freeze({ status, status_message: 'Technical evidence withheld.', quality_gate: { reasons: ['needs_12_prospective_reviewed_months', 'demo_data_excluded', 'missing_approval'] }, forecast: [{ predicted_revenue: 0 }] });
+  const snapshot = structuredClone(data);
+  assert.equal(api.forecastExplanation(data), expected);
+  assert.deepEqual(data, snapshot);
 });
 
 test('checkout retains authoritative returned prices for the saved receipt', async () => {

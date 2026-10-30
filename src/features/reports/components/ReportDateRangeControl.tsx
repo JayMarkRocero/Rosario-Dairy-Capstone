@@ -49,12 +49,11 @@ export function ReportDateRangeControl({ range, onApply, disabled = false }: Pro
           {([['start_date', 'From'], ['end_date', 'To']] as const).map(([key, label]) => <label key={key} className="block text-xs font-medium text-slate-600">
             {label}
             <input aria-label={`Report ${label.toLowerCase()} date`} type="date" min="0002-01-01" max={revenueBusinessDate()} required
-              aria-describedby={error ? "report-date-error" : "report-date-help"} aria-invalid={!!error}
+              aria-describedby={error ? "report-date-error" : undefined} aria-invalid={!!error}
               className={`mt-1 min-h-11 min-w-0 py-2.5 ${formInputClass}`} value={draft[key]}
               onChange={event => { setDraft(current => ({ ...current, [key]: event.target.value })); setError(""); }} />
           </label>)}
         </fieldset>
-        <p id="report-date-help" className="text-xs leading-relaxed text-slate-500">Dates use Asia/Manila time and apply to all reports. Inventory movements use the selected period; stock health remains current as of its timestamp. Forecasts show available overlapping predictions at their full period value, without prorating or fitting a new model. Use report defaults to restore each report's usual period.</p>
         {range && <p className="text-xs text-slate-500">Applied: {range.start_date} to {range.end_date}</p>}
         {error && <p id="report-date-error" role="alert" className="text-sm text-red-600">{error}</p>}
       </form>

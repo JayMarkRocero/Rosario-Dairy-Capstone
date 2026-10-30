@@ -81,13 +81,15 @@ for (const [period, dates] of Object.entries({
       const connector = elements(tree, node => node.type === ui.ReferenceLine && node.props.segment)[0];
       assert.ok(connector);
       assert.deepEqual(connector.props.segment, [{ x: dates[0], y: 10 }, { x: dates[2], y: 20 }]);
-      assert.equal(connector.props.strokeDasharray, '3 4');
+      assert.equal(connector.props.strokeDasharray, '5 4');
+      assert.equal(connector.props.strokeWidth, 2.5);
       assert.equal(connector.props.ifOverflow, 'discard');
       assert.equal(connector.props['aria-hidden'], 'true');
       assert.equal(connector.props.pointerEvents, 'none');
       assert.equal(connector.props.dataKey, undefined);
       assert.equal(connector.props.name, undefined);
       const lines = elements(tree, node => node.type === ui.Line);
+      assert.equal(connector.props.stroke, lines.find(line => line.props.dataKey === 'past_prediction').props.stroke);
       assert.notEqual(connector.props.stroke, lines.find(line => line.props.dataKey === 'future_prediction').props.stroke);
       assert.deepEqual(lines.map(line => line.props.dataKey), ['past_prediction', 'actual', 'future_prediction']);
       assert.ok(lines.every(line => line.props.connectNulls === false));
@@ -96,8 +98,8 @@ for (const [period, dates] of Object.entries({
       assert.deepEqual(rows, points);
       assert.notEqual(rows[0], points[0]);
       assert.deepEqual(graph, before);
-      assert.match(text(tree), /neutral boundary bridge is for display only/);
-      assert.match(text(tree), /historical and latest-outlook origins can differ/);
+      assert.doesNotMatch(text(tree), /neutral boundary bridge|historical and latest-outlook origins can differ/);
+      assert.match(text(tree), /Current period:/);
     });
   }
 }
@@ -155,16 +157,17 @@ test('refresh-required graphs retain valid issued endpoints but missing Combined
   graph.views.combined = { ...graph.views.combined, points: pair().map(p => ({ ...p, past_prediction: null })) };
   assert.equal(elements(renderChart(graph, 'combined'), node => node.type === ui.ReferenceLine && node.props.segment).length, 0);
   const tooltip = ui.ForecastGraphTooltip({ active: true, payload: [{ payload: graph.views.regular.points[0] }] });
-  assert.match(text(tooltip), /Prediction basis: Reconstructed historical test/);
-  assert.match(text(tooltip), /Past predictions/);
+  assert.match(text(tooltip), /Historical comparison estimate/);
+  assert.match(text(tooltip), /Earlier estimates/);
 });
 
 test('real Recharts SVG draws the connector between the two prediction dots without a fourth legend item', () => {
   const points = pair(); points[0].actual = 5;
+  const connector = elements(renderChart(graphFor('monthly', points), 'combined'), node => node.type === ui.ReferenceLine && node.props.segment)[0];
   const chart = React.createElement(ui.LineChart, { data: points, width: 640, height: 250 },
     React.createElement(ui.XAxis, { dataKey: 'date' }), React.createElement(ui.YAxis, { domain: [0, 25] }),
     React.createElement(ui.Legend),
-    React.createElement(ui.ReferenceLine, { className: 'forecast-boundary-connector', segment: ui.forecastBoundarySegment(points), stroke: '#27AE60', ifOverflow: 'discard' }),
+    React.createElement(ui.ReferenceLine, connector.props),
     ...['past_prediction', 'actual', 'future_prediction'].map(key => React.createElement(ui.Line, { key, dataKey: key, name: key, connectNulls: false, isAnimationActive: false })));
   const html = renderToStaticMarkup(chart);
   assert.match(html, /forecast-boundary-connector/);

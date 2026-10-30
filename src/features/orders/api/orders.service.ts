@@ -1,6 +1,6 @@
 import { businessDate, normalizeSaleItems } from "@/features/sales/utils/manualPricing";
 import http, { ApiError, getAllPages, type PaginatedResponse, type DjangoTransaction } from "@/lib/api";
-import { submitSaleOnce } from "@/lib/saleSubmission";
+import { pendingSale, submitSaleOnce, UnconfirmedSaleError } from "@/lib/saleSubmission";
 import { recordedCashierName } from "@/features/sales/api/sales.service";
 import type { CreateOrderPayload, Order, OrderListLine, OrderListResponse, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
 
@@ -10,6 +10,14 @@ function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
     cancelled: "Cancelled",
   };
   return map[status];
+}
+
+function sendOrder(body: CreateOrderPayload, recover = false): Promise<Order & { transaction: DjangoTransaction }> {
+  return submitSaleOnce("order", body, async requestId => {
+    const { data } = await http.post<Order>("/sales/orders/", { ...body, request_id: requestId });
+    if (!data.transaction) throw new ApiError(502, "The server returned an order without its transaction. Check order history before submitting again.");
+    return { ...data, transaction: data.transaction };
+  }, recover);
 }
 
 export const ordersService = {
@@ -32,11 +40,13 @@ export const ordersService = {
       items: normalizeSaleItems(payload.items),
       ...(payload.amount_tendered != null && { amount_tendered: String(payload.amount_tendered) }),
     };
-    return submitSaleOnce("order", body, async () => {
-      const { data } = await http.post<Order>("/sales/orders/", body);
-      if (!data.transaction) throw new ApiError(502, "The server returned an order without its transaction. Check order history before submitting again.");
-      return { ...data, transaction: data.transaction };
-    });
+    return sendOrder(body);
+  },
+
+  retryPending: async () => {
+    const saved = pendingSale("order");
+    if (!saved) throw new UnconfirmedSaleError("order");
+    return sendOrder(saved.payload as CreateOrderPayload, true);
   },
 
   cancelOrder: async (orderId: number): Promise<Order> => {
