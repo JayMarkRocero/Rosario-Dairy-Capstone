@@ -152,7 +152,9 @@ beforeEach(() => {
   toastErrors = [];
   toastMessages = [];
   const token = `header.${Buffer.from(JSON.stringify({ user_id: 7 })).toString('base64url')}.signature`;
-  global.localStorage = { getItem: key => key === 'rosario_access_token' ? token : null, setItem() {}, removeItem() {} };
+  // Positive encoding flows must exercise durable writes/read-back, not a no-op setter.
+  const persisted = new Map([['rosario_access_token', token]]);
+  global.localStorage = { getItem: key => persisted.get(key) ?? null, setItem: (key, value) => persisted.set(key, String(value)), removeItem: key => persisted.delete(key) };
   global.window = new EventTarget();
   global.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 });
@@ -4671,4 +4673,69 @@ test('pending-payment KPI still counts every order page with its existing meanin
   const card = elements(render(ui.KPICards), node => node.type === 'section' && node.props['aria-label'] === 'Pending Orders')[0];
   assert.ok(elements(card, node => node.type === 'div' && node.props.children === '2').length);
   cleanup();
+});
+
+test('Admin Inventory read-only details follow fresh records and stay open when a product disappears', async () => {
+  const product = { id: 7, catalogKey: 'product-7', name: 'Milk', cat: 'Dairy', stock: 10, expiry: '2099-01-01', low: false };
+  const key = `${ui.dataCacheEpoch()}:inventory:admin`;
+  ui.writeDataCache(key, [product], ['inventory']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:active`, [], ['categories']);
+  let tree = render(ui.AdminInventory); const cleanups = effects.map(effect => effect());
+  elements(tree, node => node.type === ui.ProductTable)[0].props.onRowClick(product);
+  tree = render(ui.AdminInventory);
+  const drawer = value => elements(value, node => node.type === ui.Drawer && node.props.title === 'Product Details')[0];
+  assert.equal(drawer(tree).props.open, true);
+  const fresh = { ...product, stock: 4, expiry: '2099-02-01' };
+  ui.writeDataCache(key, [fresh], ['inventory']); await settle(); tree = render(ui.AdminInventory);
+  assert.equal(elements(drawer(tree), node => node.type?.name === 'ProductDetail')[0].props.p, fresh);
+  ui.writeDataCache(key, [], ['inventory']); await settle(); tree = render(ui.AdminInventory);
+  assert.equal(drawer(tree).props.open, true);
+  assert.equal(elements(drawer(tree), node => node.type?.name === 'ProductDetail').length, 0);
+  assert.equal(elements(drawer(tree).props.footer, node => node.props.children === 'Edit Product')[0].props.disabled, true);
+  cleanups.reverse().forEach(cleanup => cleanup?.());
+});
+
+test('Staff Inventory product and batch details refresh by stable identity without closing', () => {
+  const product = { id: 7, catalogKey: 'product-7', name: 'Milk', cat: 'Dairy', stock: 10, expiry: '2099-01-01', low: false };
+  const props = { columns: [{ key: 'name', header: 'Product' }], data: [product], rowKey: row => row.catalogKey };
+  let tree = render(ui.StaffInventoryTable, props);
+  elements(tree, node => node.type === ui.EnhancedTable)[0].props.onRowClick(product);
+  const fresh = { ...product, stock: 2 };
+  tree = render(ui.StaffInventoryTable, { ...props, data: [fresh] });
+  assert.equal(elements(tree, node => node.type?.name === 'ProductDetail')[0].props.p, fresh);
+  tree = render(ui.StaffInventoryTable, { ...props, data: [] });
+  assert.equal(elements(tree, node => node.type === ui.Drawer)[0].props.open, true);
+  assert.equal(elements(tree, node => node.type?.name === 'ProductDetail').length, 0);
+  const batch = { id: 12, kind: 'product', key: 'product-12', batch: 'B12', quantity: 4 };
+  const batchRow = { ...product, catalogKey: 'expired-product-12', expiredBatch: batch };
+  tree = render(ui.StaffInventoryTable, { ...props, data: [batchRow] });
+  elements(tree, node => node.type === ui.EnhancedTable)[0].props.onRowClick(batchRow);
+  const freshBatch = { ...batch, quantity: 1 };
+  tree = render(ui.StaffInventoryTable, { ...props, data: [{ ...batchRow, expiredBatch: freshBatch }] });
+  assert.equal(elements(tree, node => node.type === ui.BatchDetailsFields)[0].props.batch, freshBatch);
+  tree = render(ui.StaffInventoryTable, { ...props, data: [] });
+  assert.equal(elements(tree, node => node.type === ui.Modal)[0].props.open, true);
+  assert.equal(elements(tree, node => node.type === ui.BatchDetailsFields).length, 0);
+});
+
+test('ProductTable refreshes viewed batch details without resetting an open edit draft', () => {
+  const batch = { id: 7, itemId: 1, key: 'product-7', kind: 'product', name: 'Cream', batch: 'EX-7', quantity: 2,
+    category: 'Dairy', unitCost: '1.00', dateReceived: '2000-01-01', expiry: '2000-02-01', status: 'expired', notes: 'Old note' };
+  const row = { id: 1, catalogKey: 'expired-product-7', name: 'Cream', cat: 'Dairy', stock: 2, expiry: batch.expiry, expiredBatch: batch };
+  const props = { data: [row], rowKey: item => item.catalogKey, columns: [{ key: 'name', header: 'Product' }] };
+  let tree = render(ui.ProductTable, props);
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  table.props.onRowClick(row);
+  const actions = elements(table.props.columns.at(-1).render(row), node => !!node.props.label);
+  actions.find(node => node.props.label.startsWith('Edit batch')).props.onClick();
+  tree = render(ui.ProductTable, props);
+  const edit = elements(tree, node => node.props.title === 'Edit batch')[0];
+  elements(edit, node => node.type === 'textarea')[0].props.onChange({ target: { value: 'Unsaved draft' } });
+  const fresh = { ...batch, quantity: 1, notes: 'Server note' };
+  tree = render(ui.ProductTable, { ...props, data: [{ ...row, expiredBatch: fresh, stock: 1 }] });
+  assert.equal(elements(tree, node => node.type === ui.BatchDetailsFields)[0].props.batch, fresh);
+  assert.equal(elements(elements(tree, node => node.props.title === 'Edit batch')[0], node => node.type === 'textarea')[0].props.value, 'Unsaved draft');
+  tree = render(ui.ProductTable, { ...props, data: [] });
+  assert.equal(elements(tree, node => node.props.title === 'Expired batch details')[0].props.open, true);
+  assert.equal(elements(tree, node => node.type === ui.BatchDetailsFields).length, 0);
 });

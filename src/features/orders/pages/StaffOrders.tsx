@@ -1,3 +1,4 @@
+import { formatRecordedMoney, recordedPesos } from "@/features/sales/utils/recordedMoney";
 import { PaymentStatusBadge } from "@/features/sales/components/PaymentStatusBadge";
  import { ModuleSubheading } from "@/components/navigation/ModuleSubheading";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
@@ -44,7 +45,7 @@ export function StaffOrders() {
     { key:"customer", header:"Customer", align:"left", width:"22%", sortKey:o=>o.customer, render:o=><span className="font-medium text-sm">{o.customer}</span> },
     { key:"status", header:"Status", align:"center", width:"18%", render:o=><StatusBadge status={o.status}/> },
     { key:"date", header:"Date", align:"center", width:"18%", render:o=><span className="text-xs" style={{color:C.muted}}>{o.date}</span> },
-    { key:"total", header:"Total", align:"center", width:"15%", sortKey:o=>o.total, render:o=><span className="font-medium text-sm">{o.total == null ? "Not recorded" : `₱${o.total.toLocaleString()}`}</span> },
+    { key:"total", header:"Total", align:"center", width:"15%", sortKey:o=>o.total, render:o=><span className="font-medium text-sm">{recordedPesos(o.recordedAmounts?.total ?? o.total)}</span> },
     { key:"actions", header:"Actions", align:"center", width:"12%", render:o=><div onClick={e=>e.stopPropagation()}><ActionButton label="View details" onClick={()=>view(o)}><Eye size={13}/></ActionButton></div> },
   ];
 
@@ -60,7 +61,7 @@ export function StaffOrders() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>
         <StatusBadge status={selected.status}/> <PaymentStatusBadge status={selected.paymentStatus}/>
         {selected.warning&&<div className="p-3 rounded-xl text-sm" style={{backgroundColor:C.orange+"12",color:C.orange}}>{selected.warning}</div>}
-        <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>{selected.items.map((item,i)=><div key={i} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:justify-between sm:gap-3"><div className="min-w-0"><div className="break-words font-medium">{item.product}</div><div className="text-xs" style={{color:C.muted}}>Qty: {item.quantity}</div></div><b className="shrink-0">{item.netAmount == null ? `Subtotal PHP ${item.subtotal.toLocaleString()}` : `Line PHP ${item.netAmount.toLocaleString()}`}</b></div>)}<div className="space-y-1 px-4 py-3" style={{backgroundColor:C.navy+"08"}}><div className="flex justify-between text-sm"><span>Subtotal</span><span>{selected.subtotal == null ? "Not recorded" : `₱${selected.subtotal.toLocaleString()}`}</span></div><div className="flex justify-between font-bold"><span>Total</span><span style={{color:C.blue}}>{selected.total == null ? "Not recorded" : `₱${selected.total.toLocaleString()}`}</span></div></div></div>
+        <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>{selected.items.map((item,i)=><div key={i} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:justify-between sm:gap-3"><div className="min-w-0"><div className="break-words font-medium">{item.product}</div><div className="text-xs" style={{color:C.muted}}>Qty: {item.quantity}</div></div><b className="shrink-0">{item.netAmount == null ? `Subtotal PHP ${formatRecordedMoney(item.recordedAmounts?.subtotal ?? item.subtotal)}` : `Line PHP ${formatRecordedMoney(item.recordedAmounts?.netAmount ?? item.netAmount)}`}</b></div>)}<div className="space-y-1 px-4 py-3" style={{backgroundColor:C.navy+"08"}}><div className="flex justify-between text-sm"><span>Subtotal</span><span>{recordedPesos(selected.recordedAmounts?.subtotal ?? selected.subtotal)}</span></div><div className="flex justify-between font-bold"><span>Total</span><span style={{color:C.blue}}>{recordedPesos(selected.recordedAmounts?.total ?? selected.total)}</span></div></div></div>
       </div>}
     </Drawer>
     <CreateOrderModal open={createOpen} onClose={()=>setCreateOpen(false)} onCreated={refresh}/>

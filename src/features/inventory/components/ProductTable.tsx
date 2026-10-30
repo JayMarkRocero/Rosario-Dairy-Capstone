@@ -1,4 +1,5 @@
 import { BatchDetailsFields } from "./BatchDetailsFields";
+import { currentInventoryRecord, currentBatchRecord } from "../utils/currentRecord";
 import { EnhancedTable, type Column } from '@/components/data-display/EnhancedTable';
 import { canDisposeExpiredBatch, inventoryService, type ExpiredInventoryBatch } from '@/features/inventory/api/inventory.service';
 import { useRef, useState, type ComponentProps } from 'react';
@@ -20,6 +21,8 @@ export function ProductTable(props: Props) {
   const [editDraft, setEditDraft] = useState({ price: '', notes: '' });
   const openBatchEdit = (item: ExpiredInventoryBatch) => { setEditBatch(item); setEditDraft({ price: item.unitCost ?? "", notes: item.notes || '' }); };
   const [details, setDetails] = useState<ExpiredInventoryBatch | null>(null);
+  const currentProduct = currentInventoryRecord(props.data, productDetails);
+  const currentBatch = currentBatchRecord(props.data, details);
   const [disposal, setDisposal] = useState<ExpiredInventoryBatch | null>(null);
   const [saving, setSaving] = useState(false);
   const submissionLock = useRef(false);
@@ -74,7 +77,7 @@ export function ProductTable(props: Props) {
     renderMobileRow={props.readOnly ? item => <StaffInventoryCard product={item} onView={view} /> : props.renderMobileRow ? (item, index) => item.expiredBatch ? <MobileInventoryCard product={item} busy={saving} deleteDisabled={!canDisposeExpiredBatch(item.expiredBatch)}
       onEdit={() => openBatchEdit(item.expiredBatch!)} onDelete={() => setDisposal(item.expiredBatch!)} /> : props.renderMobileRow!(item, index) : undefined} />
     <Modal open={!!productDetails} onClose={() => setProductDetails(null)} title="Product details" size="sm">
-      {productDetails && <div className="space-y-3 text-sm"><p className="font-semibold">{productDetails.name}</p><p>{productDetails.cat}</p><p>Stock: {productDetails.stock} {productDetails.unit}</p><p>Expiry: {productDetails.expiry || 'Not available'}</p></div>}
+      {currentProduct ? <div className="space-y-3 text-sm"><p className="font-semibold">{currentProduct.name}</p><p>{currentProduct.cat}</p><p>Stock: {currentProduct.stock} {currentProduct.unit}</p><p>Expiry: {currentProduct.expiry || 'Not available'}</p></div> : <p role="status" className="text-sm text-slate-500">This product is not available in the current results.</p>}
     </Modal>
     <Modal open={!!editBatch} busy={saving} onClose={() => { if (!submissionLock.current) setEditBatch(null); }} title="Edit batch" subtitle={editBatch?.batch} size="sm">
       <div className="space-y-4">
@@ -84,7 +87,7 @@ export function ProductTable(props: Props) {
       </div>
     </Modal>
     <Modal open={!!details} onClose={() => setDetails(null)} title="Expired batch details" size="sm">
-      {details && <BatchDetailsFields batch={details} />}
+      {currentBatch ? <BatchDetailsFields batch={currentBatch} /> : <p role="status" className="text-sm text-slate-500">This batch is not available in the current results.</p>}
     </Modal>
     <ConfirmDialog open={!!disposal} onClose={() => { if (!submissionLock.current) setDisposal(null); }}
       onConfirm={() => void dispose()} title="Dispose expired batch?" confirmLabel="Dispose / Write Off" loading={saving}

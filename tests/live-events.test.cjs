@@ -227,3 +227,29 @@ test('definitively missing records clear stale cached details while throttling a
     assert.deepEqual(api.readDataCache('detail').data, status === 404 || status === 410 ? undefined : ['existing']);
   }
 });
+
+test('five-second fallback coalesces slow reads without aborting or hiding completed data', async () => {
+  global.fetch = async () => new Response('', { status: 503, headers: { 'Retry-After': '60' } });
+  const pending = [];
+  const load = () => api.fetchDataCache('slow-orders', signal => new Promise(resolve => pending.push({ signal, resolve })), ['orders'], false, { cancelable: true }).catch(() => {});
+  subscriptions.push(api.subscribeDataCache('slow-orders', () => {
+    const snapshot = api.readDataCache('slow-orders');
+    if (!snapshot.updatedAt && !snapshot.error) void load();
+  }));
+  void load(); await settle(); await start();
+  await tick(16_000);
+  assert.equal(pending.length, 1); assert.equal(pending[0].signal.aborted, false);
+  pending[0].resolve(['first complete result']); await settle();
+  assert.deepEqual(api.readDataCache('slow-orders').data, ['first complete result']);
+  assert.equal(pending.length, 2, 'Missed polling ticks queue one follow-up');
+  await tick(10_000); assert.equal(pending.length, 2); assert.equal(pending[1].signal.aborted, false);
+  pending[1].resolve(['second complete result']); await settle();
+  assert.deepEqual(api.readDataCache('slow-orders').data, ['second complete result']);
+  assert.equal(pending.length, 3);
+  // Confirmed mutations still supersede obsolete reads and protect fresh state.
+  api.invalidateDataCache(['orders']); await settle();
+  assert.equal(pending[2].signal.aborted, true); assert.equal(pending.length, 4);
+  pending[3].resolve(['fresh after mutation']); await settle();
+  pending[2].resolve(['obsolete']); await settle();
+  assert.deepEqual(api.readDataCache('slow-orders').data, ['fresh after mutation']);
+});

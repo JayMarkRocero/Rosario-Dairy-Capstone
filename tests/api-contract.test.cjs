@@ -161,7 +161,8 @@ test('orders map compact nested and flat product names without requiring a produ
     responseData = { count: 1, next: null, results: [{ ...base, items: [line] }] };
     const [order] = await api.ordersService.getAll();
     assert.equal(order.staffId, 7);
-    assert.deepEqual(order.items, [{ product: name, quantity: 2, unitPrice: 5, subtotal: 10, netAmount: null }]);
+    assert.deepEqual(order.items, [{ product: name, quantity: 2, unitPrice: 5, subtotal: 10, netAmount: null,
+      recordedAmounts: { unitPrice: '5.00', subtotal: '10.00', netAmount: null } }]);
     assert.equal((await api.ordersService.getRecent())[0].items[0].product, name);
   }
   assert.equal(api.mapOrder({ ...base, transaction: { ...base.transaction, source_reference: 'imported' }, items: [] }).staffId, null);

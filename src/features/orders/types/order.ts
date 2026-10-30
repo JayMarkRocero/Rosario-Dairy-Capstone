@@ -47,6 +47,7 @@ export interface OrderListResponse extends Omit<Order, "items" | "transaction"> 
 export type DisplayOrderStatus = "Fulfilled" | "Cancelled";
 
 export interface OrderItemDisplay {
+  recordedAmounts?: { unitPrice: string | null; subtotal: string | null; netAmount: string | null };
   netAmount?: number | null;
   product: string;
   quantity: number;
@@ -55,6 +56,7 @@ export interface OrderItemDisplay {
 }
 
 export interface OrderListItem {
+  recordedAmounts?: { total: string | null; subtotal: string | null; amountTendered: string | null; changeDue: string | null };
   id: number;
   invoiceNumber: string;
   isHistorical: boolean;

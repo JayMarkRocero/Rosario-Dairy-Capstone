@@ -3,6 +3,7 @@ import { hasRetiredDiscount } from "@/features/sales/utils/retiredPricing";
 import http, { ApiError, getAllPages, type PaginatedResponse, type DjangoTransaction } from "@/lib/api";
 import { pendingSale, submitSaleOnce, UnconfirmedSaleError } from "@/lib/saleSubmission";
 import { recordedCashierName } from "@/features/sales/api/sales.service";
+import { recordedCents } from "@/features/sales/utils/recordedMoney";
 import type { CreateOrderPayload, Order, OrderListLine, OrderListResponse, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
 
 function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
@@ -26,12 +27,6 @@ export const ordersService = {
     const orders = await getAllPages<OrderListResponse>("/sales/orders/", { page_size: 500 }, signal);
     // Sort the complete list before either Orders view filters or paginates it.
     return [...orders].sort((a, b) => b.id - a.id).map(mapOrder);
-  },
-
-  /** @deprecated No active UI caller; retained for existing service consumers. */
-  getById: async (orderId: number): Promise<Order> => {
-    const { data } = await http.get<Order>(`/sales/orders/${orderId}/`);
-    return data;
   },
 
   createOrder: async (payload: CreateOrderPayload): Promise<Order & { transaction: DjangoTransaction }> => {
@@ -65,7 +60,10 @@ export const ordersService = {
 export function mapOrder(o: OrderListResponse): OrderListItem {
   const transaction = o.transaction;
   const amount = (value: unknown): number | null => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
+  const recorded = (value: string | null | undefined): string | null => recordedCents(value) === null ? null : value!;
   return {
+    recordedAmounts: { total: recorded(transaction?.total_amount), subtotal: recorded(transaction?.subtotal),
+      amountTendered: recorded(transaction?.amount_tendered), changeDue: recorded(transaction?.change_due) },
     id: o.id,
     invoiceNumber: transaction?.transaction_number ?? transaction?.source_invoice_number ?? "",
     isHistorical: Boolean(transaction?.source_reference),
@@ -85,6 +83,7 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
     changeDue: amount(transaction?.change_due),
     warning: o.warning,
     items: o.items.map(item => ({
+      recordedAmounts: { unitPrice: recorded(item.unit_price), subtotal: recorded(item.subtotal), netAmount: recorded(item.total_amount) },
       product: orderProductName(item),
       quantity: parseFloat(item.quantity),
       unitPrice: parseFloat(item.unit_price),

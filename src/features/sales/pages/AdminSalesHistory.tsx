@@ -7,10 +7,11 @@ import { TransactionDetails } from "@/features/sales/components/TransactionDetai
 import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
-import { salesService, type Sale } from "@/features/sales/api/sales.service";
+import { salesService, recordedSaleAmount, type Sale } from "@/features/sales/api/sales.service";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { PaymentStatusBadge } from "../components/PaymentStatusBadge";
 import { encodedByLabel } from "../utils/historyLabels";
+import { recordedPesos, sumRecordedMoney } from "../utils/recordedMoney";
 
 const PAYMENT_METHODS = ["Cash", "Online"];
 
@@ -30,7 +31,7 @@ export function AdminSalesHistory() {
   }, [records, paymentFilter]);
 
   const summary = useMemo(() => {
-    const total = records.reduce((sum, r) => sum + r.total, 0);
+    const total = sumRecordedMoney(records.map(recordedSaleAmount));
     return { total, count: records.length };
   }, [records]);
 
@@ -63,7 +64,7 @@ export function AdminSalesHistory() {
         );
       } },
     { key:"total", header:"Total", align:"center", width:"12%", sortKey: r => r.total,
-      render: r => <span className="font-semibold text-sm whitespace-nowrap" style={{ color: C.text }}>₱{r.total.toLocaleString()}</span> },
+      render: r => <span className="font-semibold text-sm whitespace-nowrap" style={{ color: C.text }}>{recordedPesos(recordedSaleAmount(r))}</span> },
     { key:"actions", header:"Actions", align:"center", width:"10%",
       render: r => (
         <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
@@ -77,7 +78,7 @@ export function AdminSalesHistory() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 flex-shrink-0">
         <Card className="px-3.5 py-3 min-w-0">
           <div className="font-bold text-xl truncate" style={{ color: C.blue }}>
-            {query.error ? "Unavailable" : `₱${summary.total.toLocaleString()}`}
+            {query.error ? "Unavailable" : recordedPesos(summary.total, 0, "Unavailable")}
           </div>
           <div className="font-medium text-sm mt-1" style={{ color: C.text }}>Total Revenue</div>
           <div className="text-xs mt-0.5" style={{ color: C.muted }}>{query.error ? "" : `${summary.count} transactions`}</div>

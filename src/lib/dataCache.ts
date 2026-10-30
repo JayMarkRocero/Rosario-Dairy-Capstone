@@ -3,13 +3,18 @@ export const DEFAULT_STALE_TIME = 3 * 60 * 1000;
 export const CACHE_GROUPS = ["dashboard", "orders", "sales", "inventory", "categories", "customers", "reports", "users", "settings"] as const;
 export type CacheGroup = typeof CACHE_GROUPS[number];
 export interface CacheSnapshot<T> { data?: T; error?: unknown; updatedAt: number; }
-interface Entry { snapshot: CacheSnapshot<unknown>; groups: Set<CacheGroup>; revision: number; pending?: Promise<unknown>; revalidate?: boolean; controller?: AbortController; }
+interface Entry { snapshot: CacheSnapshot<unknown>; groups: Set<CacheGroup>; revision: number; pending?: Promise<unknown>; revalidate?: boolean; pollAgain?: boolean; controller?: AbortController; }
 export interface CacheRequestOptions { cancelable?: boolean; }
 const entries = new Map<string, Entry>();
 const listeners = new Map<string, Set<() => void>>();
+const epochListeners = new Set<() => void>();
 let epoch = 0;
 let eventWindow: Window | undefined;
 export function dataCacheEpoch() { return epoch; }
+export function subscribeDataCacheEpoch(listener: () => void) {
+  epochListeners.add(listener);
+  return () => { epochListeners.delete(listener); };
+}
 
 function entry(key: string): Entry {
   let value = entries.get(key);
@@ -19,7 +24,7 @@ function entry(key: string): Entry {
 function notify(key: string) { listeners.get(key)?.forEach(listener => listener()); }
 function cancelPending(value: Entry) {
   const controller = value.controller;
-  value.controller = undefined; value.pending = undefined; value.revalidate = false;
+  value.controller = undefined; value.pending = undefined; value.revalidate = false; value.pollAgain = false;
   controller?.abort();
 }
 export function readDataCache<T>(key: string): CacheSnapshot<T> { return entry(key).snapshot as CacheSnapshot<T>; }
@@ -52,7 +57,7 @@ export function fetchDataCache<T>(key: string, fetcher: (signal?: AbortSignal) =
   const checkCanceled = () => { if (controller?.signal.aborted) throw new DOMException("Request canceled", "AbortError"); };
   const pending = Promise.resolve().then(() => { checkCanceled(); return fetcher(controller?.signal); }).then(data => {
     checkCanceled();
-    if (session === epoch && revision === value.revision) { value.snapshot = { data, updatedAt: Date.now() }; notify(key); }
+    if (session === epoch && revision === value.revision) { value.snapshot = { data, updatedAt: value.pollAgain ? 0 : Date.now() }; notify(key); }
     return data;
   }, error => {
     if (!controller?.signal.aborted && session === epoch && revision === value.revision) {
@@ -66,14 +71,17 @@ export function fetchDataCache<T>(key: string, fetcher: (signal?: AbortSignal) =
   }).finally(() => {
     if (value.pending !== pending) return;
     value.pending = undefined; value.controller = undefined;
-    if (value.revalidate && session === epoch) { value.revalidate = false; notify(key); }
+    if ((value.revalidate || value.pollAgain) && session === epoch) { value.revalidate = false; value.pollAgain = false; notify(key); }
   });
   value.pending = pending;
   return pending;
 }
-export function invalidateDataCache(groups: CacheGroup[], { deferPending = false } = {}) {
+export function invalidateDataCache(groups: CacheGroup[], { deferPending = false, poll = false } = {}) {
   for (const [key, value] of entries) {
     if (!groups.some(group => value.groups.has(group))) continue;
+    // A periodic read does not prove the server changed. Let a slow read finish
+    // and display its result, then coalesce all missed ticks into one refresh.
+    if (poll && value.pending) { value.pollAgain = true; continue; }
     if (deferPending && value.pending && value.revalidate && !value.controller) continue;
     value.revision++;
     // Abort signal-aware GETs immediately; legacy/shared loaders keep their
@@ -89,6 +97,7 @@ export function clearDataCache() {
   epoch++;
   for (const value of entries.values()) cancelPending(value);
   entries.clear();
+  epochListeners.forEach(listener => listener());
   for (const key of listeners.keys()) notify(key);
 }
 export function ensureCacheEvents() {

@@ -10,11 +10,13 @@ import type { InventoryItem } from "@/features/inventory/types/inventory";
 import { StaffInventoryCard } from "./StaffInventoryCard";
 import { BatchDetailsFields } from "./BatchDetailsFields";
 import { ProductDetail } from "./ProductDetail";
+import { currentInventoryRecord } from "../utils/currentRecord";
 
 type Props = ComponentProps<typeof EnhancedTable<InventoryItem>> & { errorContent?: ReactNode };
 
 export function StaffInventoryTable({ errorContent, ...props }: Props) {
   const [selected, setSelected] = useState<InventoryItem | null>(null);
+  const current = currentInventoryRecord(props.data, selected);
   const view = (item: InventoryItem) => props.onRowClick ? props.onRowClick(item) : setSelected(item);
   const actionColumn: Column<InventoryItem> = {
     key: "actions", header: "Actions", align: "center", width: "12%",
@@ -36,10 +38,10 @@ export function StaffInventoryTable({ errorContent, ...props }: Props) {
     <Drawer open={!!selected && !selected.expiredBatch} onClose={() => setSelected(null)}
       title="Product Details" subtitle="View full product information" size="sm"
       footer={<Btn variant="secondary" onClick={() => setSelected(null)}>Close</Btn>}>
-      {selected && !selected.expiredBatch && <ProductDetail p={selected} />}
+      {current && !current.expiredBatch ? <ProductDetail p={current} /> : <p role="status" className="text-sm text-slate-500">This product is not available in the current results.</p>}
     </Drawer>
     <Modal open={!!selected?.expiredBatch} onClose={() => setSelected(null)} title="Expired batch details" size="sm">
-      {selected?.expiredBatch && <BatchDetailsFields batch={selected.expiredBatch} />}
+      {current?.expiredBatch ? <BatchDetailsFields batch={current.expiredBatch} /> : <p role="status" className="text-sm text-slate-500">This batch is not available in the current results.</p>}
     </Modal>
   </>;
 }

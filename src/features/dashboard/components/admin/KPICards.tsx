@@ -4,6 +4,7 @@ import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { C } from "@/styles/tokens/colors";
 import { isLowStock } from "@/features/inventory/utils/stock";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
+import { recordedPesos, sumRecordedMoney, type RecordedMoney } from "@/features/sales/utils/recordedMoney";
 import type { OrderListResponse } from "@/features/orders/types/order";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 interface Metrics {
   todaySales: number; yesterdaySales: number; lowStock: number; expiringSoon: number; pendingOrders: number;
+  todayRecorded?: string | null; yesterdayRecorded?: string | null;
 }
 
 // Align with Django's Manila business day, including around UTC midnight.
@@ -24,7 +26,7 @@ function businessDate(offsetDays = 0): string {
   date.setUTCDate(date.getUTCDate() + offsetDays);
   return date.toISOString().slice(0, 10);
 }
-const php = (value: number) => `₱${value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const php = (value: RecordedMoney) => recordedPesos(value, 2, "Unavailable");
 const neutralBadge = "text-slate-600 bg-slate-100";
 
 export function KPICards({ pendingOrderCount }: Props = {}) {
@@ -41,6 +43,8 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
     const total = (rows: DjangoTransaction[]) => rows.reduce((sum, row) => sum + Number(row.total_amount), 0);
     return {
         todaySales: total(todayTransactions), yesterdaySales: total(yesterdayTransactions),
+        todayRecorded: sumRecordedMoney(todayTransactions.map(row => row.total_amount)),
+        yesterdayRecorded: sumRecordedMoney(yesterdayTransactions.map(row => row.total_amount)),
         lowStock: products.filter(product => product.is_active && isLowStock(product.total_stock, product.low_stock_threshold)).length,
         expiringSoon: batches.filter(batch => batch.product.is_active && batch.status === "available"
           && Number(batch.remaining_quantity) > 0 && batch.expiration_date >= today).length,
@@ -60,9 +64,9 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
   const expiringSoon = metrics?.expiringSoon ?? 0;
   const pending = pendingOrderCount ?? metrics?.pendingOrders ?? 0;
   const cards = [
-    { title: "Today's Sales", value: php(today), icon: DollarSign, color: C.green,
+    { title: "Today's Sales", value: php(metrics?.todayRecorded !== undefined ? metrics.todayRecorded : today), icon: DollarSign, color: C.green,
       badge: salesBadge, badgeClass: change !== null && change > 0 ? "text-green-700 bg-green-50" : change !== null && change < 0 ? "text-red-700 bg-red-50" : neutralBadge,
-      detail: `Completed sales · ${php(yesterday)} yesterday` },
+      detail: `Completed sales · ${php(metrics?.yesterdayRecorded !== undefined ? metrics.yesterdayRecorded : yesterday)} yesterday` },
     { title: "Low Stock Alerts", value: String(lowStock), icon: AlertTriangle, color: C.red,
       badge: lowStock > 0 ? "Action Required" : "All Clear", badgeClass: lowStock > 0 ? "text-red-700 bg-red-50" : neutralBadge,
       detail: "Products at or below the global reorder threshold" },

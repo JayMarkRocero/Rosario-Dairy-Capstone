@@ -1,13 +1,14 @@
 import type { Sale } from "@/features/sales/api/sales.service";
 import type { DjangoTransactionItem } from "@/lib/api";
 import { encodedByLabel } from "./historyLabels";
+import { formatRecordedMoney, sumRecordedMoney } from "./recordedMoney";
 export const receiptMoney = (value: string | number | null | undefined) => {
   if (value == null || value === "") return "Not provided";
-  const amount = Number(value);
-  return Number.isFinite(amount) ? `PHP ${amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Not provided";
+  const amount = formatRecordedMoney(value, 2, "");
+  return amount ? `PHP ${amount}` : "Not provided";
 };
 const sumRecorded = (items: DjangoTransactionItem[], field: "subtotal" | "total_amount" | "source_line_total") =>
-  items.some(item => item[field] == null) ? null : items.reduce((sum, item) => sum + Math.round(Number(item[field]) * 100), 0) / 100;
+  sumRecordedMoney(items.map(item => item[field]));
 export function receiptDetails(sale: Sale) {
   const transaction = sale.transaction;
   const dateTime = (value?: string | null) => {

@@ -9,9 +9,11 @@ import { Modal } from "@/components/overlays/Modal";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { encodingService } from "../api/encoding.service";
-import { toSale, type Sale } from "../api/sales.service";
+import { toSale, recordedSaleAmount, type Sale } from "../api/sales.service";
 import { SaleComposer } from "../components/SaleComposer";
 import { PaymentStatusBadge } from "../components/PaymentStatusBadge";
+import { encodedByLabel } from "../utils/historyLabels";
+import { recordedPesos } from "../utils/recordedMoney";
 import { TransactionDetails } from "../components/TransactionDetails";
 import { MobileSaleCard } from "../components/MobileSaleCard";
 import { filterSelectClass } from "@/styles/controlClasses";
@@ -32,9 +34,9 @@ export function SalesEncoding() {
     { key: "receipt", header: "SI Number", width: "14%", render: sale => <span className="block truncate tabular-nums text-xs" title={sale.receipt}>{sale.receipt}</span> },
     { key: "customer", header: "Customer", width: "20%", render: sale => <span className="block truncate text-sm" title={sale.customer}>{sale.customer}</span> },
     { key: "date", header: "Sales date", width: "14%", render: sale => <span className="text-xs">{sale.date}</span> },
-    { key: "cashier", header: "Entered by", width: "16%", render: sale => <span className="block truncate text-xs">{sale.cashier}</span> },
+    { key: "cashier", header: "Entered by", width: "16%", render: sale => <span className="block truncate text-xs" title={encodedByLabel(sale.transaction) ?? "Not recorded"}>{encodedByLabel(sale.transaction) ?? "Not recorded"}</span> },
     { key: "payment", header: "Payment", width: "14%", render: sale => <PaymentStatusBadge status={sale.transaction.payment_status}/> },
-    { key: "total", header: "Total", width: "12%", render: sale => <span className="text-sm font-semibold">₱{sale.total.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span> },
+    { key: "total", header: "Total", width: "12%", render: sale => <span className="text-sm font-semibold">{recordedPesos(recordedSaleAmount(sale), 2)}</span> },
     { key: "actions", header: "Actions", width: "10%", align: "center", render: sale => <ActionButton label="View encoded transaction" onClick={() => setSelected(sale)}><Eye size={14}/></ActionButton> },
   ];
   return <div className="records-page flex w-full max-w-[1400px] mx-auto flex-col gap-3 p-4 sm:p-6">

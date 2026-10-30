@@ -10,6 +10,23 @@ export interface PendingRequest<T> {
 
 const remembered = new Map<string, PendingRequest<unknown>>();
 const overrides = new Map<string, PendingRequest<unknown> | null>();
+const durableStorageMessage = "Browser storage is unavailable or could not be verified. Enable local storage before submitting or recovering a sales entry. Your saved submission has not been changed.";
+
+function matches<T>(raw: string | null, pending: PendingRequest<T>): boolean {
+  if (raw === null) return false;
+  try {
+    const saved = JSON.parse(raw) as PendingRequest<T>;
+    return saved.key === pending.key && saved.id === pending.id && saved.fingerprint === pending.fingerprint
+      && JSON.stringify(saved.payload) === JSON.stringify(pending.payload);
+  } catch { return false; }
+}
+
+export function verifyDurablePendingRequest<T>(pending: PendingRequest<T>): void {
+  try {
+    if (matches(localStorage.getItem(pending.key), pending)) return;
+  } catch { /* An in-memory fallback cannot protect a reload after a write. */ }
+  throw new Error(durableStorageMessage);
+}
 
 function requestKey(operation: string) {
   return `rosario:pending-${operation}:${getSessionUserId() ?? `session-${getSessionGeneration()}`}`;
@@ -40,8 +57,19 @@ export function readPendingRequest<T>(operation: string): PendingRequest<T> | nu
   return read<T>(requestKey(operation));
 }
 
-export function storePendingRequest<T>(operation: string, id: string, fingerprint: string, payload: T): PendingRequest<T> {
+export function storePendingRequest<T>(operation: string, id: string, fingerprint: string, payload: T, { durable = false } = {}): PendingRequest<T> {
   const pending = { key: requestKey(operation), id, fingerprint, payload };
+  if (durable) {
+    try {
+      const existing = localStorage.getItem(pending.key);
+      // Never overwrite a saved request that could not be restored/validated.
+      if (existing !== null && !matches(existing, pending)) throw new Error(durableStorageMessage);
+      if (existing === null) localStorage.setItem(pending.key, JSON.stringify(pending));
+      verifyDurablePendingRequest(pending);
+    } catch { throw new Error(durableStorageMessage); }
+    remembered.set(pending.key, pending); overrides.delete(pending.key);
+    return pending;
+  }
   remembered.set(pending.key, pending);
   try {
     localStorage.setItem(pending.key, JSON.stringify(pending));
@@ -53,9 +81,19 @@ export function storePendingRequest<T>(operation: string, id: string, fingerprin
   return pending;
 }
 
-export function clearPendingRequest<T>(pending: PendingRequest<T>): void {
+export function clearPendingRequest<T>(pending: PendingRequest<T>, { durable = false } = {}): boolean {
+  if (durable) {
+    try {
+      // Use persisted identity, never a memory override, before deletion.
+      if (!matches(localStorage.getItem(pending.key), pending)) return false;
+      localStorage.removeItem(pending.key);
+      if (localStorage.getItem(pending.key) !== null) return false;
+      remembered.delete(pending.key); overrides.delete(pending.key);
+      return true;
+    } catch { return false; }
+  }
   // A late response must not erase a newer attempt or another account's draft.
-  if (read(pending.key)?.id !== pending.id) return;
+  if (read(pending.key)?.id !== pending.id) return false;
   remembered.delete(pending.key);
   try {
     localStorage.removeItem(pending.key);
@@ -63,6 +101,7 @@ export function clearPendingRequest<T>(pending: PendingRequest<T>): void {
   } catch {
     overrides.set(pending.key, null);
   }
+  return true;
 }
 
 export function isDefiniteRequestFailure(error: unknown): boolean {

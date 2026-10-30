@@ -17,6 +17,7 @@ import { Drawer } from "@/components/overlays/Drawer";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { type Column } from "@/components/data-display/EnhancedTable";
 import { ProductDetail } from "@/features/inventory/components/ProductDetail";
+import { currentInventoryRecord } from "@/features/inventory/utils/currentRecord";
 
 import { C } from "@/styles/tokens/colors";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
@@ -109,6 +110,7 @@ export function AdminInventory() {
   const [restockQuery, setRestockQuery] = useState("");
   const [restockForm, setRestockForm] = useState({ quantity:"", expiry:"" });
   const [selected,    setSelected]   = useState<InventoryItem | null>(null);
+  const viewedProduct = currentInventoryRecord(items, selected);
   const [form,        setForm]       = useState<FormState>(EMPTY_FORM);
   const [loading,     setLoading]    = useState(false);
   const submissionLock = useRef(false);
@@ -449,12 +451,12 @@ export function AdminInventory() {
         footer={
           <>
             <Btn variant="secondary" onClick={() => setViewOpen(false)}>Close</Btn>
-            <Btn variant="primary" onClick={() => { setViewOpen(false); selected && openEdit(selected); }}>
+            <Btn variant="primary" disabled={!viewedProduct} onClick={() => { setViewOpen(false); viewedProduct && openEdit(viewedProduct); }}>
               Edit Product
             </Btn>
           </>
         }>
-        {selected && <ProductDetail p={selected}/>}
+        {viewedProduct ? <ProductDetail p={viewedProduct}/> : <p role="status" className="text-sm text-slate-500">This product is not available in the current records.</p>}
       </Drawer>
 
       {/* Delete Confirm */}

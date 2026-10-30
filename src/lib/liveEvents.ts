@@ -46,21 +46,30 @@ export function startLiveUpdates(role: "admin" | "staff", recheckSession: () => 
   let pollTimer: ReturnType<typeof setInterval> | undefined, watchdog: ReturnType<typeof setTimeout> | undefined;
   let connection: AbortController | undefined, reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   const queued = new Set<CacheGroup>();
+  const polled = new Set<CacheGroup>();
   const current = () => !stopped && getSessionGeneration() === session && dataCacheEpoch() === epoch && !!getAccessToken();
   const visible = () => current() && document.visibilityState !== "hidden" && navigator.onLine !== false;
-  const queue = (changed: CacheGroup[]) => {
-    changed.forEach(group => { if (groups.includes(group)) queued.add(group); });
-    if (flushTimer || !queued.size) return;
+  const queue = (changed: CacheGroup[], poll = false) => {
+    changed.forEach(group => {
+      if (!groups.includes(group)) return;
+      if (poll) { if (!queued.has(group)) polled.add(group); }
+      else { queued.add(group); polled.delete(group); }
+    });
+    if (flushTimer || !queued.size && !polled.size) return;
     flushTimer = setTimeout(() => {
       flushTimer = undefined;
-      const pending = [...queued]; queued.clear();
-      if (visible()) { lastFlush = Date.now(); invalidateDataCache(pending, { deferPending: true }); }
+      const pending = [...queued], polling = [...polled]; queued.clear(); polled.clear();
+      if (visible()) {
+        lastFlush = Date.now();
+        if (pending.length) invalidateDataCache(pending, { deferPending: true });
+        if (polling.length) invalidateDataCache(polling, { poll: true });
+      }
     }, Math.max(200, 1000 - (Date.now() - lastFlush)));
   };
   const fallback = () => {
     if (pollTimer && visible() && !healthy) return;
     if (pollTimer) { clearInterval(pollTimer); pollTimer = undefined; }
-    if (visible() && !healthy) pollTimer = setInterval(() => { if (visible() && !healthy) queue([...groups]); }, 5000);
+    if (visible() && !healthy) pollTimer = setInterval(() => { if (visible() && !healthy) queue([...groups], true); }, 5000);
   };
   const disconnect = () => {
     run++; connection?.abort(); connection = undefined;
@@ -154,7 +163,7 @@ export function startLiveUpdates(role: "admin" | "staff", recheckSession: () => 
   };
   const pause = () => {
     clearTimeout(retryTimer); retryTimer = undefined;
-    clearTimeout(flushTimer); flushTimer = undefined; queued.clear();
+    clearTimeout(flushTimer); flushTimer = undefined; queued.clear(); polled.clear();
     disconnect(); fallback();
   };
   const wake = () => {

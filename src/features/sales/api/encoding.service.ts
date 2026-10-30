@@ -1,6 +1,6 @@
 import { normalizeSaleItems, type SaleLineDraft } from "../utils/manualPricing";
 import http, { ApiError, getAllPages, type DjangoTransaction, type CheckoutItemPayload } from "@/lib/api";
-import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest } from "./pendingRequest";
+import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest, verifyDurablePendingRequest } from "./pendingRequest";
 import { hasRetiredDiscount } from "../utils/retiredPricing";
 export interface EncodingPayload {
   request_id: string; transaction_date: string; customer_id?: number | null; si_number?: string; note?: string;
@@ -28,10 +28,8 @@ export const encodingService = {
       return pending;
     } catch { return null; }
   },
-  clearPending: () => { const pending = encodingService.pending(); if (pending && !active.has(pending.key)) clearPendingRequest(pending); },
+  clearPending: () => { const pending = encodingService.pending(); return !!pending && !active.has(pending.key) && clearPendingRequest(pending, { durable: true }); },
   list: (filters?: Record<string, unknown>, signal?: AbortSignal) => getAllPages<DjangoTransaction>("/sales/encoding/", { page_size: 200, ...filters }, signal),
-  /** @deprecated No active UI caller; retained for API contract compatibility. */
-  get: async (id: number) => (await http.get<DjangoTransaction>(`/sales/encoding/${id}/`)).data,
   create: (payload: EncodingPayload, lines: SaleLineDraft[] = []): Promise<DjangoTransaction> => {
     try {
       const previous = encodingService.pending();
@@ -41,12 +39,15 @@ export const encodingService = {
       if (previous && encodingFingerprint(previous.payload.payload) !== fingerprint) throw new ApiError(409, "A submission was already attempted. Retry its original values, or check encoding history before starting a new entry.");
       // Legacy neutral defaults remain in the saved body on recovery: do not
       // rewrite an ambiguous submission just because new requests omit them.
-      const pending = previous ?? storePendingRequest("encoding", payload.request_id, fingerprint, { payload: { request_id: payload.request_id, ...fields }, lines });
+      const pending = previous ?? storePendingRequest("encoding", payload.request_id, fingerprint, { payload: { request_id: payload.request_id, ...fields }, lines }, { durable: true });
       const existing = active.get(pending.key);
       if (existing) return existing;
+      // Every POST, including a retry, must have its exact original UUID/body
+      // durably available before an ambiguous network outcome can occur.
+      verifyDurablePendingRequest(pending);
       const request = http.post<DjangoTransaction>("/sales/encoding/", pending.payload.payload)
-        .then(({ data }) => { clearPendingRequest(pending); return data; })
-        .catch(error => { if (!previous && isDefiniteRequestFailure(error)) clearPendingRequest(pending); throw error; })
+        .then(({ data }) => { clearPendingRequest(pending, { durable: true }); return data; })
+        .catch(error => { if (!previous && isDefiniteRequestFailure(error)) clearPendingRequest(pending, { durable: true }); throw error; })
         .finally(() => { if (active.get(pending.key) === request) active.delete(pending.key); });
       active.set(pending.key, request);
       return request;

@@ -23,7 +23,8 @@ function formatLastLogin(lastLogin: string | null): string {
 export const userService = {
   updateCurrentUser: async (input: Partial<Pick<CurrentUser, "username" | "first_name" | "last_name">> & { current_password?: string }): Promise<CurrentUser> => {
     const { data } = await http.patch<CurrentUser>("/accounts/user/", input);
-    return data;
+    const id = getSessionUserId(data);
+    return id === null ? data : { ...data, id };
   },
   getAll: async (): Promise<SystemUser[]> => {
     const { data: users } = await http.get<DjangoUserListItem[]>("/accounts/users/");

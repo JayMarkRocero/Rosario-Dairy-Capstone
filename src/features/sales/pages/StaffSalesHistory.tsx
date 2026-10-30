@@ -10,10 +10,11 @@ import { useAuth } from "@/features/auth/context/AuthContext";
 import { getSessionUserId } from "@/features/auth/api/auth.service";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
-import { salesService, type Sale } from "@/features/sales/api/sales.service";
+import { salesService, recordedSaleAmount, type Sale } from "@/features/sales/api/sales.service";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { PaymentStatusBadge } from "../components/PaymentStatusBadge";
 import { encodedByLabel } from "../utils/historyLabels";
+import { recordedPesos, sumRecordedMoney } from "../utils/recordedMoney";
 
 function staffSalesDate(timestamp: string): string {
   const date = new Date(timestamp);
@@ -53,7 +54,7 @@ export function StaffSalesHistory() {
 
   const summary = useMemo(() => {
     return {
-      totalRevenue: myRecords.reduce((sum, sale) => sum + sale.total, 0),
+      totalRevenue: sumRecordedMoney(myRecords.map(recordedSaleAmount)),
       totalTransactions: myRecords.length,
     };
   }, [myRecords]);
@@ -85,7 +86,7 @@ export function StaffSalesHistory() {
         );
       } },
     { key:"total", header:"Total", align:"center", width:"14%",
-      render: s => <span className="font-semibold text-sm whitespace-nowrap" style={{ color: C.text }}>₱{s.total.toLocaleString()}</span> },
+      render: s => <span className="font-semibold text-sm whitespace-nowrap" style={{ color: C.text }}>{recordedPesos(recordedSaleAmount(s))}</span> },
     { key:"actions", header:"Actions", align:"center", width:"10%",
       render: sale => (
         <div className="flex items-center justify-center gap-1" onClick={event => event.stopPropagation()}>
@@ -99,7 +100,7 @@ export function StaffSalesHistory() {
   return (
     <div className="records-page viewport-records-page sales-history-page flex flex-col gap-3 px-3.5 sm:px-4 pt-2 max-w-[1400px] mx-auto w-full">
       <div className="grid grid-cols-2 gap-2.5 shrink-0">
-        <SummaryCard compact label="Total Revenue" subtitle="Your lifetime sales processed" value={query.error ? "Unavailable" : `₱${summary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.blue}/>
+        <SummaryCard compact label="Total Revenue" subtitle="Your lifetime sales processed" value={query.error ? "Unavailable" : recordedPesos(summary.totalRevenue, 2, "Unavailable")} color={C.blue}/>
         <SummaryCard compact label="Total Transactions" subtitle="Your lifetime transactions processed" value={query.error ? "Unavailable" : summary.totalTransactions} color={C.green}/>
       </div>
       <TableCard className="viewport-table-card">

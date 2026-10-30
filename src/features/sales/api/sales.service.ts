@@ -11,6 +11,11 @@ export interface Sale {
   transaction: DjangoTransaction;
 }
 
+/** Numeric totals remain available for existing sorting/charts; display the saved decimal. */
+export function recordedSaleAmount(sale: Sale): string | number | null | undefined {
+  return sale.transaction && "total_amount" in sale.transaction ? sale.transaction.total_amount : sale.total;
+}
+
 function toDisplayPayment(method: string): Sale["payment"] {
   return method === "cash" ? "Cash" : method === "online" ? "Online" : "Not recorded";
 }

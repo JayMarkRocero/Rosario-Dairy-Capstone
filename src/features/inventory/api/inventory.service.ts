@@ -336,11 +336,6 @@ export const inventoryService = {
     return data.deletion_type;
   },
 
-  /** @deprecated No active UI caller; retained for API contract compatibility. */
-  reactivateProduct: async (productId: number): Promise<void> => {
-    await http.post<DjangoProduct>(`/inventory/products/${productId}/reactivate/`, {});
-  },
-
   updateProductBatch: async (batchId: number, payload: UpdateProductBatchPayload): Promise<DjangoProductBatch> => {
     const { data } = await http.patch<DjangoProductBatch>(`/inventory/product-batches/${batchId}/`, payload);
     return data;

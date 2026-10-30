@@ -1,5 +1,6 @@
 import { Eye } from "lucide-react";
-import type { Sale } from "@/features/sales/api/sales.service";
+import { recordedSaleAmount, type Sale } from "@/features/sales/api/sales.service";
+import { recordedPesos } from "../utils/recordedMoney";
 import { PaymentStatusBadge } from "./PaymentStatusBadge";
 import { encodedByLabel } from "../utils/historyLabels";
 
@@ -12,7 +13,7 @@ export function MobileSaleCard({ sale, onView }: { sale: Sale; onView: (sale: Sa
     ["CASHIER", sale.cashier],
     ["DATE", sale.date],
     ["PAYMENT", sale.payment],
-    ["TOTAL", `₱${sale.total.toLocaleString("en-PH")}`],
+    ["TOTAL", recordedPesos(recordedSaleAmount(sale))],
   ];
 
   return <article className="w-full min-w-0 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-sm">

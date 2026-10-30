@@ -185,7 +185,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const actions = <div className={`flex flex-wrap justify-end gap-2 ${isCheckout ? "[&_button]:w-full" : ""}`}>
       {mode !== "encoding" && unconfirmed && !busy && pendingSale(mode) && <Btn variant="secondary" onClick={recoverSubmission}>Recover saved submission</Btn>}
       {unconfirmed && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Review previous submission</Btn>}
-      {mode === "encoding" && attempt.current && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Start a new entry</Btn>}
+      {mode === "encoding" && (attempt.current || savedEncoding) && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Start a new entry</Btn>}
       <Btn variant="primary" disabled={busy || !lines.length || unconfirmed || requiresEncodingReview || isCheckout && !checkoutReady} onClick={submit}>{busy ? "Saving..." : mode === "encoding" ? "Save sales entry" : mode === "order" ? "Submit & Fulfill" : "Complete Transaction"}</Btn>
   </div>;
   if (loadError) return <QueryErrorMessage error={loadError} onRetry={() => setReload(value => value + 1)}/>;
@@ -227,7 +227,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
         {mode === "encoding" && <label className="block text-xs font-medium text-slate-600">Notes (optional)<textarea aria-label="Encoding notes" maxLength={2000} className={input} placeholder="Reference or reason for this entry" value={note} onChange={e => setNote(e.target.value)}/></label>}
       </fieldset>
       {errorMessage}
-      {attempt.current && !busy && <p className="text-xs text-amber-700">{requiresEncodingReview ? "An earlier entry uses retired pricing and is unconfirmed. Check encoding history, then use Start a new entry. Its original request will not be changed or resubmitted here." : "Your previous entry is restored. Retry it unchanged with the same request ID to avoid duplicate records. Check encoding history before starting another entry."}</p>}
+      {(attempt.current || savedEncoding) && !busy && <p className="text-xs text-amber-700">{requiresEncodingReview ? "An earlier entry uses retired pricing and is unconfirmed. Check encoding history, then use Start a new entry. Its original request will not be changed or resubmitted here." : "Your previous entry is restored. Retry it unchanged with the same request ID to avoid duplicate records. Check encoding history before starting another entry."}</p>}
       {actions}
     </>}
     <CustomerHistory customer={historyOpen ? selectedCustomer ?? null : null} onClose={() => setHistoryOpen(false)}/>
@@ -238,7 +238,10 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
         if (mode !== "encoding") {
           if (!acknowledgeUnconfirmedSale(mode)) { setFormError("The saved submission could not be cleared. Check browser storage and try again."); return; }
         }
-        else { encodingService.clearPending(); attempt.current = null; setSi(""); setNote(""); }
+        else {
+          if (!encodingService.clearPending()) { setFormError("The saved submission could not be cleared. Check browser storage and transaction history before trying again."); return; }
+          attempt.current = null; setSi(""); setNote("");
+        }
         setReviewOpen(false); setLines([]); setTender(""); setFormError(""); setReload(value => value + 1);
       }} /></OverlayPortal>
     {isCheckout && <OverlayPortal><ConfirmDialog open={clearOpen} loading={busy} onClose={() => { if (!lock.current) setClearOpen(false); }} title="Clear all cart items?"

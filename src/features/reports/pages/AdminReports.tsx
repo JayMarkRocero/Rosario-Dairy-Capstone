@@ -10,6 +10,7 @@ import { C } from "@/styles/tokens/colors";
 import { useReportPreview, reportNumber } from "@/features/reports/hooks/useReportPreview";
 import { forecastExplanation } from "@/features/dashboard/components/admin/ForecastChart";
 import { ReportDateRangeControl } from "@/features/reports/components/ReportDateRangeControl";
+import { recordedPesos, type RecordedMoney } from "@/features/sales/utils/recordedMoney";
 
 interface ReportDefinition { id: ReportType; title: string; desc: string; icon: React.ReactNode; color: string }
 
@@ -45,17 +46,17 @@ function ReportSummary({ type, range }: { type: ReportType; range?: ReportDateRa
       </div>;
     }
     const money = (key: string) => {
-      const value = reportNumber(data, key);
-      return value == null ? "Unavailable" : `₱${value.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+      const value = data.metrics?.[key] ?? data[key];
+      return recordedPesos(value as RecordedMoney, 2, "Unavailable");
     };
     if (type === "customer") return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}>
       <p>{effectiveRange}</p>
       <p>Customers: {reportNumber(data, "customer_record_count") ?? "Unavailable"} · Invoice total: {money("total_revenue")}</p>
       <p>Paid: {money("paid_amount")} · Pending: {money("pending_amount")} · Unknown: {money("unknown_amount")}</p>
     </div>;
-    const revenue = reportNumber(data, type === "daily_sales" ? "total_revenue" : "revenue");
+    const revenue = money(type === "daily_sales" ? "total_revenue" : "revenue");
     const count = reportNumber(data, "transaction_count");
-    return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}><p>{effectiveRange}</p><p>Net sales: {revenue == null ? "Unavailable" : `₱${revenue.toLocaleString("en-PH", {minimumFractionDigits:2, maximumFractionDigits:2})}`} · Transactions: {count ?? "Unavailable"}</p>{count === 0 && <p>No sales recorded in this period.</p>}</div>;
+    return <div className="min-w-0 text-xs leading-relaxed space-y-1 [overflow-wrap:anywhere]" style={{color:C.muted}}><p>{effectiveRange}</p><p>Net sales: {revenue} · Transactions: {count ?? "Unavailable"}</p>{count === 0 && <p>No sales recorded in this period.</p>}</div>;
   };
   const content = renderContent();
   return retryMessage ? <>

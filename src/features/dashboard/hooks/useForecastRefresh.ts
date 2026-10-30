@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, getApiErrorMessage } from "@/lib/api";
-import { dataCacheEpoch, invalidateDataCache } from "@/lib/dataCache";
+import { dataCacheEpoch, invalidateDataCache, subscribeDataCacheEpoch } from "@/lib/dataCache";
 import { FORECAST_POLL_INTERVAL, forecastJobActive, forecastingService, type ForecastRefreshJob } from "../api/forecasting.service";
 
 const STAGES: Record<string, string> = {
@@ -27,12 +27,23 @@ export function useForecastRefresh() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(false);
+  const [epoch, setEpoch] = useState(dataCacheEpoch);
   const start = useRef<() => Promise<void>>(async () => {});
+  const lifecycleStarted = useRef(false);
   useEffect(() => {
-    const controller = new AbortController(), session = dataCacheEpoch();
+    const sync = () => setEpoch(dataCacheEpoch());
+    const unsubscribe = subscribeDataCacheEpoch(sync);
+    sync(); // Cover an account/cache change between render and subscription.
+    return unsubscribe;
+  }, []);
+  useEffect(() => {
+    if (epoch !== dataCacheEpoch()) return;
+    const controller = new AbortController(), session = epoch;
     let timer: ReturnType<typeof setTimeout> | undefined, cooldownTimer: ReturnType<typeof setTimeout> | undefined;
-    let current: ForecastRefreshJob | null = null, starting = false, recovering = false, cooling = false, revision = 0;
+    let current: ForecastRefreshJob | null = null, starting = false, recovering = lifecycleStarted.current, cooling = false, revision = 0;
+    lifecycleStarted.current = true;
     let unconfirmedStart: { knownBaseline: boolean; baselineId: number | null; message: string } | null = null;
+    setJob(null); setError(""); setCooldown(false); setBusy(true);
     const alive = () => !controller.signal.aborted && session === dataCacheEpoch();
     const terminalRequestFailure = (failure: unknown) => failure instanceof ApiError && [400, 401, 403, 404, 405, 422].includes(failure.status);
     const retryDelay = (failure: unknown) => failure instanceof ApiError && failure.status === 429
@@ -62,6 +73,7 @@ export function useForecastRefresh() {
       }
     };
     const poll = async () => {
+      if (!alive()) return;
       const requestRevision = revision;
       try {
         const next = await forecastingService.getRefresh(current, controller.signal);
@@ -98,7 +110,7 @@ export function useForecastRefresh() {
     };
     void poll(); // Recover a job started before navigation/reload.
     return () => { controller.abort(); clearTimeout(timer); clearTimeout(cooldownTimer); };
-  }, []);
+  }, [epoch]);
   return { job, busy: busy || cooldown, error, refresh: () => start.current(),
     message: busy ? STAGES[job?.stage ?? "queued"] ?? job?.message ?? "Refreshing forecasts" : job?.status === "succeeded" ? "Forecast refreshed" : job?.message };
 }
