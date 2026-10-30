@@ -1,5 +1,6 @@
 // src/app/App.tsx
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Toaster, toast } from "sonner";
 import LandingPage from "./LandingPage";
 import { Login } from "./Login";
@@ -17,6 +18,7 @@ export function AppShell() {
   const { theme } = useTheme();
   const { user, loading, authError, retrySession, sessionExpired, logout, clearSessionExpiredFlag } = useAuth();
   const [view, setView] = useState<View>("landing");
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     if (sessionExpired) {
@@ -70,8 +72,12 @@ export function AppShell() {
         }}
         richColors
       />
-      {!user && view === "landing" && <LandingPage onLogin={() => setView("Login")} />}
-      {!user && view === "Login" && <Login onBack={() => setView("landing")} />}
+      {!user && <AnimatePresence initial={false} mode="wait">
+        <motion.div key={view} className="min-h-screen w-full" initial={{ opacity: reducedMotion ? 1 : 0, y: reducedMotion ? 0 : 8 }}
+          animate={{ opacity: 1, y: 0 }} exit={{ opacity: reducedMotion ? 1 : 0, y: reducedMotion ? 0 : -6 }} transition={{ duration: reducedMotion ? 0 : 0.18 }}>
+          {view === "landing" ? <LandingPage onLogin={() => setView("Login")} /> : <Login onBack={() => setView("landing")} />}
+        </motion.div>
+      </AnimatePresence>}
       {user?.role === "admin" && <AdminLayout onLogout={handleLogout} />}
       {user?.role === "staff" && <StaffLayout onLogout={handleLogout} />}
     </>

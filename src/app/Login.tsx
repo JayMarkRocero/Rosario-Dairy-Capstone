@@ -345,7 +345,7 @@ export function Login({ onBack }: Props) {
 
       {/* Left branding panel — hidden on mobile, visible from md up */}
       <div
-        className="hidden md:flex md:w-1/2 lg:w-3/5 flex-col justify-between p-10 lg:p-14 relative rd-anim-bg"
+        className="hidden md:flex md:w-1/2 lg:w-3/5 flex-col justify-between gap-10 p-10 lg:p-14 relative rd-anim-bg"
         style={{
           backgroundColor: C.sidebar,
           backgroundImage: bgFailed
@@ -358,41 +358,41 @@ export function Login({ onBack }: Props) {
       >
         <img src={BG_SRC} alt="" className="hidden" onError={() => setBgFailed(true)} />
 
-        <div className="relative z-10 flex items-center gap-3 rd-anim-brand">
-          <BrandMark size={52} />
-          <div>
+        <div className="relative z-10 flex items-center gap-4 rd-anim-brand">
+          <BrandMark size={80} />
+          <div className="min-w-0">
             <p
-              className="text-base font-semibold text-white leading-tight"
+              className="text-xl lg:text-2xl font-semibold text-white leading-tight"
             >
               Rosario Dairy
             </p>
-            <p className="text-xs" style={{ color: "rgba(255,255,255,0.65)" }}>
+            <p className="text-sm lg:text-base leading-snug mt-1" style={{ color: "rgba(255,255,255,0.65)" }}>
               Integrated Management System
             </p>
-            <p className="text-[10px] mt-0.5 tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <p className="text-xs mt-1 tracking-wide" style={{ color: "rgba(255,255,255,0.4)" }}>
               Inventory &middot; POS &middot; Analytics
             </p>
           </div>
         </div>
 
-        <div className="relative z-10 max-w-sm rd-anim-marketing">
+        <div className="relative z-10 min-w-0 max-w-md rd-anim-marketing">
           <h2
-            className="text-2xl lg:text-[1.7rem] font-bold text-white leading-tight mb-3 tracking-tight"
+            className="text-3xl lg:text-4xl font-bold text-white leading-tight mb-4 tracking-tight"
           >
             Smarter dairy management
           </h2>
-          <p className="text-sm leading-relaxed mb-6" style={{ color: "rgba(255,255,255,0.7)" }}>
+          <p className="text-base lg:text-lg leading-relaxed mb-7" style={{ color: "rgba(255,255,255,0.7)" }}>
             Manage inventory, sales, expiration tracking, and business analytics in one place.
           </p>
 
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-3">
             {features.map((f) => (
               <div
                 key={f.label}
-                className="flex items-center gap-2.5 text-[13px] font-medium"
+                className="flex items-center gap-3 text-[0.9375rem] lg:text-base font-medium"
                 style={{ color: "rgba(255,255,255,0.85)" }}
               >
-                <span style={{ color: "#93C5FD" }}>{f.icon}</span>
+                <span className="shrink-0" style={{ color: "#93C5FD" }}>{f.icon}</span>
                 {f.label}
               </div>
             ))}
