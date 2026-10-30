@@ -1,11 +1,12 @@
 import type { Sale } from "@/features/sales/api/sales.service";
 import type { DjangoTransactionItem } from "@/lib/api";
+import { encodedByLabel } from "./historyLabels";
 export const receiptMoney = (value: string | number | null | undefined) => {
   if (value == null || value === "") return "Not provided";
   const amount = Number(value);
   return Number.isFinite(amount) ? `PHP ${amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Not provided";
 };
-const sumRecorded = (items: DjangoTransactionItem[], field: "subtotal" | "total_amount" | "discount_amount" | "source_line_total") =>
+const sumRecorded = (items: DjangoTransactionItem[], field: "subtotal" | "total_amount" | "source_line_total") =>
   items.some(item => item[field] == null) ? null : items.reduce((sum, item) => sum + Math.round(Number(item[field]) * 100), 0) / 100;
 export function receiptDetails(sale: Sale) {
   const transaction = sale.transaction;
@@ -18,6 +19,8 @@ export function receiptDetails(sale: Sale) {
     ["Cashier", sale.cashier], ["Customer", sale.customer], ["Payment Method", sale.payment],
     ["Payment Status", transaction.payment_status === "paid" ? "Paid" : transaction.payment_status === "pending" ? "Pending" : "Not recorded"],
   ];
+  const encoder = encodedByLabel(transaction);
+  if (encoder) fields.push(["Encoded by", encoder.replace(/^Encoded by /, "")]);
   if (transaction.encoded_at) fields.push(["Entered at", dateTime(transaction.encoded_at)]);
   const createdAt = new Date(transaction.created_at).getTime();
   const paymentUpdatedAt = new Date(transaction.payment_updated_at ?? "").getTime();
@@ -37,9 +40,9 @@ export function receiptDetails(sale: Sale) {
   return {
     title: transaction.source_reference ? "Historical Sales Record" : transaction.is_manually_encoded ? "Encoded Sales Record" : "Official Sales Receipt",
     note: transaction.source_note || "", fields,
-    lineAmountLabel: transaction.source_reference ? "Recorded line amount" : "Net amount",
+    lineAmountLabel: transaction.source_reference ? "Recorded line amount" : "Line amount",
     lineAmountNote: transaction.source_reference
-      ? "Historical line amounts are recorded source values and may precede an invoice-level discount; per-line allocations of that discount were not recorded."
+      ? "Historical line amounts are recorded source values and may differ from the recorded invoice total."
       : "",
     items: [...groups.entries()].sort(([, a], [, b]) => a[0].line_number == null || b[0].line_number == null ? 0 : a[0].line_number - b[0].line_number).map(([id, items]) => {
       const item = items[0];
@@ -50,11 +53,11 @@ export function receiptDetails(sale: Sale) {
         batch: transaction.source_reference ? "Not recorded" : [...new Set(items.map(row => row.product_batch.batch_number))].join(", "),
         quantity: String(items.reduce((sum, row) => sum + Math.round(Number(row.quantity) * 100), 0) / 100),
         price: receiptMoney(transaction.source_reference && item.source_line_total == null ? null : item.unit_price),
-        gross: receiptMoney(sumRecorded(items, "subtotal")), discount: receiptMoney(sumRecorded(items, "discount_amount")),
+        gross: receiptMoney(sumRecorded(items, "subtotal")),
         subtotal: receiptMoney(recordedNet),
       };
     }),
-    totals: [["Subtotal", receiptMoney(transaction.subtotal)], ["Discount", receiptMoney(transaction.discount_amount)],
+    totals: [["Subtotal", receiptMoney(transaction.subtotal)],
       ["Total", receiptMoney(transaction.total_amount)], ["Amount Tendered", receiptMoney(transaction.amount_tendered)], ["Change", receiptMoney(transaction.change_due)]] as [string, string][],
   };
 }

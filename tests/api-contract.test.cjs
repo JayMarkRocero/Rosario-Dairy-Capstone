@@ -636,14 +636,14 @@ test('forecast revenue ticks and tooltips retain accurate currency at small and 
 });
 
 test('checkout sends decimal strings without an automatic report-refresh request', async () => {
-  responseData = { id: 7, subtotal: '43.00', total_amount: '43.00', change_due: '7.00' };
-  const result = await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80', discount_type: 'fixed', discount_value: '1.50' }], payment_method: 'cash', amount_tendered: '50.00' });
+  responseData = { id: 7, subtotal: '44.50', total_amount: '44.50', change_due: '5.50' };
+  const result = await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80' }], payment_method: 'cash', amount_tendered: '50.00' });
   const { request_id, ...body } = JSON.parse(calls[0].data);
   assert.match(request_id, /^[0-9a-f-]{36}$/);
-  assert.deepEqual(body, { customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80', discount_type: 'fixed', discount_value: '1.50' }], payment_method: 'cash', amount_tendered: '50.00' });
+  assert.deepEqual(body, { customer_id: null, items: [{ product_id: 1, quantity: '2.50', unit_price: '17.80' }], payment_method: 'cash', amount_tendered: '50.00' });
   assert.equal(calls.length, 1);
-  assert.equal(result.totalAmount, 43);
-  assert.equal(result.changeDue, 7);
+  assert.equal(result.totalAmount, 44.5);
+  assert.equal(result.changeDue, 5.5);
 });
 
 test('consecutive completed sales never trigger a throttled automatic report refresh', async () => {
@@ -1562,21 +1562,21 @@ test('blocked token storage supports session requests and logout without revivin
 
 test('manual pricing requires an explicit price per item, allows zero and rounds each line half up', () => {
   const draft = { productId: 1, name: 'Milk', stock: 100, quantity: '3', unitPrice: '', discountType: 'none', discountValue: '0' };
-  for (const unitPrice of ['', 'NaN', 'Infinity', '-1', '1.001', '100000000']) assert.throws(() => api.priceLine({ ...draft, unitPrice }, false));
-  assert.equal(api.priceLine({ ...draft, unitPrice: '0' }, false).total, 0n);
-  assert.equal(api.priceLine({ ...draft, unitPrice: '2.99', discountType: 'percent', discountValue: '12.5' }, true).total, 785n);
-  assert.equal(api.priceLine({ ...draft, quantity: '2', unitPrice: '150', discountType: 'fixed', discountValue: '50' }, true).total, 25000n);
-  assert.equal(api.priceLine({ ...draft, unitPrice: '100', discountType: 'percent', discountValue: '50' }, false).discount, 0n);
-  assert.throws(() => api.priceSale([{ ...draft, unitPrice: '1' }, { ...draft, unitPrice: '1' }], true), /duplicate/i);
+  for (const unitPrice of ['', 'NaN', 'Infinity', '-1', '1.001', '100000000']) assert.throws(() => api.priceLine({ ...draft, unitPrice }));
+  assert.equal(api.priceLine({ ...draft, unitPrice: '0' }).total, 0n);
+  assert.equal(api.priceLine({ ...draft, unitPrice: '2.99' }).total, 897n);
+  assert.equal(api.priceLine({ ...draft, quantity: '0.33', unitPrice: '1.99' }).total, 66n);
+  for (const discountType of ['fixed', 'percent']) assert.throws(() => api.priceLine({ ...draft, unitPrice: '100', discountType, discountValue: '50' }), /retired pricing/i);
+  assert.throws(() => api.priceSale([{ ...draft, unitPrice: '1' }, { ...draft, unitPrice: '1' }]), /duplicate/i);
 });
 
-test('item prices and discounts are submitted without catalog or invoice-level price defaults', async () => {
-  responseData = { id: 1, subtotal: '10', total_amount: '9', change_due: '1' };
-  await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '1', unit_price: '10', discount_type: 'fixed', discount_value: '1' }], payment_method: 'cash', amount_tendered: '10', discount_type: 'fixed', discount_value: '999' });
+test('final item prices are submitted without catalog defaults or retired pricing fields', async () => {
+  responseData = { id: 1, subtotal: '10', total_amount: '10', change_due: '0' };
+  await api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '1', unit_price: '10' }], payment_method: 'cash', amount_tendered: '10' });
   const payload = JSON.parse(calls[0].data);
   assert.equal('discount_type' in payload, false);
   assert.equal('discount_value' in payload, false);
-  assert.deepEqual(payload.items[0], { product_id: 1, quantity: '1.00', unit_price: '10.00', discount_type: 'fixed', discount_value: '1.00' });
+  assert.deepEqual(payload.items[0], { product_id: 1, quantity: '1.00', unit_price: '10.00' });
   calls = [];
   await assert.rejects(api.checkoutService.submit({ customer_id: null, items: [{ product_id: 1, quantity: '1' }], payment_method: 'online' }), /price/i);
   assert.equal(calls.length, 0, 'No request is sent when a selling price is missing');
@@ -1645,7 +1645,7 @@ test('customer create maps returned totals and CRUD payloads never write the rea
 });
 
 test('encoding, payment and customer-history services use the documented methods and field names', async () => {
-  const payload = { request_id: '12640ab5-3b27-40d9-80f8-376bd456fbe9', transaction_date: '2026-10-01', customer_id: null, si_number: 'SI0608', note: '', payment_method: 'cash', payment_status: 'pending', amount_tendered: null, items: [{ product_id: 1, quantity: '1.00', unit_price: '12.00', discount_type: 'none', discount_value: '0.00' }] };
+  const payload = { request_id: '12640ab5-3b27-40d9-80f8-376bd456fbe9', transaction_date: '2026-10-01', customer_id: null, si_number: 'SI0608', note: '', payment_method: 'cash', payment_status: 'pending', amount_tendered: null, items: [{ product_id: 1, quantity: '1.00', unit_price: '12.00' }] };
   responseData = { id: 3, payment_status: 'pending' };
   await api.encodingService.create(payload);
   assert.equal(calls[0].url, '/sales/encoding/'); assert.equal(calls[0].method, 'post'); assert.deepEqual(JSON.parse(calls[0].data), payload);
@@ -1688,7 +1688,7 @@ test('receipts group FEFO fragments by original line and use recorded net totals
   ];
   const receipt = api.receiptDetails(sale);
   assert.equal(receipt.items.length, 1); assert.equal(receipt.items[0].quantity, '3');
-  assert.equal(receipt.items[0].gross, 'PHP 300.00'); assert.equal(receipt.items[0].discount, 'PHP 30.00'); assert.equal(receipt.items[0].subtotal, 'PHP 270.00');
+  assert.equal(receipt.items[0].gross, 'PHP 300.00'); assert.equal('discount' in receipt.items[0], false); assert.equal(receipt.items[0].subtotal, 'PHP 270.00');
   sale.transaction.items[0].total_amount = null;
   assert.equal(api.receiptDetails(sale).items[0].subtotal, 'Not provided', 'Missing historical net totals are not replaced with gross amounts');
 });
@@ -1813,7 +1813,7 @@ test('null order transactions keep every order visible without fabricating finan
   assert.deepEqual(rows.map(row => row.id), [3, 2, 1]);
   assert.equal(rows[0].total, 0); assert.equal(rows[0].changeDue, 0);
   for (const row of rows.slice(1)) {
-    assert.equal(row.total, null); assert.equal(row.subtotal, null); assert.equal(row.discountAmount, null);
+    assert.equal(row.total, null); assert.equal(row.subtotal, null); assert.equal('discountAmount' in row, false);
     assert.equal(row.invoiceNumber, ''); assert.equal(row.paymentMethod, null);
     assert.equal(row.staffId, 7); assert.equal(row.date, '2026-10-01');
   }
@@ -2354,7 +2354,7 @@ test('encoding retains its original UUID and payload across a full module reload
   const sale = await reloaded.encodingService.create({ ...payload, request_id: '550e8400-e29b-41d4-a716-446655440002' });
   assert.equal(sale.id, 88);
   assert.equal(retried.request_id, payload.request_id);
-  assert.deepEqual(retried.items, [{ product_id: 1, quantity: '2.00', unit_price: '10.00', discount_type: 'none', discount_value: '0.00' }]);
+  assert.deepEqual(retried.items, [{ product_id: 1, quantity: '2.00', unit_price: '10.00' }]);
   assert.equal(api.encodingService.pending(), null);
 });
 

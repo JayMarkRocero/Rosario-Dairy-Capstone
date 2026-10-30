@@ -1,4 +1,5 @@
 import { businessDate, normalizeSaleItems } from "@/features/sales/utils/manualPricing";
+import { hasRetiredDiscount } from "@/features/sales/utils/retiredPricing";
 import http, { ApiError, getAllPages, type PaginatedResponse, type DjangoTransaction } from "@/lib/api";
 import { pendingSale, submitSaleOnce, UnconfirmedSaleError } from "@/lib/saleSubmission";
 import { recordedCashierName } from "@/features/sales/api/sales.service";
@@ -34,6 +35,7 @@ export const ordersService = {
   },
 
   createOrder: async (payload: CreateOrderPayload): Promise<Order & { transaction: DjangoTransaction }> => {
+    if (hasRetiredDiscount(payload)) throw new Error("Enter the final selling price. Retired pricing cannot be applied to a new sale.");
     if (!Number.isInteger(payload.customer_id) || payload.customer_id <= 0) throw new ApiError(400, "Select a valid customer.");
     const body = {
       customer_id: payload.customer_id, payment_method: payload.payment_method,
@@ -77,7 +79,6 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
     date: transaction?.transaction_date || (Number.isFinite(new Date(o.created_at).getTime()) ? businessDate(new Date(o.created_at)) : ""),
     total: amount(transaction?.total_amount),
     subtotal: amount(transaction?.subtotal),
-    discountAmount: amount(transaction?.discount_amount),
     paymentMethod: transaction?.payment_method ?? null,
     paymentStatus: transaction?.payment_status,
     amountTendered: amount(transaction?.amount_tendered),

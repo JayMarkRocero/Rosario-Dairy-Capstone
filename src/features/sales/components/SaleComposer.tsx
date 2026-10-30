@@ -23,16 +23,15 @@ import { ordersService } from "@/features/orders/api/orders.service";
 import { encodingFingerprint, encodingService, type EncodingPayload } from "../api/encoding.service";
 import { SaleLineEditor } from "./SaleLineEditor";
 import { businessDate, newEncodingRequestId, formatCents, newSaleLine, priceSale, validateTender, type SaleLineDraft } from "../utils/manualPricing";
+import { hasRetiredDiscount } from "../utils/retiredPricing";
 
 const input = "w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400";
 export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkout" | "order" | "encoding"; onSuccess: (sale: DjangoTransaction) => void; onBusyChange?: (busy: boolean) => void }) {
   const { user } = useAuth();
   const isCheckout = mode === "checkout";
-  const canDiscount = mode === "checkout" && user?.role === "admin";
   const savedEncoding = mode === "encoding" ? encodingService.pending()?.payload : undefined;
   // Never reprice an ambiguous pre-change submission under its existing request ID.
-  const discountedEncodingPending = !!savedEncoding?.payload.items.some(item =>
-    item.discount_type != null && item.discount_type !== "none" || Number(item.discount_value ?? 0) !== 0);
+  const requiresEncodingReview = hasRetiredDiscount(savedEncoding);
   const [products, setProducts] = useState<InventoryItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +58,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   const [focusProductId, setFocusProductId] = useState<number | null>(null);
   const [mobilePane, setMobilePane] = useState<"products" | "cart">("products");
   const lock = useRef(false);
-  const attempt = useRef<{ fingerprint: string; payload: EncodingPayload } | null>(savedEncoding ? { fingerprint: encodingFingerprint(savedEncoding.payload), payload: savedEncoding.payload } : null);
+  const attempt = useRef<{ fingerprint: string; payload: EncodingPayload } | null>(savedEncoding ? { fingerprint: requiresEncodingReview ? "" : encodingFingerprint(savedEncoding.payload), payload: savedEncoding.payload } : null);
   useEffect(() => {
     let active = true;
     const epoch = dataCacheEpoch(), key = `${epoch}:sale-options:${user?.id}:${user?.role}`;
@@ -81,7 +80,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
     return () => { active = false; unsubscribe(); };
   }, [reload, user?.id, user?.role]);
   let totals: ReturnType<typeof priceSale> | null = null;
-  try { totals = priceSale(lines, canDiscount); } catch { /* Show a draft summary until all lines are complete. */ }
+  try { totals = priceSale(lines); } catch { /* Show a draft summary until all lines are complete. */ }
   const selectedCustomer = customers.find(customer => customer.id === Number(customerId));
   let checkoutReady = false;
   try {
@@ -98,8 +97,8 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
   };
   const submit = async () => {
     if (lock.current) return;
-    if (discountedEncodingPending) {
-      setFormError("An earlier discounted entry is unconfirmed. Check encoding history, then use Start a new entry. Its original request will not be changed or resubmitted here.");
+    if (requiresEncodingReview) {
+      setFormError("An earlier entry uses retired pricing and is unconfirmed. Check encoding history, then use Start a new entry. Its original request will not be changed or resubmitted here.");
       return;
     }
     if (mode !== "encoding" && hasUnconfirmedSale(mode)) {
@@ -108,7 +107,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
     }
     setFormError("");
     try {
-      const priced = priceSale(lines, canDiscount);
+      const priced = priceSale(lines);
       if (isCheckout && lines.some(line => Number(line.unitPrice) <= 0)) throw new Error("Enter a selling price greater than zero for every item.");
       if (mode === "order" && !selectedCustomer || customerId && !selectedCustomer) throw new Error("Select a valid customer.");
       const amount = paymentStatus === "paid" && method === "cash" ? validateTender(tender, priced.total) : null;
@@ -128,7 +127,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
       setReload(value => value + 1);
       toast.success(mode === "encoding" ? "Sales entry recorded." : "Transaction completed.");
       onSuccess(transaction);
-    } catch (error) { if (isDefiniteRequestFailure(error)) attempt.current = null; const message = getApiErrorMessage(error, "Unable to save this transaction."); setFormError(message); toast.error(message); }
+    } catch (error) { if (!savedEncoding && isDefiniteRequestFailure(error)) attempt.current = null; const message = getApiErrorMessage(error, "Unable to save this transaction."); setFormError(message); toast.error(message); }
     finally { lock.current = false; setBusy(false); onBusyChange?.(false); }
   };
   const recoverSubmission = async () => {
@@ -169,9 +168,9 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
       {products.filter(product => (category === "All" || product.cat === category) && product.name.toLowerCase().includes(search.toLowerCase())).map(product => <button key={product.id} type="button" disabled={lines.some(line => line.productId === product.id)} onClick={() => addProduct(product)} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-blue-300 disabled:bg-slate-50 disabled:opacity-50"><span title={product.name} className={`block ${isCheckout ? "truncate" : "break-words"} text-sm font-semibold text-slate-800`}>{product.name}</span><span className="block truncate text-xs text-slate-500">{product.stock} {product.unit || "units"} available</span><span className="text-xs text-blue-600">Add · enter price</span></button>)}
     </div>{!products.length && <p className="text-sm text-slate-500">No sellable products available.</p>}
   </section>;
-  const cartItems = lines.map(line => <SaleLineEditor key={line.productId} line={line} canDiscount={canDiscount} compact={isCheckout} focusPrice={isCheckout && focusProductId === line.productId}
+  const cartItems = lines.map(line => <SaleLineEditor key={line.productId} line={line} compact={isCheckout} focusPrice={isCheckout && focusProductId === line.productId}
     onChange={next => setLines(current => current.map(item => item.productId === next.productId ? next : item))} onRemove={() => setLines(current => current.filter(item => item.productId !== line.productId))}/>);
-  const summary = <div className="rounded-xl bg-slate-50 p-3 space-y-1 text-sm"><div className="flex justify-between gap-2"><span>{isCheckout ? "Gross subtotal" : "Subtotal"}</span><span>{totals ? formatCents(totals.subtotal) : "Not entered"}</span></div><div className="flex justify-between gap-2 font-semibold"><span>Total</span><span>{totals ? formatCents(totals.total) : "Enter item prices"}</span></div></div>;
+  const summary = <div className="rounded-xl bg-slate-50 p-3 space-y-1 text-sm"><div className="flex justify-between gap-2"><span>Subtotal</span><span>{totals ? formatCents(totals.subtotal) : "Not entered"}</span></div><div className="flex justify-between gap-2 font-semibold"><span>Total</span><span>{totals ? formatCents(totals.total) : "Enter item prices"}</span></div></div>;
   const paymentFields = <div className={`grid ${isCheckout || mode === "order" ? (method === "cash" ? "grid-cols-2" : "grid-cols-1") : "grid-cols-1 sm:grid-cols-2"} gap-3`}>
         <label className="text-xs font-medium text-slate-600">Payment method<select aria-label="Payment method" className={input} value={method} onChange={e => { setMethod(e.target.value as typeof method); setTender(""); }}><option value="cash">Cash</option><option value="online">GCash / Online</option></select></label>
         {mode === "encoding" && <label className="text-xs font-medium text-slate-600">Payment status<select aria-label="Payment status" className={input} value={paymentStatus} onChange={e => { setPaymentStatus(e.target.value as typeof paymentStatus); setTender(""); }}><option value="pending">Pending</option><option value="paid">Paid</option></select></label>}
@@ -187,7 +186,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
       {mode !== "encoding" && unconfirmed && !busy && pendingSale(mode) && <Btn variant="secondary" onClick={recoverSubmission}>Recover saved submission</Btn>}
       {unconfirmed && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Review previous submission</Btn>}
       {mode === "encoding" && attempt.current && !busy && <Btn variant="secondary" onClick={() => setReviewOpen(true)}>Start a new entry</Btn>}
-      <Btn variant="primary" disabled={busy || !lines.length || unconfirmed || discountedEncodingPending || isCheckout && !checkoutReady} onClick={submit}>{busy ? "Saving..." : mode === "encoding" ? "Save sales entry" : mode === "order" ? "Submit & Fulfill" : "Complete Transaction"}</Btn>
+      <Btn variant="primary" disabled={busy || !lines.length || unconfirmed || requiresEncodingReview || isCheckout && !checkoutReady} onClick={submit}>{busy ? "Saving..." : mode === "encoding" ? "Save sales entry" : mode === "order" ? "Submit & Fulfill" : "Complete Transaction"}</Btn>
   </div>;
   if (loadError) return <QueryErrorMessage error={loadError} onRetry={() => setReload(value => value + 1)}/>;
   if (loading) return <div role="status" aria-label="Loading sales options" className="space-y-3"><Skeleton className="h-10 w-full"/><Skeleton className="h-40 w-full"/></div>;
@@ -228,7 +227,7 @@ export function SaleComposer({ mode, onSuccess, onBusyChange }: { mode: "checkou
         {mode === "encoding" && <label className="block text-xs font-medium text-slate-600">Notes (optional)<textarea aria-label="Encoding notes" maxLength={2000} className={input} placeholder="Reference or reason for this entry" value={note} onChange={e => setNote(e.target.value)}/></label>}
       </fieldset>
       {errorMessage}
-      {attempt.current && !busy && <p className="text-xs text-amber-700">{discountedEncodingPending ? "An earlier discounted entry is unconfirmed. Check encoding history, then use Start a new entry. Its original request will not be changed or resubmitted here." : "Your previous entry is restored. Retry it unchanged with the same request ID to avoid duplicate records. Check encoding history before starting another entry."}</p>}
+      {attempt.current && !busy && <p className="text-xs text-amber-700">{requiresEncodingReview ? "An earlier entry uses retired pricing and is unconfirmed. Check encoding history, then use Start a new entry. Its original request will not be changed or resubmitted here." : "Your previous entry is restored. Retry it unchanged with the same request ID to avoid duplicate records. Check encoding history before starting another entry."}</p>}
       {actions}
     </>}
     <CustomerHistory customer={historyOpen ? selectedCustomer ?? null : null} onClose={() => setHistoryOpen(false)}/>

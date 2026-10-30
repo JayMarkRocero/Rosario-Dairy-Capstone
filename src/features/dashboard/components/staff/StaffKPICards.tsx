@@ -18,33 +18,35 @@ function todayStr(): string {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
+function loadMetric<T>(request: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  let deadline: ReturnType<typeof setTimeout>;
+  let cancel: () => void;
+  const timeout = new Promise<never>((_, reject) => {
+    deadline = setTimeout(() => reject(new Error("Dashboard metrics took too long to load. Please refresh and try again.")), 30000);
+    cancel = () => reject(new DOMException("Request canceled", "AbortError"));
+    signal?.addEventListener("abort", cancel, { once: true });
+  });
+  return Promise.race([Promise.resolve().then(request), timeout])
+    .finally(() => { clearTimeout(deadline); signal?.removeEventListener("abort", cancel); });
+}
+
 export function StaffKPICards() {
   const { theme } = useTheme();
   const { user, loading: authLoading } = useAuth();
   const userId = user ? getSessionUserId(user) : null;
   const identityUnavailable = !authLoading && userId === null;
 
-  const { data: metrics, loading, error } = useCachedQuery(`dashboard:staff-kpis:${userId}:${todayStr()}`, async signal => {
-    const today = todayStr();
-    let deadline: ReturnType<typeof setTimeout>;
-    let cancel: () => void;
-    const timeout = new Promise<never>((_, reject) => {
-      deadline = setTimeout(() => reject(new Error("Dashboard metrics took too long to load. Please refresh and try again.")), 30000);
-      cancel = () => reject(new DOMException("Request canceled", "AbortError"));
-      signal?.addEventListener("abort", cancel, { once: true });
-    });
-    const request = Promise.resolve().then(() => {
-      return Promise.all([
-        salesService.getAll({ startDate: today, endDate: today, handledBy: userId ?? undefined }, signal),
-        ordersService.getAll(signal),
-        inventoryService.getAll(true),
-      ]);
-    });
-
-    return Promise.race([request, timeout]).finally(() => { clearTimeout(deadline); signal?.removeEventListener("abort", cancel); });
-  }, ["dashboard"], !authLoading && userId !== null, { cancelable: true });
-  const [sales, orders, products] = metrics ?? [[], [], []];
-  const failed = !!error;
+  const today = todayStr();
+  const enabled = !authLoading && userId !== null;
+  const salesQuery = useCachedQuery(`dashboard:staff-sales:${userId}:${today}`, signal => loadMetric(
+    () => salesService.getAll({ startDate: today, endDate: today, handledBy: userId ?? undefined }, signal), signal),
+    ["dashboard", "sales"], enabled, { cancelable: true });
+  const ordersQuery = useCachedQuery(`dashboard:staff-orders:${userId}`, signal => loadMetric(
+    () => ordersService.getAll(signal), signal), ["dashboard", "orders"], enabled, { cancelable: true });
+  const productsQuery = useCachedQuery(`dashboard:staff-products:${userId}`, signal => loadMetric(
+    () => inventoryService.getAll(true), signal), ["dashboard", "inventory"], enabled, { cancelable: true });
+  const sales = salesQuery.data ?? [], orders = ordersQuery.data ?? [], products = productsQuery.data ?? [];
+  const queries = [salesQuery, salesQuery, ordersQuery, productsQuery];
 
   const kpis = useMemo(() => {
     const today = todayStr();
@@ -81,10 +83,10 @@ export function StaffKPICards() {
   }, [sales, orders, products, userId, theme]);
 
   return (
-    <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={authLoading || loading}>
-      {kpis.map(k => <KPICard key={k.title} {...k} value={authLoading || identityUnavailable || failed ? "—" : k.value}
-        trendLabel={authLoading ? "Loading account" : identityUnavailable || failed ? "Unavailable" : loading ? "Updating" : k.trendLabel}
-        detail={identityUnavailable ? "Account information unavailable. Please sign in again." : failed ? "Unable to load current metrics." : k.detail} compact />)}
+    <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-4" aria-busy={authLoading || queries.some(query => query.loading)}>
+      {kpis.map((k, index) => <KPICard key={k.title} {...k} value={authLoading || identityUnavailable || queries[index].loading || queries[index].error ? "—" : k.value}
+        trendLabel={authLoading ? "Loading account" : identityUnavailable || queries[index].error ? "Unavailable" : queries[index].loading ? "Updating" : k.trendLabel}
+        detail={identityUnavailable ? "Account information unavailable. Please sign in again." : queries[index].error ? "Unable to load current metrics." : k.detail} compact />)}
     </div>
   );
 }

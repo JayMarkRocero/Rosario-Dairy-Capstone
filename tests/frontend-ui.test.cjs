@@ -75,6 +75,7 @@ const compiled = buildSync({
     export { StaffPOS } from './src/features/pos/pages/StaffPOS';
     export { SaleComposer } from './src/features/sales/components/SaleComposer';
     export { encodingService } from './src/features/sales/api/encoding.service';
+    export { storePendingRequest } from './src/features/sales/api/pendingRequest';
     export { SaleLineEditor } from './src/features/sales/components/SaleLineEditor';
     export { CustomerHistory } from './src/features/customers/components/CustomerHistory';
     export { TransactionDetails } from './src/features/sales/components/TransactionDetails';
@@ -547,7 +548,8 @@ test('mobile sales cards keep full transaction details available and open the se
   let selected;
   const tree = render(ui.MobileSaleCard, { sale, onView: value => { selected = value; } });
   const values = elements(tree, node => node.type === 'dd');
-  assert.deepEqual(values.map(node => node.props.children), [sale.receipt, sale.customer, sale.cashier, sale.date, sale.payment, '₱120']);
+  assert.deepEqual(values.map(node => node.props.title), [sale.receipt, sale.customer, sale.cashier, sale.date, sale.payment, '₱120']);
+  assert.equal(elements(values[4], node => node.type === 'span' && node.props.children === sale.payment).length, 1);
   assert.equal(values[1].props.title, sale.customer);
   elements(tree, node => node.props['aria-label'] === 'View Details')[0].props.onClick();
   assert.equal(selected, sale);
@@ -707,6 +709,7 @@ test('stretched desktop inventory rows fill both full and partial pages', () => 
 });
 
 const staffCards = tree => elements(tree, node => typeof node.props.trendLabel === 'string');
+const mountStaffMetrics = () => { const cleanups = effects.slice(-3).map(effect => effect()); return () => cleanups.reverse().forEach(cleanup => cleanup?.()); };
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 test('profile username changes require and forward the current password without email', async () => {
@@ -1045,14 +1048,14 @@ test('staff dashboard navigation shows cached KPI values without Updating badges
   let requests = 0;
   ui.http.defaults.adapter = async config => { requests++; return { status: 200, config, headers: {}, data: [] }; };
   render(ui.StaffKPICards);
-  let cleanup = effects.at(-1)(); await settle();
+  let cleanup = mountStaffMetrics(); await settle();
   assert.equal(render(ui.StaffKPICards).props['aria-busy'], false);
   cleanup(); states = []; refs = []; effects = [];
   const count = requests;
   const cached = render(ui.StaffKPICards);
   assert.equal(cached.props['aria-busy'], false);
   assert.ok(staffCards(cached).every(card => card.props.trendLabel !== 'Updating'));
-  cleanup = effects.at(-1)(); await settle();
+  cleanup = mountStaffMetrics(); await settle();
   assert.equal(requests, count);
   cleanup();
 });
@@ -1063,7 +1066,7 @@ test('staff dashboard uses permitted alert feeds and honors disabled notificatio
     requests.push(config.url);
     return { status: 200, config, headers: {}, data: [] };
   };
-  render(ui.InventoryAlert); effects.at(-1)(); await settle();
+  render(ui.InventoryAlert); mountStaffMetrics(); await settle();
   const tree = render(ui.InventoryAlert);
   assert.equal(tree.props['aria-busy'], false);
   assert.ok(requests.includes('/inventory/low-stock/products/'));
@@ -1081,13 +1084,13 @@ test('staff KPI requests wait for auth initialization then use the token identit
   };
   authState = { user: null, loading: true };
   const waiting = render(ui.StaffKPICards);
-  effects.at(-1)();
+  mountStaffMetrics();
   await settle();
   assert.equal(requests.length, 0);
   assert.ok(staffCards(waiting).every(card => card.props.trendLabel === 'Loading account'));
   authState = { user: { username: 'audit' }, loading: false };
   render(ui.StaffKPICards);
-  const cleanup = effects.at(-1)();
+  const cleanup = mountStaffMetrics();
   try {
     await settle();
     assert.equal(requests.find(request => request.url === '/sales/transactions/').params.handled_by, 7);
@@ -1103,7 +1106,7 @@ test('staff KPI missing identity shows inline fallback without requests or error
     authState = { user, loading: false };
     global.localStorage.getItem = () => 'invalid-token';
     render(ui.StaffKPICards);
-    effects.at(-1)();
+    mountStaffMetrics();
     await settle();
     const unavailable = render(ui.StaffKPICards);
     assert.equal(unavailable.props['aria-busy'], false);
@@ -1122,7 +1125,7 @@ test('staff KPI accepts an explicit context ID when a token ID is unavailable', 
     return { data: [], status: 200, statusText: 'OK', headers: {}, config };
   };
   render(ui.StaffKPICards);
-  const cleanup = effects.at(-1)();
+  const cleanup = mountStaffMetrics();
   try {
     await settle();
     assert.equal(requests.find(request => request.url === '/sales/transactions/').params.handled_by, 12);
@@ -1139,7 +1142,7 @@ test('staff KPI loading clears for empty responses and uses scoped sales request
   const initial = render(ui.StaffKPICards);
   assert.equal(initial.props['aria-busy'], true);
   assert.ok(staffCards(initial).every(card => card.props.trendLabel === 'Updating'));
-  const cleanup = effects.at(-1)();
+  const cleanup = mountStaffMetrics();
   try {
     await settle();
     const loaded = render(ui.StaffKPICards);
@@ -1160,7 +1163,7 @@ test('staff KPI loading clears and displays the returned metrics', async () => {
     status: 200, statusText: 'OK', headers: {}, config,
   });
   render(ui.StaffKPICards);
-  const cleanup = effects.at(-1)();
+  const cleanup = mountStaffMetrics();
   try {
     await settle();
     const loaded = render(ui.StaffKPICards);
@@ -1188,7 +1191,7 @@ test('staff fulfilled KPI counts only fulfilled orders processed by the logged-i
     data: config.url === '/sales/orders/' ? { count: orders.length, next: null, results: orders } : [],
   });
   render(ui.StaffKPICards);
-  const cleanup = effects.at(-1)();
+  const cleanup = mountStaffMetrics();
   try {
     await settle();
     const cards = staffCards(render(ui.StaffKPICards));
@@ -1203,14 +1206,14 @@ test('staff fulfilled KPI counts only fulfilled orders processed by the logged-i
 test('staff KPI loading clears after a failed API call and can recover on refresh', async () => {
   ui.http.defaults.adapter = async () => { throw new Error('Simulated metrics outage'); };
   render(ui.StaffKPICards);
-  const cleanup = effects.at(-1)();
+  const cleanup = mountStaffMetrics();
   await settle();
   const failed = render(ui.StaffKPICards);
   assert.equal(failed.props['aria-busy'], false);
   assert.ok(staffCards(failed).every(card => card.props.trendLabel === 'Unavailable' && card.props.value === '—'));
   cleanup();
   ui.http.defaults.adapter = async config => ({ data: [], status: 200, statusText: 'OK', headers: {}, config });
-  const refreshedCleanup = effects.at(-1)();
+  const refreshedCleanup = mountStaffMetrics();
   try {
     await settle();
     const recovered = render(ui.StaffKPICards);
@@ -1221,18 +1224,18 @@ test('staff KPI loading clears after a failed API call and can recover on refres
 
 test('staff KPI loading clears when a request remains pending past the deadline', async () => {
   const realSetTimeout = global.setTimeout;
-  let expire, cleanup;
+  const expirations = []; let cleanup;
   global.setTimeout = (callback, delay, ...args) => {
-    if (delay === 30000) { expire = callback; return 0; }
+    if (delay === 30000) { expirations.push(callback); return 0; }
     return realSetTimeout(callback, delay, ...args);
   };
   try {
     ui.http.defaults.adapter = () => new Promise(() => {});
     render(ui.StaffKPICards);
-    cleanup = effects.at(-1)();
+    cleanup = mountStaffMetrics();
     await settle();
     assert.equal(render(ui.StaffKPICards).props['aria-busy'], true);
-    expire();
+    expirations.forEach(expire => expire());
     await settle();
     const timedOut = render(ui.StaffKPICards);
     assert.equal(timedOut.props['aria-busy'], false);
@@ -1296,10 +1299,10 @@ test('order form hides discounts, charges the full manual subtotal and blocks du
   const form = await composerFixture('order', 'admin');
   const picker = elements(render(ui.SaleComposer, form.props), node => node.type?.name === 'CustomerPicker')[0];
   picker.props.onChange('906');
-  form.changeLine({ quantity: '2', unitPrice: '50', discountType: 'fixed', discountValue: '60' });
+  form.changeLine({ quantity: '2', unitPrice: '50' });
   const tree = render(ui.SaleComposer, form.props);
   const line = elements(tree, node => node.type === ui.SaleLineEditor)[0];
-  assert.equal(line.props.canDiscount, false);
+  assert.equal('canDiscount' in line.props, false);
   const fields = render(ui.SaleLineEditor, line.props);
   assert.deepEqual(elements(fields, node => node.type === 'input').map(node => node.props['aria-label']), ['Quantity for Milk', 'Selling price for Milk']);
   assert.equal(elements(fields, node => node.type === 'select').length, 0);
@@ -1314,7 +1317,7 @@ test('order form hides discounts, charges the full manual subtotal and blocks du
   await form.submit(); assert.equal(requests, 0);
   form.field('Amount tendered').props.onChange({ target: { value: '100' } });
   const first = form.submit(); await settle();
-  assert.deepEqual(payload.items, [{ product_id: 385, quantity: '2.00', unit_price: '50.00', discount_type: 'none', discount_value: '0.00' }]);
+  assert.deepEqual(payload.items, [{ product_id: 385, quantity: '2.00', unit_price: '50.00' }]);
   assert.equal(payload.amount_tendered, '100.00');
   assert.equal('discount_type' in payload, false);
   await form.submit(); assert.equal(requests, 1);
@@ -1322,11 +1325,12 @@ test('order form hides discounts, charges the full manual subtotal and blocks du
   assert.equal(refs[0].current, false);
 });
 
-test('manual line totals and item discounts use decimal half-up rounding', () => {
-  const line = (price, quantity, discountType = 'none', discountValue = '0') => ({ productId: 1, name: 'Milk', stock: 20, unitPrice: price, quantity, discountType, discountValue });
-  assert.equal(ui.priceSale([line('0.1', '3')], false).total, 30n);
-  assert.equal(ui.priceSale([line('2.99', '3', 'percent', '12.5')], true).total, 785n);
-  assert.equal(ui.priceSale([line('1.99', '0.33')], false).total, 66n);
+test('final manual line totals use decimal half-up rounding and reject legacy active pricing', () => {
+  const line = (price, quantity) => ({ productId: 1, name: 'Milk', stock: 20, unitPrice: price, quantity });
+  assert.equal(ui.priceSale([line('0.1', '3')]).total, 30n);
+  assert.equal(ui.priceSale([line('2.99', '3')]).total, 897n);
+  assert.equal(ui.priceSale([line('1.99', '0.33')]).total, 66n);
+  assert.throws(() => ui.priceSale([{ ...line('2.99', '3'), discountType: 'percent', discountValue: '12.5' }]), /retired pricing/i);
   assert.equal(ui.validateTender('0.30', 30n), '0.30');
 });
 
@@ -1346,23 +1350,22 @@ test('POS sends explicit canonical prices, quantities and tender without invoice
   let payload; ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); throw new AxiosError('Simulated outage'); };
   await form.submit();
   assert.equal(payload.amount_tendered, '0.30');
-  assert.deepEqual(payload.items, [{ product_id: 385, quantity: '3.00', unit_price: '0.10', discount_type: 'none', discount_value: '0.00' }]);
+  assert.deepEqual(payload.items, [{ product_id: 385, quantity: '3.00', unit_price: '0.10' }]);
   assert.equal('discount_type' in payload, false);
 });
 
 for (const role of ['staff', 'admin']) {
-  test(`shared sale editor enforces ${role} line-discount permissions and payloads`, async () => {
+  test(`shared sale editor uses final selling prices for ${role} without discount controls or payloads`, async () => {
     const form = await composerFixture('checkout', role);
-    form.changeLine({ unitPrice: '100', discountType: 'percent', discountValue: '25' });
+    form.changeLine({ unitPrice: '100' });
     const node = elements(render(ui.SaleComposer, form.props), item => item.type === ui.SaleLineEditor)[0];
-    assert.equal(node.props.canDiscount, role === 'admin');
+    assert.equal('canDiscount' in node.props, false);
     const fields = render(ui.SaleLineEditor, node.props);
-    assert.equal(elements(fields, item => item.props['aria-label'] === 'Discount type for Milk').length, role === 'admin' ? 1 : 0);
-    form.field('Amount tendered').props.onChange({ target: { value: role === 'admin' ? '75' : '100' } });
+    assert.equal(elements(fields, item => item.type === 'select').length, 0);
+    form.field('Amount tendered').props.onChange({ target: { value: '100' } });
     let payload; ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); throw new AxiosError('Simulated outage'); };
     await form.submit();
-    assert.equal(payload.items[0].discount_type, role === 'admin' ? 'percent' : 'none');
-    assert.equal(payload.items[0].discount_value, role === 'admin' ? '25.00' : '0.00');
+    assert.deepEqual(payload.items[0], { product_id: 385, quantity: '1.00', unit_price: '100.00' });
     assert.equal('discount_value' in payload, false);
   });
 }
@@ -1578,7 +1581,7 @@ test('notification inbox prioritizes critical expiry and differentiates urgency 
   assert.equal(React.Children.toArray(badge(cards[0]).props.children).join(''), 'CRITICAL EXPIRY \u2022 0 days left');
   assert.ok(badge(cards[1]).props.className.includes('bg-amber-100'));
   assert.equal(React.Children.toArray(badge(cards[1]).props.children).join(''), 'Near Expiry \u2022 5 days left');
-  const urgent = elements(tree, node => node.type === 'p' && node.props.children === 'Urgent action required: Discount or prioritize batch for immediate dispatch via FEFO.');
+  const urgent = elements(tree, node => node.type === 'p' && node.props.children === 'Urgent action required: Prioritize batch for immediate dispatch via FEFO.');
   assert.equal(urgent.length, 1);
   assert.ok(elements(cards[0], node => node.type === 'span' && node.props.children === 'Read').length > 0);
 });
@@ -1603,7 +1606,7 @@ test('expired notifications keep their styling and removal message without navig
   assert.equal(elements(cards[0], node => node.props.children === 'EXPIRED \u2022 Action Required').length, 1);
   assert.equal(React.Children.toArray(badge.props.children).join(''), 'EXPIRED');
   assert.equal(elements(cards[0], node => node.props.children === 'Product has expired! Remove batch from active stock immediately.').length, 1);
-  assert.equal(elements(cards[0], node => node.props.children === 'Urgent action required: Discount or prioritize batch for immediate dispatch via FEFO.').length, 0);
+  assert.equal(elements(cards[0], node => node.props.children === 'Urgent action required: Prioritize batch for immediate dispatch via FEFO.').length, 0);
   assert.equal(elements(cards[0], node => node.type === 'button' && node.props['aria-label']?.startsWith('View expired inventory:')).length, 0);
   assert.equal(navigated, 0); assert.equal(states[0], true);
 });
@@ -2693,12 +2696,12 @@ for (const role of ['admin', 'staff']) {
     const form = await composerFixture('encoding', role, 2);
     let tree = render(ui.SaleComposer, form.props);
     elements(tree, node => node.type === 'button' && elements(node, child => child.props.children === 'Milk 1').length)[0].props.onClick();
-    const drafts = [{ quantity: '3', unitPrice: '0.10', discountType: 'percent', discountValue: '100' },
-      { quantity: '0.33', unitPrice: '1.99', discountType: 'fixed', discountValue: '999' }];
+    const drafts = [{ quantity: '3', unitPrice: '0.10' },
+      { quantity: '0.33', unitPrice: '1.99' }];
     elements(render(ui.SaleComposer, form.props), node => node.type === ui.SaleLineEditor).forEach((node, i) => node.props.onChange({ ...node.props.line, ...drafts[i] }));
     tree = render(ui.SaleComposer, form.props);
     for (const node of elements(tree, node => node.type === ui.SaleLineEditor)) {
-      assert.equal(node.props.canDiscount, false);
+      assert.equal('canDiscount' in node.props, false);
       const editor = render(ui.SaleLineEditor, node.props);
       const controls = elements(editor, item => ['input', 'select'].includes(item.type));
       assert.deepEqual(controls.map(item => item.props['aria-label']), [`Quantity for ${node.props.line.name}`, `Selling price for ${node.props.line.name}`]);
@@ -2719,8 +2722,8 @@ for (const role of ['admin', 'staff']) {
     ui.http.defaults.adapter = async config => { payload = JSON.parse(config.data); return { status: 201, config, headers: {}, data: returned }; };
     await form.submit();
     assert.deepEqual(payload.items, [
-      { product_id: 385, quantity: '3.00', unit_price: '0.10', discount_type: 'none', discount_value: '0.00' },
-      { product_id: 386, quantity: '0.33', unit_price: '1.99', discount_type: 'none', discount_value: '0.00' },
+      { product_id: 385, quantity: '3.00', unit_price: '0.10' },
+      { product_id: 386, quantity: '0.33', unit_price: '1.99' },
     ]);
     assert.equal(payload.customer_id, 906); assert.equal(payload.transaction_date, '2000-09-15');
     assert.equal(payload.si_number, 'SI-FINAL-PRICE'); assert.equal(payload.note, 'Original invoice note');
@@ -2731,7 +2734,7 @@ for (const role of ['admin', 'staff']) {
 
   test(`${role} encoded cash payment validates the full final-price total without hidden discounts`, async () => {
     const form = await composerFixture('encoding', role);
-    form.changeLine({ quantity: '2', unitPrice: '50', discountType: 'fixed', discountValue: '60' });
+    form.changeLine({ quantity: '2', unitPrice: '50' });
     form.field('Payment status').props.onChange({ target: { value: 'paid' } });
     form.field('Amount tendered').props.onChange({ target: { value: '70' } });
     const payloads = [];
@@ -2743,7 +2746,7 @@ for (const role of ['admin', 'staff']) {
     await form.submit();
     assert.equal(payloads.length, 1); assert.equal(payloads[0].amount_tendered, '100.00');
     assert.equal(payloads[0].payment_status, 'paid'); assert.equal(payloads[0].payment_method, 'cash');
-    assert.deepEqual(payloads[0].items[0], { product_id: 385, quantity: '2.00', unit_price: '50.00', discount_type: 'none', discount_value: '0.00' });
+    assert.deepEqual(payloads[0].items[0], { product_id: 385, quantity: '2.00', unit_price: '50.00' });
   });
 }
 
@@ -2759,16 +2762,17 @@ test('a restored discounted encoding cannot be silently repriced or resubmitted 
     if (config.method === 'post') { writes++; throw new AxiosError('Timed out', AxiosError.ECONNABORTED); }
     return { status: 200, config, headers: {}, data: [] };
   };
-  await assert.rejects(ui.encodingService.create(payload, lines));
+  const fingerprint = JSON.stringify({ transaction_date: payload.transaction_date, customer_id: payload.customer_id, si_number: payload.si_number, note: payload.note, payment_method: payload.payment_method, payment_status: payload.payment_status, amount_tendered: payload.amount_tendered, items: payload.items });
+  ui.storePendingRequest('encoding', payload.request_id, fingerprint, { payload, lines });
   const original = JSON.stringify(ui.encodingService.pending());
   effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
   states = []; refs = []; effects = [];
   render(ui.SaleComposer, form.props); effects[0](); await settle();
   let tree = render(ui.SaleComposer, form.props);
-  assert.match(JSON.stringify(tree), /earlier discounted entry is unconfirmed/i);
+  assert.match(JSON.stringify(tree), /earlier entry uses retired pricing and is unconfirmed/i);
   assert.equal(elements(tree, node => node.type === ui.Btn && node.props.children === 'Save sales entry')[0].props.disabled, true);
   await form.submit();
-  assert.equal(writes, 1); assert.equal(JSON.stringify(ui.encodingService.pending()), original);
+  assert.equal(writes, 0); assert.equal(JSON.stringify(ui.encodingService.pending()), original);
   elements(render(ui.SaleComposer, form.props), node => node.props.children === 'Start a new entry')[0].props.onClick();
   tree = render(ui.SaleComposer, form.props);
   const confirmation = elements(tree, node => node.type === ui.ConfirmDialog)[0];
@@ -2776,7 +2780,7 @@ test('a restored discounted encoding cannot be silently repriced or resubmitted 
   confirmation.props.onConfirm();
   assert.equal(ui.encodingService.pending(), null);
   assert.equal(elements(render(ui.SaleComposer, form.props), node => node.type === ui.SaleLineEditor).length, 0);
-  assert.equal(writes, 1, 'History acknowledgement never submits the legacy invoice');
+  assert.equal(writes, 0, 'History acknowledgement never submits the legacy invoice');
 });
 
 test('encoding reuses its UUID on network retries and blocks changed ambiguous submissions', async () => {
@@ -2974,10 +2978,12 @@ test('staff sales and recent orders keep persistent retry states on failed initi
 
 test('staff sales metrics retain their values after a username change by matching immutable account IDs', () => {
   const today = ui.businessDate();
-  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-kpis:7:${today}`, [[
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-sales:7:${today}`, [
     { date: today, total: 125, cashier: 'previous-name', transaction: { handled_by: { id: 7 } } },
     { date: today, total: 999, cashier: 'new-name', transaction: { handled_by: { id: 8 } } },
-  ], [], []], ['dashboard']);
+  ], ['dashboard', 'sales']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-orders:7`, [], ['dashboard', 'orders']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-products:7`, [], ['dashboard', 'inventory']);
   authState = { user: { id: 7, username: 'new-name' }, loading: false };
   const cards = staffCards(render(ui.StaffKPICards));
   assert.ok(cards.find(card => card.props.title === 'My Sales Today').props.value.includes('125'));
@@ -3457,7 +3463,7 @@ test('POS checkout readiness rejects invalid prices and Enter submits exact tend
   await settle();
   assert.equal(requests, 1);
   assert.equal(payload.amount_tendered, '5.97');
-  assert.deepEqual(payload.items, [{ product_id: 385, quantity: '3.00', unit_price: '1.99', discount_type: 'none', discount_value: '0.00' }]);
+  assert.deepEqual(payload.items, [{ product_id: 385, quantity: '3.00', unit_price: '1.99' }]);
   assert.equal(complete().props.disabled, true);
   assert.equal(prevented, 3);
   reject(); await settle();
@@ -4588,12 +4594,12 @@ test('customer-history live updates preserve a valid page and recover an out-of-
 test('receipt payment updates survive wrapper rerenders but never override a newly fetched transaction', () => {
   const source = liveReceipt(), props = { sale: ui.toSale(source), onClose() {} };
   let tree = render(ui.TransactionDetails, props);
-  elements(tree, node => node.type === ui.PaymentUpdateControl)[0].props.onUpdated({ ...source, payment_status: 'paid' });
+  elements(tree.props.footer, node => node.type === ui.PaymentUpdateControl)[0].props.onUpdated({ ...source, payment_status: 'paid' });
   tree = render(ui.TransactionDetails, { ...props, sale: ui.toSale(source) });
-  assert.equal(elements(tree, node => node.type === ui.PaymentUpdateControl)[0].props.transaction.payment_status, 'paid');
+  assert.equal(elements(tree.props.footer, node => node.type === ui.PaymentUpdateControl)[0].props.transaction.payment_status, 'paid');
   const fresh = { ...source, payment_status: 'pending', total_amount: '200.00' };
   tree = render(ui.TransactionDetails, { ...props, sale: ui.toSale(fresh) });
-  const control = elements(tree, node => node.type === ui.PaymentUpdateControl)[0];
+  const control = elements(tree.props.footer, node => node.type === ui.PaymentUpdateControl)[0];
   assert.equal(control.props.transaction.payment_status, 'pending'); assert.equal(control.props.transaction.total_amount, '200.00');
 });
 

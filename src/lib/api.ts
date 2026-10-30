@@ -456,7 +456,6 @@ export type UpdateCustomerPayload = Partial<CreateCustomerPayload>;
 
 export interface CheckoutItemPayload {
   product_id: number; quantity: string; unit_price: string;
-  discount_type?: "none" | "percent" | "fixed"; discount_value?: string;
 }
 export interface CheckoutPayload {
   customer_id: number | null; items: CheckoutItemPayload[]; payment_method: "cash" | "online"; amount_tendered?: string | null;
@@ -464,9 +463,6 @@ export interface CheckoutPayload {
 
 export interface DjangoTransactionItem {
   line_number?: number | null;
-  discount_type?: "none" | "percent" | "fixed";
-  discount_value?: string;
-  discount_amount?: string;
   subtotal?: string | null;
   total_amount?: string | null;
   id: number;
@@ -497,9 +493,6 @@ export interface DjangoTransaction {
   order?: { customer?: DjangoCustomer | null } | null;
   customer?: DjangoCustomer | null;
   subtotal: string;
-  discount_type: string;
-  discount_value: string;
-  discount_amount: string;
   total_amount: string;
   amount_tendered: string | null;
   change_due: string | null;

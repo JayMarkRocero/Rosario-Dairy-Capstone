@@ -19,9 +19,8 @@ export interface SalesReportBase extends ReportPreviewBase, ReportDateRange {
   previous_revenue: string;
   previous_transaction_count: number;
   growth_rate: number | null;
-  product_revenue_basis?: string;
+  product_revenue_basis?: "recorded_line_amounts";
   gross_sales: string;
-  discounts: string;
   average_ticket: string;
   payment_mix: Array<{ payment_method: string; transaction_count: number; revenue: string }>;
   category_mix: Array<{ category: string | null; quantity: string; gross_sales: string }>;

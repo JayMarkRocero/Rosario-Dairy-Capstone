@@ -1,6 +1,7 @@
 import { ApiError, getSessionGeneration, getApiErrorMessage } from "./api";
 import { getSessionUserId } from "@/features/auth/api/auth.service";
 import { dataCacheEpoch } from "./dataCache";
+import { hasRetiredDiscount } from "@/features/sales/utils/retiredPricing";
 
 export type SaleOperation = "checkout" | "order";
 interface SavedAttempt {
@@ -68,7 +69,7 @@ export function pendingSale(operation: SaleOperation): { requestId: string; payl
   const key = scope();
   let attempt = attempts.get(key);
   try { attempt ??= read(key).attempt; } catch { return null; }
-  return attempt?.operation === operation && !attempt.conflicted && !attempt.pending
+  return attempt?.operation === operation && !attempt.conflicted && !attempt.pending && !hasRetiredDiscount(JSON.parse(attempt.payload))
     ? { requestId: attempt.requestId, payload: JSON.parse(attempt.payload) as unknown } : null;
 }
 export function acknowledgeUnconfirmedSale(_operation: SaleOperation): boolean {
@@ -91,6 +92,7 @@ export function submitSaleOnce<T>(operation: SaleOperation, payload: unknown, su
     if (!recover || !existing || existing.conflicted || existing.fingerprint !== fingerprint
         || stored.attempt?.requestId !== existing.requestId || stored.attempt.fingerprint !== fingerprint || stored.attempt.conflicted)
       return Promise.reject(new UnconfirmedSaleError(operation));
+    if (hasRetiredDiscount(JSON.parse(existing.payload))) return Promise.reject(new UnconfirmedSaleError(operation, "The saved submission uses retired pricing. Verify transaction history before deliberately starting a new entry; its original payload and request ID have been retained."));
   } else if (recover) return Promise.reject(new UnconfirmedSaleError(operation, "No saved request is available for recovery."));
   const attempt: Attempt = existing ?? { version: 1, operation, requestId: crypto.randomUUID(), payload: serialized, fingerprint };
   try { persist(key, attempt); } catch (error) { return Promise.reject(error); }

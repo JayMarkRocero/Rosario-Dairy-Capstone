@@ -8,9 +8,6 @@ export interface OrderItem {
   quantity: string;
   unit_price: string;
   subtotal: string;
-  discount_type?: string;
-  discount_value?: string;
-  discount_amount?: string;
   total_amount?: string | null;
 }
 
@@ -43,7 +40,7 @@ export interface OrderListLine extends Omit<OrderItem, "product"> {
 
 export interface OrderListResponse extends Omit<Order, "items" | "transaction"> {
   items: OrderListLine[];
-  transaction?: Pick<DjangoTransaction, "transaction_number" | "transaction_date" | "payment_status" | "payment_updated_at" | "payment_updated_by" | "encoded_at" | "is_manually_encoded" | "encoding_request_id" | "id" | "subtotal" | "discount_amount" | "total_amount" |
+  transaction?: Pick<DjangoTransaction, "transaction_number" | "transaction_date" | "payment_status" | "payment_updated_at" | "payment_updated_by" | "encoded_at" | "is_manually_encoded" | "encoding_request_id" | "id" | "subtotal" | "total_amount" |
     "payment_method" | "amount_tendered" | "change_due" | "source_reference" | "source_invoice_number" | "recorded_cashier"> | null;
 }
 
@@ -71,7 +68,6 @@ export interface OrderListItem {
   date: string;
   total: number | null;
   subtotal: number | null;
-  discountAmount: number | null;
   paymentMethod: string | null;
   paymentStatus?: "paid" | "pending" | "unknown";
   amountTendered: number | null;

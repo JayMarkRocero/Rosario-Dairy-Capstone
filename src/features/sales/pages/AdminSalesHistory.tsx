@@ -9,6 +9,8 @@ import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTa
 import { C } from "@/styles/tokens/colors";
 import { salesService, type Sale } from "@/features/sales/api/sales.service";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
+import { PaymentStatusBadge } from "../components/PaymentStatusBadge";
+import { encodedByLabel } from "../utils/historyLabels";
 
 const PAYMENT_METHODS = ["Cash", "Online"];
 
@@ -34,7 +36,12 @@ export function AdminSalesHistory() {
 
   const columns: Column<Sale>[] = [
     { key:"receipt", header:"SI Number", align:"left", width:"15%", sortKey: r => r.receipt,
-      render: r => <span className="block truncate tabular-nums text-xs whitespace-nowrap" style={{ color: C.muted }} title={r.receipt}>{r.receipt}</span> },
+      render: r => {
+        const encoder = encodedByLabel(r.transaction);
+        return <div className="min-w-0"><span className="block truncate tabular-nums text-xs whitespace-nowrap" style={{ color: C.muted }} title={r.receipt}>{r.receipt}</span>
+          {encoder && <span className="block truncate text-[10px] leading-tight text-slate-500" title={encoder}>{encoder}</span>}
+        </div>;
+      } },
     { key:"customer", header:"Customer", align:"left", width:"22%", sortKey: r => r.customer,
       render: r => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{r.customer}</span> },
     { key:"cashier", header:"Cashier", align:"center", width:"14%", sortKey: r => r.cashier,
@@ -47,10 +54,11 @@ export function AdminSalesHistory() {
           : r.payment === "Online" ? { bg: "var(--status-blue)", color: C.blue }
           : { bg: "var(--surface-inset)", color: C.muted };
         return (
-          <div className="flex items-center justify-center gap-1">
+          <div className="flex flex-wrap items-center justify-center gap-1">
             <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ backgroundColor: pm.bg, color: pm.color }}>
               {r.payment}
             </span>
+            <PaymentStatusBadge status={r.transaction.payment_status}/>
           </div>
         );
       } },

@@ -118,7 +118,7 @@ export function NotificationBell({ staff = false }: { staff?: boolean } = {}) {
                 </span>}
                 <p className={`text-xs mt-1 font-normal leading-relaxed break-words ${n.unread ? 'text-slate-700' : 'text-slate-500'}`}>{n.body}</p>
                 {expired && <p className={`mt-1.5 text-xs font-normal leading-relaxed ${n.unread ? 'text-red-700' : 'text-slate-500'}`}>Product has expired! Remove batch from active stock immediately.</p>}
-                {critical && <p className={`mt-1.5 text-xs font-normal leading-relaxed ${n.unread ? 'text-red-700' : 'text-slate-500'}`}>Urgent action required: Discount or prioritize batch for immediate dispatch via FEFO.</p>}
+                {critical && <p className={`mt-1.5 text-xs font-normal leading-relaxed ${n.unread ? 'text-red-700' : 'text-slate-500'}`}>Urgent action required: Prioritize batch for immediate dispatch via FEFO.</p>}
             </>;
             return <div key={n.id} data-notification-id={n.id} className={`flex gap-2.5 px-4 py-3 border-b border-slate-100 last:border-b-0 transition-colors ${n.unread ? 'bg-slate-50/60' : 'bg-white'}`}>
               <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ color: n.unread ? color : C.muted }}><Icon size={14} /></div>
