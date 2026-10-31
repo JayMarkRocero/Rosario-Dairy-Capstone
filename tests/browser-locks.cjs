@@ -2,6 +2,7 @@
 function createBrowserLocks() {
   const queues = new Map();
   return { request(name, options, work) {
+    if (options?.ifAvailable && queues.has(name)) return Promise.resolve().then(() => work(null));
     const prior = queues.get(name) ?? Promise.resolve();
     const result = prior.catch(() => {}).then(() => {
       if (options?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');

@@ -19,6 +19,7 @@ import { daysUntilExpiry, isExpiredProduct } from "@/features/inventory/utils/ex
 import { isExpiredStockBatch } from "@/features/inventory/utils/batchEligibility";
 import { isLowStock } from "@/features/inventory/utils/stock";
 import { settingsService, type InventorySettings } from "@/features/settings/api/settings.service";
+import { outflowsService } from "./outflows.service";
 
 export interface CategoryIconOption { value: CategoryIconKey; label: string }
 
@@ -87,25 +88,28 @@ export const inventoryService = {
   },
   disposeExpiredBatch: async (item: ExpiredInventoryBatch): Promise<void> => {
     if (item.kind !== "product") throw new ApiError(400, "Select a product batch.");
-    const route = 'product-batches';
-    const { data: batch } = await http.get<DjangoProductBatch>(`/inventory/${route}/${item.id}/`);
-    if (!isExpiredStockBatch(batch)) {
-      invalidateDataCache(['inventory']);
-      throw new Error('Only received, expired batches with remaining stock can be disposed. Refresh the inventory and check its status.');
-    }
-    const quantity = Number(batch.remaining_quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0 || quantity !== item.quantity) {
-      invalidateDataCache(['inventory']);
-      throw new Error('Batch stock has changed. Close this confirmation, refresh the inventory, and confirm the current quantity.');
-    }
-    const unitCost = batch.unit_price ?? '0.00';
-    if (!Number.isFinite(Number(unitCost)) || Number(unitCost) < 0) {
-      throw new Error('A valid batch unit cost is required to record this write-off.');
-    }
-    await http.post('/inventory/stock-adjustments/', {
-      product_batch_id: item.id,
-      adjustment_type: 'expired', quantity: batch.remaining_quantity, unit_cost: unitCost,
-      reason: `Expired batch ${batch.batch_number}: full remaining stock disposed.`,
+    // A recovery uses its saved body before reading a now-disposed/missing batch.
+    await outflowsService.dispose(item.id, async () => {
+      const route = 'product-batches';
+      const { data: batch } = await http.get<DjangoProductBatch>(`/inventory/${route}/${item.id}/`);
+      if (!isExpiredStockBatch(batch)) {
+        invalidateDataCache(['inventory']);
+        throw new Error('Only received, expired batches with remaining stock can be disposed. Refresh the inventory and check its status.');
+      }
+      const quantity = Number(batch.remaining_quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0 || quantity !== item.quantity) {
+        invalidateDataCache(['inventory']);
+        throw new Error('Batch stock has changed. Close this confirmation, refresh the inventory, and confirm the current quantity.');
+      }
+      const unitCost = batch.unit_price ?? '0.00';
+      if (!Number.isFinite(Number(unitCost)) || Number(unitCost) < 0) {
+        throw new Error('A valid batch unit cost is required to record this write-off.');
+      }
+      return {
+        product_batch_id: item.id,
+        adjustment_type: 'expired', quantity: batch.remaining_quantity, unit_cost: unitCost,
+        reason: `Expired batch ${batch.batch_number}: full remaining stock disposed.`,
+      };
     });
     window.dispatchEvent(new Event(REPORTS_UPDATED));
   },

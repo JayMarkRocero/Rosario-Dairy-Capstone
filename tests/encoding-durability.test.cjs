@@ -15,7 +15,7 @@ const compiled = buildSync({ stdin: { contents: `
 function load() {
   const mod = new Module(path.join(root, 'tests', 'encoding-durable-memory.cjs'), module);
   mod.filename = path.join(root, 'tests', 'encoding-durable-memory.cjs'); mod.paths = module.paths;
-  mod._compile(compiled, mod.filename); return mod.exports;
+  mod._compile(compiled, mod.filename); require('./stock-adjustment-probe.cjs').installStockAdjustmentProbe(mod.exports.http); return mod.exports;
 }
 let api, values, storage, writes;
 const payload = { request_id: '550e8400-e29b-41d4-a716-446655440099', transaction_date: '2026-10-01',
@@ -23,6 +23,7 @@ const payload = { request_id: '550e8400-e29b-41d4-a716-446655440099', transactio
   amount_tendered: null, items: [{ product_id: 4, quantity: '2.00', unit_price: '50.00' }] };
 const reply = (config, data = { id: 77 }, status = 200) => ({ config, data, status, headers: {}, statusText: 'OK' });
 beforeEach(() => {
+  require('./browser-locks.cjs').installBrowserLocks();
   writes = [];
   values = new Map([['rosario_access_token', `header.${Buffer.from(JSON.stringify({ user_id: 7 })).toString('base64url')}.sig`]]);
   storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
@@ -133,20 +134,21 @@ for (const failure of ['get', 'set', 'silent-set', 'readback']) test(`outflow ne
 test('uncertain outflow retains its exact durable UUID/body across reload and never replays automatically', async () => {
   api.http.defaults.adapter = async config => { writes.push(JSON.parse(config.data)); throw new AxiosError('Timeout', AxiosError.ECONNABORTED); };
   await assert.rejects(api.outflowsService.create(outflow));
-  const original = api.outflowsService.pending(); assert.deepEqual(original.payload, outflow);
-  assert.equal('request_id' in writes[0], false, 'The outflow backend has no idempotency contract');
+  const original = api.outflowsService.pending();
+  const { request_id, ...body } = original.payload; assert.equal(request_id, original.id); assert.deepEqual(body, outflow);
+  assert.equal(writes[0].request_id, original.id);
   api = load(); api.http.defaults.adapter = async config => { writes.push(JSON.parse(config.data)); return reply(config); };
   assert.deepEqual(api.outflowsService.pending(), original);
   await assert.rejects(api.outflowsService.create(outflow), /unconfirmed/); assert.equal(writes.length, 1);
   global.localStorage = { ...storage, removeItem() { throw Error('Blocked'); } };
-  api.outflowsService.clearPending(); assert.deepEqual(api.outflowsService.pending(), original);
-  global.localStorage = storage; api.outflowsService.clearPending(); assert.equal(api.outflowsService.pending(), null);
+  await api.outflowsService.clearPending(); assert.deepEqual(api.outflowsService.pending(), original);
+  global.localStorage = storage; await api.outflowsService.clearPending(); assert.equal(api.outflowsService.pending(), null);
 });
 test('outflow persistence is present and verified before POST; simultaneous clicks share one request', async () => {
   let finish;
   api.http.defaults.adapter = config => {
     const pending = api.outflowsService.pending(); assert.ok(pending.id); api.verifyDurablePendingRequest(pending);
-    assert.deepEqual(JSON.parse(config.data), outflow); writes.push(JSON.parse(config.data));
+    const { request_id, ...body } = JSON.parse(config.data); assert.equal(request_id, pending.id); assert.deepEqual(body, outflow); writes.push(JSON.parse(config.data));
     return new Promise(resolve => { finish = () => resolve(reply(config)); });
   };
   const first = api.outflowsService.create(outflow), second = api.outflowsService.create(outflow);

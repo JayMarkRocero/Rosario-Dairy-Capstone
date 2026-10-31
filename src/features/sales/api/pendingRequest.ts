@@ -6,6 +6,8 @@ export interface PendingRequest<T> {
   id: string;
   fingerprint: string;
   payload: T;
+  protocol?: string;
+  context?: string;
 }
 
 const remembered = new Map<string, PendingRequest<unknown>>();
@@ -17,6 +19,7 @@ function matches<T>(raw: string | null, pending: PendingRequest<T>): boolean {
   try {
     const saved = JSON.parse(raw) as PendingRequest<T>;
     return saved.key === pending.key && saved.id === pending.id && saved.fingerprint === pending.fingerprint
+      && saved.protocol === pending.protocol && saved.context === pending.context
       && JSON.stringify(saved.payload) === JSON.stringify(pending.payload);
   } catch { return false; }
 }
@@ -57,8 +60,8 @@ export function readPendingRequest<T>(operation: string): PendingRequest<T> | nu
   return read<T>(requestKey(operation));
 }
 
-export function storePendingRequest<T>(operation: string, id: string, fingerprint: string, payload: T, { durable = false } = {}): PendingRequest<T> {
-  const pending = { key: requestKey(operation), id, fingerprint, payload };
+export function storePendingRequest<T>(operation: string, id: string, fingerprint: string, payload: T, { durable = false, context }: { durable?: boolean; context?: string } = {}): PendingRequest<T> {
+  const pending = { key: requestKey(operation), id, fingerprint, payload, ...(context ? { context } : {}) };
   if (durable) {
     try {
       const existing = localStorage.getItem(pending.key);
@@ -79,6 +82,16 @@ export function storePendingRequest<T>(operation: string, id: string, fingerprin
     overrides.set(pending.key, pending);
   }
   return pending;
+}
+
+/** Record a verified endpoint contract without changing the original UUID/body. */
+export function confirmPendingRequestProtocol<T>(pending: PendingRequest<T>, protocol: string): PendingRequest<T> {
+  verifyDurablePendingRequest(pending);
+  const confirmed = { ...pending, protocol };
+  try { localStorage.setItem(pending.key, JSON.stringify(confirmed)); verifyDurablePendingRequest(confirmed); }
+  catch { throw new Error(durableStorageMessage); }
+  remembered.set(pending.key, confirmed); overrides.delete(pending.key);
+  return confirmed;
 }
 
 export function clearPendingRequest<T>(pending: PendingRequest<T>, { durable = false } = {}): boolean {

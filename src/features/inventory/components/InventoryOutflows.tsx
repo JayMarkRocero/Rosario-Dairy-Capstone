@@ -30,6 +30,16 @@ export function InventoryOutflows() {
   const batches = useCachedQuery("inventory:outflow-batches", outflowsService.batches, ["inventory"], open);
   const history = useCachedQuery(`inventory:outflows:${filter}:${start}:${end}:${pending?.id ?? ""}`, () => outflowsService.list({ adjustment_type: filter || undefined, start_date: start || undefined, end_date: end || undefined }), ["inventory"], open && tab === "history");
   const batch = batches.data?.find(item => item.key === key);
+  const recover = async () => {
+    if (lock.current) return;
+    lock.current = true; setBusy(true); setError("");
+    try {
+      await outflowsService.recover();
+      setQuantity(""); setKey(""); setCost(""); setNotes(""); setTab("history");
+      toast.success("Saved stock adjustment confirmed. Current inventory is being refreshed.");
+    } catch (reason) { const message = getApiErrorMessage(reason); setError(message); toast.error(message); }
+    finally { lock.current = false; setBusy(false); }
+  };
   const save = async () => {
     if (lock.current) return;
     setError("");
@@ -53,7 +63,7 @@ export function InventoryOutflows() {
     <Modal open={open} busy={busy} onClose={() => { if (!lock.current) setOpen(false); }} title="Inventory outflows" subtitle="Record stock leaving a batch without creating a sale." size="lg">
       <div className="space-y-4"><div className="flex gap-2"><Btn variant={tab === "record" ? "primary" : "secondary"} disabled={busy} onClick={() => setTab("record")}>Record outflow</Btn><Btn variant={tab === "history" ? "primary" : "secondary"} disabled={busy} onClick={() => setTab("history")}>History</Btn></div>
         {tab === "record" ? <fieldset disabled={busy} className="space-y-3">
-          {pending && <p role="alert" className="text-xs text-amber-700">A previous outflow is unconfirmed. Check History before recording more stock deductions. <button type="button" className="underline" onClick={() => setTab("history")}>Review history</button></p>}
+          {pending && <p role="alert" className="text-xs text-amber-700">A previous stock adjustment is unconfirmed. Check History before recording more stock deductions. <button type="button" className="underline" onClick={() => setTab("history")}>Review history</button>{outflowsService.canRecover(pending) && <> · <button type="button" className="underline" disabled={busy} onClick={() => void recover()}>Recover saved adjustment</button></>}</p>}
           {batches.error ? <QueryErrorMessage error={batches.error} onRetry={() => void batches.refresh({ force: true })}/> : <>
             <label className="block text-xs font-medium text-slate-600">Outflow reason<select aria-label="Outflow reason" className={input} value={type} onChange={e => setType(e.target.value as OutflowType)}>{OUTFLOW_TYPES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{OUTFLOW_TYPES.find(option => option.value === type)?.description}</p>
@@ -73,9 +83,14 @@ export function InventoryOutflows() {
     </Modal>
     <OverlayPortal><ConfirmDialog open={reviewOpen} loading={busy} onClose={() => setReviewOpen(false)} variant="warning" title="Have you checked outflow history?"
       description="An interrupted request may already have deducted stock. Confirm whether the previous outflow was recorded before starting a new one. The previous request will not be sent again."
-      confirmLabel="History checked — start new outflow" onConfirm={() => {
+      confirmLabel="History checked — start new outflow" onConfirm={async () => {
         if (lock.current) return;
-        outflowsService.clearPending(); setReviewOpen(false); setError(""); setQuantity(""); setKey(""); setCost(""); setNotes(""); setTab("record");
-        void batches.refresh({ force: true });
+        lock.current = true; setBusy(true);
+        try {
+          if (!await outflowsService.clearPending()) throw new Error("The saved adjustment could not be cleared safely. Wait for other tabs and check browser storage.");
+          setReviewOpen(false); setError(""); setQuantity(""); setKey(""); setCost(""); setNotes(""); setTab("record");
+          void batches.refresh({ force: true });
+        } catch (reason) { const message = getApiErrorMessage(reason); setError(message); toast.error(message); }
+        finally { lock.current = false; setBusy(false); }
       }}/></OverlayPortal></>;
 }

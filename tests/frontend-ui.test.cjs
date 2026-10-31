@@ -126,6 +126,7 @@ loaded.require = id => id === 'react' ? hooks : id === 'framer-motion' ? { ...re
 } : require(id);
 loaded._compile(compiled, loaded.filename);
 const ui = loaded.exports;
+require('./stock-adjustment-probe.cjs').installStockAdjustmentProbe(ui.http);
 afterEach(() => { effectCleanups.forEach(cleanup => cleanup()); effectCleanups = []; });
 const render = (component, props = {}) => { stateIndex = refIndex = 0; return component(props); };
 function elements(tree, predicate) {
@@ -137,6 +138,7 @@ function elements(tree, predicate) {
   return [...(predicate(tree) ? [tree] : []), ...elements(tree.props.children, predicate)];
 }
 beforeEach(() => {
+  require('./browser-locks.cjs').installBrowserLocks();
   global.document = undefined;
   captureLayoutEffects = false; layoutEffects = [];
   effectCleanups.forEach(cleanup => cleanup()); effectCleanups = [];
@@ -3815,6 +3817,7 @@ test('outflow uncertainty remains visible after remount and cannot be cleared wi
   let tree = render(ui.InventoryOutflows);
   assert.equal(elements(tree, node => node.props.children === 'Record and deduct stock')[0].props.disabled, true);
   assert.ok(elements(tree, node => node.props.role === 'alert').length);
+  assert.equal(elements(tree, node => node.props.children === 'Recover saved adjustment').length, 1);
   await elements(tree, node => node.props.children === 'Record and deduct stock')[0].props.onClick();
   assert.equal(posts, 1);
   elements(render(ui.InventoryOutflows), node => node.props.children === 'Review history')[0].props.onClick();
@@ -3823,11 +3826,20 @@ test('outflow uncertainty remains visible after remount and cannot be cleared wi
   elements(tree, node => node.props.children === 'History checked — start a new outflow')[0].props.onClick();
   const confirmation = elements(render(ui.InventoryOutflows), node => node.type === ui.ConfirmDialog)[0];
   assert.equal(confirmation.props.open, true);
-  confirmation.props.onConfirm();
+  await confirmation.props.onConfirm();
   tree = render(ui.InventoryOutflows);
   assert.equal(elements(tree, node => node.props.children === 'Review history').length, 0);
   assert.equal(field('Outflow quantity').props.value, '');
   assert.equal(posts, 1);
+});
+
+test('legacy uncertain stock adjustments expose history review without a replay action', () => {
+  const payload = { product_batch_id: 1, adjustment_type: 'spoilage', quantity: '1', unit_cost: '0' };
+  ui.storePendingRequest('outflow', '11111111-1111-4111-8111-111111111111', JSON.stringify(payload), payload, { durable: true });
+  elements(render(ui.InventoryOutflows), node => node.props.children === 'Stock outflows')[0].props.onClick();
+  const tree = render(ui.InventoryOutflows);
+  assert.equal(elements(tree, node => node.props.children === 'Recover saved adjustment').length, 0);
+  assert.equal(elements(tree, node => node.props.children === 'Review history').length, 1);
 });
 
 test('User Management edits preserve backend multi-word name fields while changing another field', async () => {

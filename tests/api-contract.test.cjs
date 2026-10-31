@@ -51,6 +51,7 @@ servicesModule.filename = path.join(root, 'tests', 'services.cjs');
 servicesModule.paths = module.paths;
 servicesModule._compile(compiled, servicesModule.filename);
 const api = servicesModule.exports;
+require('./stock-adjustment-probe.cjs').installStockAdjustmentProbe(api.http);
 let calls;
 let responseData;
 let responseStatus;
@@ -1128,8 +1129,10 @@ test('product-only outflows reject missing targets and never forward retired tar
   const base = { adjustment_type: 'spoilage', quantity: '1.00', unit_cost: '0.00' };
   await assert.rejects(api.outflowsService.create({ ...base, ingredient_batch_id: 7 }), { status: 400 });
   assert.equal(calls.length, 0);
+  responseData = { id: 9 };
   await api.outflowsService.create({ ...base, product_batch_id: 8, ingredient_batch_id: 7 });
-  assert.deepEqual(JSON.parse(calls[0].data), { product_batch_id: 8, ...base });
+  const { request_id, ...outflowBody } = JSON.parse(calls[0].data);
+  assert.match(request_id, /^[0-9a-f-]{36}$/); assert.deepEqual(outflowBody, { product_batch_id: 8, ...base });
   assert.equal(api.outflowsService.pending(), null);
   await assert.rejects(api.inventoryService.disposeExpiredBatch({ kind: 'ingredient', id: 8, quantity: 1 }), { status: 400 });
   assert.equal(calls.length, 1, 'Legacy write-off targets never reach product batch IDs');
@@ -1470,13 +1473,15 @@ test('expired batch disposal writes off the full authoritative quantity with the
     api.http.defaults.adapter = async config => {
       calls.push(config);
       const data = config.method === 'get' ? { status: 'available', expiration_date: '2000-01-01',
-        remaining_quantity: '5.25', unit_price: '12.34', batch_number: 'EX-01' } : {};
+        remaining_quantity: '5.25', unit_price: '12.34', batch_number: 'EX-01' } : { id: 9 };
       return { status: 200, config, headers: {}, data };
     };
     await api.inventoryService.disposeExpiredBatch({ id: 7, kind, quantity: 5.25 });
     assert.equal(calls[0].url, `/inventory/${kind}-batches/7/`);
     assert.equal(calls[1].url, '/inventory/stock-adjustments/');
-    assert.deepEqual(JSON.parse(calls[1].data), { [`${kind}_batch_id`]: 7, adjustment_type: 'expired',
+    const { request_id, ...disposalBody } = JSON.parse(calls[1].data);
+    assert.match(request_id, /^[0-9a-f-]{36}$/);
+    assert.deepEqual(disposalBody, { [`${kind}_batch_id`]: 7, adjustment_type: 'expired',
       quantity: '5.25', unit_cost: '12.34', reason: 'Expired batch EX-01: full remaining stock disposed.' });
     assert.ok(refreshed > 0);
   }
@@ -1670,6 +1675,7 @@ test('encoding and payment writes invalidate every dependent frontend cache grou
 });
 
 test('stock outflows preserve reason, batch kind and explicit cost and support date filters', async () => {
+  responseData = { id: 9 };
   for (const adjustment_type of ['spoilage', 'complimentary', 'free_taste']) {
     await api.outflowsService.create({ product_batch_id: 2, adjustment_type, quantity: '2.00', unit_cost: '0.00', reason: 'Tasting event' });
     const payload = JSON.parse(calls.at(-1).data);
@@ -2334,6 +2340,7 @@ function reloadServicesForRetry() {
   instance.filename = path.join(root, 'tests', 'reloaded-services.cjs');
   instance.paths = module.paths;
   instance._compile(compiled, instance.filename);
+  require('./stock-adjustment-probe.cjs').installStockAdjustmentProbe(instance.exports.http);
   return instance.exports;
 }
 
@@ -2365,7 +2372,7 @@ test('outflow timeout records survive reload and block another POST until histor
   api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id: 705 })).toString('base64url')}.signature`);
   const payload = { product_batch_id: 3, adjustment_type: 'spoilage', quantity: '2.00', unit_cost: '0.00', reason: 'Spoiled stock' };
   let posts = 0;
-  api.http.defaults.adapter = async config => { posts++; assert.deepEqual(JSON.parse(config.data), payload); throw new AxiosError('Timed out', AxiosError.ECONNABORTED); };
+  api.http.defaults.adapter = async config => { posts++; const { request_id, ...body } = JSON.parse(config.data); assert.match(request_id, /^[0-9a-f-]{36}$/); assert.deepEqual(body, payload); throw new AxiosError('Timed out', AxiosError.ECONNABORTED); };
   await assert.rejects(api.outflowsService.create(payload));
   const saved = api.outflowsService.pending();
   assert.match(saved.id, /^[0-9a-f-]{36}$/);
@@ -2375,7 +2382,7 @@ test('outflow timeout records survive reload and block another POST until histor
   await assert.rejects(reloaded.outflowsService.create(payload), /unconfirmed/);
   await assert.rejects(reloaded.outflowsService.create({ ...payload, quantity: '1.00' }), /unconfirmed/);
   assert.equal(posts, 1);
-  reloaded.outflowsService.clearPending();
+  await reloaded.outflowsService.clearPending();
   await reloaded.outflowsService.create(payload);
   assert.equal(posts, 2);
   assert.equal(api.outflowsService.pending(), null);
@@ -2399,10 +2406,10 @@ test('outflows share an active write, clear definite validation failures and pre
   const originalId = api.outflowsService.pending().id;
   api.setAccessToken(token(702));
   assert.equal(api.outflowsService.pending(), null);
-  api.outflowsService.clearPending();
+  await api.outflowsService.clearPending();
   api.setAccessToken(token(701));
   assert.equal(api.outflowsService.pending().id, originalId);
-  api.outflowsService.clearPending();
+  await api.outflowsService.clearPending();
 });
 
 test('blocked storage prevents outflow submission instead of relying on a memory-only guard', async () => {
@@ -2417,7 +2424,7 @@ test('blocked storage prevents outflow submission instead of relying on a memory
     assert.equal(api.outflowsService.pending(), null);
     await assert.rejects(api.outflowsService.create(payload), /storage.*unavailable/i);
     assert.equal(posts, 0);
-    api.outflowsService.clearPending();
+    await api.outflowsService.clearPending();
     assert.equal(api.outflowsService.pending(), null);
   } finally { global.localStorage = originalStorage; }
 });
@@ -2428,7 +2435,7 @@ test('expired batch disposal accepts available or expired status and null, zero 
     let submitted;
     api.http.defaults.adapter = async config => {
       if (config.method === 'post') submitted = JSON.parse(config.data);
-      return { status: 200, config, headers: {}, data: { [kind]: { unit_price: null }, status, expiration_date: '2000-01-01', remaining_quantity: '2', unit_price, batch_number: 'B1' } };
+      return { status: 200, config, headers: {}, data: { id: 9, [kind]: { unit_price: null }, status, expiration_date: '2000-01-01', remaining_quantity: '2', unit_price, batch_number: 'B1' } };
     };
     await api.inventoryService.disposeExpiredBatch({ id: 1, kind, quantity: 2 });
     assert.equal(submitted.unit_cost, unit_price ?? '0.00');
