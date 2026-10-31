@@ -1,7 +1,7 @@
 import { useAutoPageSize, type AutoPageCapacity } from "@/hooks/useAutoPageSize";
 import { searchContainerClass } from "@/styles/controlClasses";
 // components/EnhancedTable.tsx
-import { useState, useMemo, useEffect, useLayoutEffect } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { C } from "@/styles/tokens/colors";
 import { EmptyState, Skeleton } from "@/components/EmptyState";
@@ -13,6 +13,22 @@ export interface Column<T> {
   sortKey?:  (row: T) => string | number | null;
   width?:    string;
   align?:    "left" | "right" | "center";
+}
+
+export interface TableRequest {
+  page: number;
+  pageSize: number;
+  search: string;
+  sortCol: string | null;
+  sortDir: "asc" | "desc" | null;
+}
+
+export interface RemoteTable {
+  active: boolean;
+  count: number;
+  onChange: (request: TableRequest) => void;
+  resetKey?: string;
+  pageSize?: number;
 }
 
 interface Props<T> {
@@ -43,6 +59,9 @@ interface Props<T> {
   disableScroll?:   boolean;
   mobileTable?:     boolean;
   renderMobileRow?: (row: T, index: number) => React.ReactNode;
+  remote?: RemoteTable;
+  measurementKey?: unknown;
+  fitActualRows?: boolean;
 }
 
 function alignmentClasses(align: Column<unknown>["align"]) {
@@ -57,9 +76,13 @@ export function EnhancedTable<T>({
   onRowClick, extraControls, emptyTitle = "No records found",
   emptyDesc = "Try adjusting your search or add a new record.", loading,
   showExport = true, showCount = true, fillHeight = false, contentHeight = false, reserveTableHeight = false, stretchRows = false, rowHeight = 52, scrollBody = false, disableScroll = false,
-  mobileTable = false, renderMobileRow,
+  mobileTable = false, renderMobileRow, remote, measurementKey, fitActualRows = false,
 }: Props<T>) {
-  const defaultCapacity = useAutoPageSize(responsivePageSize ? Math.max(56, rowHeight) : rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 1, measureRows: true, fitContainer: true, measurementKey: data, measureRenderedRows: measureRenderedRows ?? contentHeight } : {});
+  // Remote pages/refreshes replace arrays without changing table density. Keep
+  // the tallest measured row across those reads, especially on partial pages.
+  // Local tables retain their existing data-based reset unless explicitly scoped.
+  const rowMeasurementKey = measurementKey !== undefined ? measurementKey : remote ? remote.resetKey : data;
+  const defaultCapacity = useAutoPageSize(responsivePageSize ? Math.max(56, rowHeight) : rowHeight, responsivePageSize ? 320 : 0, responsivePageSize ? { minPageSize: 1, measureRows: true, fitContainer: true, measurementKey: rowMeasurementKey, measureRenderedRows: measureRenderedRows ?? contentHeight, fitActualRows, requestedPageSize: fitActualRows && remote?.active ? remote.pageSize : undefined } : {});
   const capacity = responsivePageSize ? defaultCapacity : pageCapacity ?? defaultCapacity;
   autoPageSize = autoPageSize || !!pageCapacity;
   const [desktopTable, setDesktopTable] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches);
@@ -87,19 +110,23 @@ export function EnhancedTable<T>({
   const [sortCol,    setSortCol]   = useState<string | null>(null);
   const [sortDir,    setSortDir]   = useState<SortDir>(null);
   const [page,       setPage]      = useState(1);
+  const resetKey = useRef(remote?.resetKey);
+  const resettingPage = resetKey.current !== remote?.resetKey;
+
+  useEffect(() => { resetKey.current = remote?.resetKey; if (remote) setPage(1); }, [remote?.resetKey]);
 
   useEffect(() => { if (!responsivePageSize) setPage(1); }, [pageSize, responsivePageSize]);
 
   // ── Search ──────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    if (!search || !searchKeys) return data;
+    if (remote?.active || !search || !searchKeys) return data;
     const q = search.toLowerCase();
     return data.filter(row => searchKeys(row).some(v => v.toLowerCase().includes(q)));
-  }, [data, search, searchKeys]);
+  }, [data, search, searchKeys, remote?.active]);
 
   // ── Sort ────────────────────────────────────────────────────────────────────
   const sorted = useMemo(() => {
-    if (!sortCol || !sortDir) return filtered;
+    if (remote?.active || !sortCol || !sortDir) return filtered;
     const col = columns.find(c => c.key === sortCol);
     if (!col?.sortKey) return filtered;
     return [...filtered].sort((a, b) => {
@@ -111,12 +138,20 @@ export function EnhancedTable<T>({
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [filtered, sortCol, sortDir, columns]);
+  }, [filtered, sortCol, sortDir, columns, remote?.active]);
 
   // ── Paginate ────────────────────────────────────────────────────────────────
-  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const safePage   = Math.min(page, totalPages);
-  const pageData   = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const recordCount = remote?.active ? remote.count : sorted.length;
+  const totalPages = Math.max(1, Math.ceil(recordCount / pageSize));
+  const safePage   = Math.min(resettingPage ? 1 : page, totalPages);
+  // If a newly fetched Sales History page proves too tall, trim its visible
+  // prefix immediately while the correctly sized server page is requested.
+  const pageData   = remote?.active ? fitActualRows && sorted.length > pageSize ? sorted.slice(0, pageSize) : sorted
+    : sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    remote?.onChange({ page: safePage, pageSize, search, sortCol, sortDir });
+  }, [safePage, pageSize, search, sortCol, sortDir, remote?.onChange]);
 
   useLayoutEffect(() => { if (adaptive) capacity.remeasure?.(); }, [adaptive, sorted, safePage, pageSize]);
 
@@ -131,7 +166,7 @@ export function EnhancedTable<T>({
 
   const handleSearch = (v: string) => { if (responsivePageSize) capacity.resetMeasurement?.(); setSearch(v); setPage(1); };
 
-  if (loading) {
+  if (loading && data.length === 0) {
     return (
       <div role="status" aria-label="Loading records" aria-busy="true"
         className={`${contentHeight ? "h-auto" : "min-h-52"} bg-transparent xl:overflow-hidden xl:rounded-xl xl:border xl:bg-card ${fillHeight ? "xl:flex-1" : ""}`}
@@ -197,7 +232,7 @@ export function EnhancedTable<T>({
           <div className="w-full sm:w-auto sm:ml-auto flex items-center justify-between sm:justify-end gap-2 order-3">
             {showCount && (
               <span className="text-xs whitespace-nowrap" style={{ color: C.muted }}>
-                {sorted.length} record{sorted.length !== 1 ? "s" : ""}
+                {recordCount} record{recordCount !== 1 ? "s" : ""}
               </span>
             )}
             {showExport && (
@@ -321,7 +356,7 @@ export function EnhancedTable<T>({
       </div>
 
       {/* Pagination */}
-      {(totalPages > 1 || adaptive || contentHeight && sorted.length > 0) && (
+      {(totalPages > 1 || adaptive || contentHeight && recordCount > 0) && (
         <div ref={adaptive ? capacity.footerRef : undefined} className={contentHeight ? `table-pagination flex items-center justify-between ${adaptive ? "mt-auto" : "mt-4"} pt-3 border-t border-slate-100 dark:border-slate-700 px-1 gap-2 shrink-0` : `table-pagination flex flex-wrap items-center justify-between gap-2 px-1 flex-shrink-0 ${fillHeight ? "mt-auto pt-3 border-t border-slate-100" : "mt-4"}`}>
           <span className={contentHeight ? "text-xs whitespace-nowrap" : "text-xs order-2 sm:order-1"} style={{ color: C.muted }}>
             {contentHeight ? `Page ${safePage} of ${totalPages}` : <>

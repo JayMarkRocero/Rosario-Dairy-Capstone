@@ -1,5 +1,5 @@
 import type { Sale } from "@/features/sales/api/sales.service";
-import type { DjangoTransactionItem } from "@/lib/api";
+import type { DjangoTransaction, DjangoTransactionItem } from "@/lib/api";
 import { encodedByLabel } from "./historyLabels";
 import { formatRecordedMoney, sumRecordedMoney } from "./recordedMoney";
 export const receiptMoney = (value: string | number | null | undefined) => {
@@ -9,12 +9,25 @@ export const receiptMoney = (value: string | number | null | undefined) => {
 };
 const sumRecorded = (items: DjangoTransactionItem[], field: "subtotal" | "total_amount" | "source_line_total") =>
   sumRecordedMoney(items.map(item => item[field]));
+const dateTime = (value?: string | null) => {
+  const date = new Date(value ?? "");
+  return Number.isFinite(date.getTime()) ? date.toLocaleString("en-PH", { timeZone: "Asia/Manila" }) + " (Asia/Manila)" : "Not provided";
+};
+export function paymentAuditFields(transaction: Pick<DjangoTransaction, "payment_updated_by_user" | "payment_updated_at"> & Partial<Pick<DjangoTransaction, "created_at">>): [string, string][] {
+  // An explicit nullable actor is a server audit fact, independent of creation
+  // time or encoder. Older responses retain their existing timestamp display.
+  if ("payment_updated_by_user" in transaction) return [
+    ["Payment updated by", transaction.payment_updated_by_user?.username || "Not recorded"],
+    ["Payment updated", dateTime(transaction.payment_updated_at)],
+  ];
+  const createdAt = new Date(transaction.created_at ?? "").getTime();
+  const paymentUpdatedAt = new Date(transaction.payment_updated_at ?? "").getTime();
+  return Number.isFinite(paymentUpdatedAt) && (!Number.isFinite(createdAt)
+    || Math.floor(paymentUpdatedAt / 1000) > Math.floor(createdAt / 1000))
+    ? [["Payment updated", dateTime(transaction.payment_updated_at)]] : [];
+}
 export function receiptDetails(sale: Sale) {
   const transaction = sale.transaction;
-  const dateTime = (value?: string | null) => {
-    const date = new Date(value ?? "");
-    return Number.isFinite(date.getTime()) ? date.toLocaleString("en-PH", { timeZone: "Asia/Manila" }) + " (Asia/Manila)" : "Not provided";
-  };
   const fields: [string, string][] = [
     ["SI Number", sale.receipt], ["Date / Time", dateTime(transaction.created_at)],
     ["Cashier", sale.cashier], ["Customer", sale.customer], ["Payment Method", sale.payment],
@@ -23,14 +36,7 @@ export function receiptDetails(sale: Sale) {
   const encoder = encodedByLabel(transaction);
   if (encoder) fields.push(["Encoded by", encoder.replace(/^Encoded by /, "")]);
   if (transaction.encoded_at) fields.push(["Entered at", dateTime(transaction.encoded_at)]);
-  const createdAt = new Date(transaction.created_at).getTime();
-  const paymentUpdatedAt = new Date(transaction.payment_updated_at ?? "").getTime();
-  // Checkout stamps its initial payment just before creation. Only a later,
-  // visibly different timestamp represents additional payment history here.
-  if (Number.isFinite(paymentUpdatedAt) && (!Number.isFinite(createdAt)
-      || Math.floor(paymentUpdatedAt / 1000) > Math.floor(createdAt / 1000))) {
-    fields.push(["Payment updated", dateTime(transaction.payment_updated_at)]);
-  }
+  fields.push(...paymentAuditFields(transaction));
   if (transaction.delivery_status) fields.push(["Delivery Status", transaction.delivery_status]);
   if (transaction.is_voided) fields.push(["Transaction Status", "Voided"]);
   const groups = new Map<string, DjangoTransactionItem[]>();

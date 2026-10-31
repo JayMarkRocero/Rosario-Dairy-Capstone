@@ -21,7 +21,7 @@ const compiled = buildSync({ stdin: { contents: `
 const loaded = new Module(path.join(root, 'tests', 'money-memory.cjs'), module);
 loaded.filename = path.join(root, 'tests', 'money-memory.cjs'); loaded.paths = module.paths;
 loaded.require = id => id === 'react' ? { ...React, useEffect() {}, useLayoutEffect() {},
-  useState: value => [typeof value === 'function' ? value() : value, () => {}], useRef: value => ({ current: value }), useMemo: fn => fn(),
+  useState: value => [typeof value === 'function' ? value() : value, () => {}], useRef: value => ({ current: value }), useMemo: fn => fn(), useCallback: fn => fn,
 } : require(id);
 loaded._compile(compiled, loaded.filename); const api = loaded.exports;
 const tx = overrides => ({ id: 5, transaction_number: 'SI-5', created_at: '2026-10-01T01:00:00Z',
@@ -71,20 +71,20 @@ test('mobile history and order cards display original backend totals while keepi
   assert.equal(typeof order.total, 'number'); assert.equal(order.recordedAmounts.total, '90071992547409.93');
   assert.equal(order.items[0].recordedAmounts.netAmount, '90071992547409.93');
   assert.match(renderToStaticMarkup(React.createElement(api.MobileOrderCard, { order, onView() {} })), /90,071,992,547,409\.93/);
-  assert.equal('getById' in api.ordersService, false);
+  assert.equal(typeof api.ordersService.getById, 'function', 'Open order details can refresh independently of the visible page');
 });
 
 test('encoding Entered by uses the backend encoder rather than the separately recorded cashier', () => {
   global.window = new EventTarget();
   api.clearDataCache();
   const record = tx();
-  api.writeDataCache(`${api.dataCacheEpoch()}:sales:encoding:::`, [record], ['sales']);
+  api.writeDataCache(`${api.dataCacheEpoch()}:sales:encoding::::page:1:5`, { count: 1, results: [record] }, ['sales']);
   const tree = api.SalesEncoding();
   const table = nodes(tree, node => node.type === api.EnhancedTable)[0];
   const sale = table.props.data[0], entered = table.props.columns.find(column => column.header === 'Entered by');
   assert.equal(sale.cashier, 'Not recorded');
-  assert.equal(entered.render(sale).props.children, 'Encoded by Admin — encoder');
-  assert.equal(entered.render(api.toSale(tx({ handled_by: { id: 8, username: 'staff-encoder', role: 'staff' } }))).props.children, 'Encoded by Staff — staff-encoder');
+  assert.equal(entered.render(sale).props.children, 'encoder');
+  assert.equal(entered.render(api.toSale(tx({ handled_by: { id: 8, username: 'staff-encoder', role: 'staff' } }))).props.children, 'staff-encoder');
   const total = table.props.columns.find(column => column.key === 'total').render(sale);
   assert.equal(total.props.children, '₱90,071,992,547,409.93');
 });

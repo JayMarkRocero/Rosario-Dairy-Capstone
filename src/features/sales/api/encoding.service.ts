@@ -1,5 +1,6 @@
 import { normalizeSaleItems, type SaleLineDraft } from "../utils/manualPricing";
-import http, { ApiError, getAllPages, type DjangoTransaction, type CheckoutItemPayload } from "@/lib/api";
+import http, { ApiError, getAllPages, type DjangoTransaction, type CheckoutItemPayload, type PaginatedResponse } from "@/lib/api";
+import { historyParams, type HistoryFilters, type HistoryPageOptions, type TransactionSummary } from "../types/history";
 import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest, verifyDurablePendingRequest } from "./pendingRequest";
 import { hasRetiredDiscount } from "../utils/retiredPricing";
 export interface EncodingPayload {
@@ -17,6 +18,14 @@ const recordedFields = (payload: Omit<EncodingPayload, "request_id">) => ({
 const encodingFields = (payload: Omit<EncodingPayload, "request_id">) => ({ ...recordedFields(payload), items: normalizeSaleItems(payload.items) });
 export const encodingFingerprint = (payload: Omit<EncodingPayload, "request_id">) => JSON.stringify(encodingFields(payload));
 export const encodingService = {
+  getPage: async (options: HistoryPageOptions, signal?: AbortSignal): Promise<PaginatedResponse<DjangoTransaction>> =>
+    (await http.get<PaginatedResponse<DjangoTransaction>>("/sales/encoding/", {
+      params: { ...historyParams(options), page: options.page, page_size: options.pageSize, ordering: options.ordering }, signal,
+    })).data,
+  getSummary: async (filters: HistoryFilters = {}, signal?: AbortSignal): Promise<TransactionSummary> =>
+    (await http.get<TransactionSummary>("/sales/encoding/summary/", { params: historyParams(filters), signal })).data,
+  get: async (id: number, signal?: AbortSignal): Promise<DjangoTransaction> =>
+    (await http.get<DjangoTransaction>(`/sales/encoding/${id}/`, { signal })).data,
   pending: () => {
     const pending = readPendingRequest<EncodingRetry>("encoding");
     if (!pending) return null;

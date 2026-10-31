@@ -25,7 +25,8 @@ function render() { stateIndex = refIndex = 0; effects = []; return api.StaffKPI
 function cards(tree = render()) { return tree.props.children; }
 function mount() { render(); cleanups.push(...effects.map(effect => effect()).filter(Boolean)); }
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
-const sale = () => ({ id: 1, created_at: `${today()}T12:00:00+08:00`, total_amount: '123.45', payment_method: 'cash', handled_by: { id: 7, username: 'cashier' } });
+const salesSummary = () => ({ transaction_count: 1, total_revenue: '123.45', paid_count: 1, paid_amount: '123.45',
+  pending_count: 0, pending_amount: '0.00', unknown_count: 0, unknown_amount: '0.00' });
 const order = (id, staffId) => ({ id, status: 'fulfilled', customer: { id: 1, name: 'Customer' }, handled_by: { id: staffId, username: `staff-${staffId}` }, transaction: { total_amount: '123.45' }, items: [], created_at: `${today()}T12:00:00+08:00` });
 beforeEach(() => {
   states = []; refs = []; stateIndex = refIndex = 0; effects = []; cleanups = [];
@@ -44,7 +45,7 @@ test('staff sales resolve independently of complete order history and inventory 
   api.http.defaults.adapter = async config => {
     calls.push(config);
     let data;
-    if (config.url === '/sales/transactions/') data = await sales.promise;
+    if (config.url === '/sales/transactions/summary/') data = await sales.promise;
     else if (config.url === '/sales/orders/') { await orders.promise; data = { count: 2, next: config.params.page === 1 ? 'next' : null,
       results: [order(config.params.page, config.params.page === 1 ? 8 : 7)] }; }
     else { await inventory.promise; data = []; }
@@ -52,12 +53,13 @@ test('staff sales resolve independently of complete order history and inventory 
   };
   mount(); await settle();
   assert.ok(cards().every(card => card.props.value === '—' && card.props.trendLabel === 'Updating'));
-  sales.resolve([sale()]); await settle();
+  sales.resolve(salesSummary()); await settle();
   const loadedSales = cards();
   assert.equal(loadedSales[0].props.value, '₱123.45'); assert.equal(loadedSales[1].props.value, '1');
   assert.equal(loadedSales[0].props.trendLabel, 'Today'); assert.equal(loadedSales[2].props.value, '—'); assert.equal(loadedSales[3].props.value, '—');
-  const request = calls.find(call => call.url === '/sales/transactions/');
+  const request = calls.find(call => call.url === '/sales/transactions/summary/');
   assert.equal(request.params.handled_by, 7); assert.equal(request.params.start_date, today()); assert.equal(request.params.end_date, today());
+  assert.equal(calls.some(call => call.url === '/sales/transactions/'), false, 'Daily totals do not download receipt pages');
   orders.resolve(); await settle();
   assert.deepEqual(calls.filter(call => call.url === '/sales/orders/').map(call => call.params.page), [1, 2]);
   assert.equal(cards()[2].props.value, '1', 'Fulfilled count uses every order page and the current staff ID');
@@ -68,7 +70,7 @@ test('staff sales resolve independently of complete order history and inventory 
 test('a staff order failure does not suppress successful sales or inventory metrics', async () => {
   api.http.defaults.adapter = async config => {
     if (config.url === '/sales/orders/') throw new api.ApiError(503, 'Orders unavailable');
-    return { data: config.url === '/sales/transactions/' ? [sale()] : [], status: 200, headers: {}, config };
+    return { data: config.url === '/sales/transactions/summary/' ? salesSummary() : [], status: 200, headers: {}, config };
   };
   mount(); await settle(); const result = cards();
   assert.equal(result[0].props.value, '₱123.45'); assert.equal(result[1].props.value, '1');
@@ -87,11 +89,11 @@ test('leaving staff KPI groups cancels sales/order reads and all group deadlines
   const finish = deferred(), requests = [];
   api.http.defaults.adapter = async config => { requests.push(config); await finish.promise; return { data: [], status: 200, headers: {}, config }; };
   mount(); await settle();
-  const getSales = requests.find(call => call.url === '/sales/transactions/'), getOrders = requests.find(call => call.url === '/sales/orders/');
+  const getSales = requests.find(call => call.url === '/sales/transactions/summary/'), getOrders = requests.find(call => call.url === '/sales/orders/');
   assert.equal(getSales.signal.aborted, false); assert.equal(getOrders.signal.aborted, false);
   cleanups.reverse().forEach(cleanup => cleanup()); cleanups = [];
   assert.equal(getSales.signal.aborted, true); assert.equal(getOrders.signal.aborted, true);
   finish.resolve(); await settle();
   assert.equal(requests.filter(call => call.url === '/sales/orders/').length, 1);
-  assert.equal(api.readDataCache(`${api.dataCacheEpoch()}:dashboard:staff-sales:7:${today()}`).error, undefined);
+  assert.equal(api.readDataCache(`${api.dataCacheEpoch()}:dashboard:staff-sales-summary:7:${today()}`).error, undefined);
 });

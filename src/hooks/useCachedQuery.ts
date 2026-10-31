@@ -37,6 +37,7 @@ export function useCachedQuery<T>(key: string, fetcher: (signal?: AbortSignal) =
   }, [key, groupKey, enabled, cancelable]);
   return { data: enabled ? snapshot.data : undefined, loading: enabled && snapshot.data === undefined && !snapshot.error,
     error: enabled && snapshot.data === undefined ? snapshot.error : undefined,
+    refreshError: enabled && snapshot.data !== undefined ? snapshot.error : undefined,
     refresh: ({ force = false }: { force?: boolean } = {}) => {
       if (!enabled || session !== dataCacheEpoch() || cancelable && activeKey.current !== key) return;
       if (force) invalidateDataCache(groups);

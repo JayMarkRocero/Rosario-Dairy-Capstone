@@ -37,7 +37,7 @@ const compiled = buildSync({
     export { Modal } from './src/components/overlays/Modal';
     export { Drawer } from './src/components/overlays/Drawer';
     export { trapOverlayFocus } from './src/components/overlays/useOverlayFocus';
-    export { useAutoPageSize, calculatePageSize, calculateViewportPageSize, calculateFittedPageSize, calculateNaturalPageSize } from './src/hooks/useAutoPageSize';
+    export { useAutoPageSize, calculatePageSize, calculateViewportPageSize, calculateFittedPageSize, calculateNaturalPageSize, calculateMeasuredRowPageSize } from './src/hooks/useAutoPageSize';
     export { TableCard, TABLE_CARD_CLASS_NAME } from './src/components/data-display/TableCard';
     export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
     export { ForecastChart, ForecastGraphTooltip } from './src/features/dashboard/components/admin/ForecastChart';
@@ -559,8 +559,8 @@ test('mobile sales cards keep full transaction details available and open the se
 
 test('admin and staff Sales History use mobile cards without a sort selector and preserve five-item pagination', () => {
   const sales = Array.from({ length: 6 }, (_, index) => ({ transaction: { id: index + 1 }, receipt: `SI-${index}`, customer: 'Customer', cashier: 'Cashier', date: '2026-10-11', payment: 'Cash', total: 120 }));
-  for (const [Page, key] of [[ui.AdminSalesHistory, 'sales:history:'], [ui.StaffSalesHistory, 'sales:mine:7']]) {
-    ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, sales, ['sales']);
+  for (const [Page, key] of [[ui.AdminSalesHistory, 'sales:history::All:page:1:5'], [ui.StaffSalesHistory, 'sales:mine:7']]) {
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, Page === ui.AdminSalesHistory ? { count: sales.length, results: sales.slice(0, 5) } : sales, ['sales']);
     states = []; refs = [];
     const table = elements(render(Page), node => node.type === ui.EnhancedTable)[0];
     assert.equal(table.props.pageSize, 5);
@@ -573,6 +573,62 @@ test('admin and staff Sales History use mobile cards without a sort selector and
     assert.equal(elements(tree, node => node.type === ui.MobileSaleCard).length, 5);
     assert.equal(elements(tree, node => node.props['aria-label'] === 'Sort records').length, 0);
     assert.ok(elements(tree, node => node.props.children === 'Page 1 of 2').length > 0);
+  }
+});
+
+test('Admin and Staff SI cells show only the recorded number while receipt details retain encoder and cashier attribution', () => {
+  authState = { user: { id: 7, username: 'ADMIN', role: 'admin' }, loading: false };
+  const source = { ...liveReceipt(), transaction_number: null, handled_by: { id: 7, username: 'ADMIN', role: 'admin' },
+    recorded_cashier: { id: 8, username: 'CASHIER', role: 'staff' } };
+  const sale = ui.toSale(source);
+  for (const [Page, key, data] of [
+    [ui.AdminSalesHistory, 'sales:history::All:page:1:5', { count: 1, results: [sale] }],
+    [ui.StaffSalesHistory, 'sales:mine:7', [sale]],
+  ]) {
+    states = []; refs = []; effects = [];
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, data, ['sales']);
+    const table = elements(render(Page), node => node.type === ui.EnhancedTable)[0];
+    const column = table.props.columns.find(column => column.key === 'receipt');
+    assert.equal(column.render(sale).props.children, 'Not recorded');
+    assert.equal(elements(column.render(sale), node => node.type === 'span').length, 1);
+    assert.doesNotMatch(JSON.stringify(column.render(sale)), /Encoded by|ADMIN/);
+    assert.equal(column.render(ui.toSale({ ...source, transaction_number: 'SI-1093' })).props.children, 'SI-1093');
+  }
+  states = []; refs = []; effects = [];
+  const details = render(ui.TransactionDetails, { sale, onClose() {} });
+  assert.ok(elements(details, node => node.type === 'dd' && node.props.children === 'CASHIER').length);
+  assert.ok(elements(details, node => node.type === 'dd' && node.props.children === 'Admin — ADMIN').length);
+});
+
+test('Admin and Staff payment cells deduplicate missing values without hiding a valid method or status', () => {
+  authState = { user: { id: 7, username: 'ADMIN', role: 'admin' }, loading: false };
+  for (const Page of [ui.AdminSalesHistory, ui.StaffSalesHistory]) {
+    states = []; refs = []; effects = [];
+    const table = elements(render(Page), node => node.type === ui.EnhancedTable)[0];
+    assert.match(table.props.measurementKey, /^sales-history:single-payment-placeholder:/);
+    assert.equal(table.props.fitActualRows, true);
+    const column = table.props.columns.find(column => column.key === 'payment');
+    for (const method of ['cash', 'online', 'unknown', undefined, null, '']) {
+      for (const status of ['paid', 'pending', 'unknown', undefined, null]) {
+        const transaction = { ...liveReceipt(), payment_method: method, payment_status: status };
+        const original = JSON.stringify(transaction), sale = ui.toSale(transaction);
+        const cell = column.render(sale);
+        const methodLabels = elements(cell, node => node.type === 'span').map(node => node.props.children);
+        const badge = elements(cell, node => node.type?.name === 'PaymentStatusBadge')[0];
+        const statusLabel = render(badge.type, badge.props).props.children;
+        const labels = [...methodLabels, statusLabel];
+        const knownMethod = method === 'cash' || method === 'online', knownStatus = status === 'paid' || status === 'pending';
+        const expectedMethod = method === 'cash' ? 'Cash' : method === 'online' ? 'Online' : 'Not recorded';
+        const expectedStatus = status === 'paid' ? 'Paid' : status === 'pending' ? 'Pending' : 'Not recorded';
+        assert.deepEqual(labels, knownMethod || knownStatus ? [expectedMethod, expectedStatus] : ['Not recorded'], `${Page.name}: ${method}/${status}`);
+        const mobile = render(ui.MobileSaleCard, { sale, onView() {}, deduplicatePayment: true });
+        const paymentValue = elements(mobile, node => node.type === 'dd' && node.props.title === sale.payment).at(-1);
+        const mobileStatus = elements(paymentValue, node => node.type?.name === 'PaymentStatusBadge')[0];
+        const mobileMethods = elements(paymentValue, node => node.type === 'span' && typeof node.props.children === 'string').map(node => node.props.children);
+        assert.deepEqual([...mobileMethods, render(mobileStatus.type, mobileStatus.props).props.children], labels);
+        assert.equal(JSON.stringify(transaction), original, 'Rendering never fills in missing backend payment data');
+      }
+    }
   }
 });
 
@@ -1046,9 +1102,13 @@ test('settings events refresh mounted dashboard cache while keeping previous dat
   cleanup();
 });
 
+function transactionSummary(total = '0.00', count = 0) {
+  return { transaction_count: count, total_revenue: total, paid_count: count, paid_amount: total, pending_count: 0, pending_amount: '0.00', unknown_count: 0, unknown_amount: '0.00' };
+}
+
 test('staff dashboard navigation shows cached KPI values without Updating badges or fresh requests', async () => {
   let requests = 0;
-  ui.http.defaults.adapter = async config => { requests++; return { status: 200, config, headers: {}, data: [] }; };
+  ui.http.defaults.adapter = async config => { requests++; return { status: 200, config, headers: {}, data: config.url === '/sales/transactions/summary/' ? transactionSummary() : [] }; };
   render(ui.StaffKPICards);
   let cleanup = mountStaffMetrics(); await settle();
   assert.equal(render(ui.StaffKPICards).props['aria-busy'], false);
@@ -1082,7 +1142,7 @@ test('staff KPI requests wait for auth initialization then use the token identit
   const requests = [];
   ui.http.defaults.adapter = async config => {
     requests.push(config);
-    return { data: [], status: 200, statusText: 'OK', headers: {}, config };
+    return { data: config.url === '/sales/transactions/summary/' ? transactionSummary() : [], status: 200, statusText: 'OK', headers: {}, config };
   };
   authState = { user: null, loading: true };
   const waiting = render(ui.StaffKPICards);
@@ -1095,7 +1155,7 @@ test('staff KPI requests wait for auth initialization then use the token identit
   const cleanup = mountStaffMetrics();
   try {
     await settle();
-    assert.equal(requests.find(request => request.url === '/sales/transactions/').params.handled_by, 7);
+    assert.equal(requests.find(request => request.url === '/sales/transactions/summary/').params.handled_by, 7);
     assert.equal(render(ui.StaffKPICards).props['aria-busy'], false);
     assert.equal(toastErrors.length, 0);
   } finally { cleanup(); }
@@ -1124,13 +1184,13 @@ test('staff KPI accepts an explicit context ID when a token ID is unavailable', 
   global.localStorage.getItem = () => null;
   ui.http.defaults.adapter = async config => {
     requests.push(config);
-    return { data: [], status: 200, statusText: 'OK', headers: {}, config };
+    return { data: config.url === '/sales/transactions/summary/' ? transactionSummary() : [], status: 200, statusText: 'OK', headers: {}, config };
   };
   render(ui.StaffKPICards);
   const cleanup = mountStaffMetrics();
   try {
     await settle();
-    assert.equal(requests.find(request => request.url === '/sales/transactions/').params.handled_by, 12);
+    assert.equal(requests.find(request => request.url === '/sales/transactions/summary/').params.handled_by, 12);
     assert.equal(render(ui.StaffKPICards).props['aria-busy'], false);
   } finally { cleanup(); }
 });
@@ -1139,7 +1199,7 @@ test('staff KPI loading clears for empty responses and uses scoped sales request
   const requests = [];
   ui.http.defaults.adapter = async config => {
     requests.push(config);
-    return { data: [], status: 200, statusText: 'OK', headers: {}, config };
+    return { data: config.url === '/sales/transactions/summary/' ? transactionSummary() : [], status: 200, statusText: 'OK', headers: {}, config };
   };
   const initial = render(ui.StaffKPICards);
   assert.equal(initial.props['aria-busy'], true);
@@ -1151,7 +1211,7 @@ test('staff KPI loading clears for empty responses and uses scoped sales request
     assert.equal(loaded.props['aria-busy'], false);
     assert.deepEqual(staffCards(loaded).map(card => card.props.trendLabel), ['Today', 'Today', 'All time', 'In stock']);
     assert.deepEqual(staffCards(loaded).map(card => card.props.value), ['₱0', '0', '0', '0 / 0']);
-    const sales = requests.find(request => request.url === '/sales/transactions/');
+    const sales = requests.find(request => request.url === '/sales/transactions/summary/');
     assert.equal(sales.params.handled_by, 7);
     assert.equal(sales.params.start_date, sales.params.end_date);
     assert.equal(requests.some(request => request.url === '/accounts/user/'), false);
@@ -1159,9 +1219,8 @@ test('staff KPI loading clears for empty responses and uses scoped sales request
 });
 
 test('staff KPI loading clears and displays the returned metrics', async () => {
-  const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   ui.http.defaults.adapter = async config => ({
-    data: config.url === '/sales/transactions/' ? [{ id: 1, handled_by: { id: 7, username: 'audit' }, created_at: `${date}T12:00:00+08:00`, total_amount: '50.00', payment_method: 'cash' }] : [],
+    data: config.url === '/sales/transactions/summary/' ? transactionSummary('50.00', 1) : [],
     status: 200, statusText: 'OK', headers: {}, config,
   });
   render(ui.StaffKPICards);
@@ -1172,6 +1231,29 @@ test('staff KPI loading clears and displays the returned metrics', async () => {
     assert.equal(loaded.props['aria-busy'], false);
     assert.deepEqual(staffCards(loaded).slice(0, 2).map(card => card.props.value), ['₱50', '1']);
     assert.ok(staffCards(loaded).every(card => card.props.trendLabel !== 'Updating'));
+  } finally { cleanup(); }
+});
+
+test('staff daily summaries load independently while complete scoped order counts are still pending', async () => {
+  const calls = [];
+  ui.http.defaults.adapter = config => {
+    calls.push(config);
+    if (config.url === '/sales/orders/') return new Promise(() => {});
+    return Promise.resolve({ status: 200, config, headers: {}, data:
+      config.url === '/sales/transactions/summary/' ? transactionSummary('125.00', 4801) : [] });
+  };
+  render(ui.StaffKPICards);
+  const cleanup = mountStaffMetrics();
+  try {
+    await settle();
+    const cards = staffCards(render(ui.StaffKPICards));
+    assert.equal(cards[0].props.value, '\u20b1125');
+    assert.equal(cards[1].props.value, '4801');
+    assert.equal(cards[2].props.trendLabel, 'Updating');
+    const request = calls.find(call => call.url === '/sales/transactions/summary/');
+    assert.equal(request.params.handled_by, 7);
+    assert.equal(request.params.start_date, request.params.end_date);
+    assert.equal(calls.some(call => call.url === '/sales/transactions/'), false);
   } finally { cleanup(); }
 });
 
@@ -1190,7 +1272,7 @@ test('staff fulfilled KPI counts only fulfilled orders processed by the logged-i
   orders[3].handled_by.username = 'audit';
   ui.http.defaults.adapter = async config => ({
     status: 200, config, headers: {},
-    data: config.url === '/sales/orders/' ? { count: orders.length, next: null, results: orders } : [],
+    data: config.url === '/sales/orders/' ? { count: orders.length, next: null, results: orders } : config.url === '/sales/transactions/summary/' ? transactionSummary() : [],
   });
   render(ui.StaffKPICards);
   const cleanup = mountStaffMetrics();
@@ -1214,7 +1296,7 @@ test('staff KPI loading clears after a failed API call and can recover on refres
   assert.equal(failed.props['aria-busy'], false);
   assert.ok(staffCards(failed).every(card => card.props.trendLabel === 'Unavailable' && card.props.value === '—'));
   cleanup();
-  ui.http.defaults.adapter = async config => ({ data: [], status: 200, statusText: 'OK', headers: {}, config });
+  ui.http.defaults.adapter = async config => ({ data: config.url === '/sales/transactions/summary/' ? transactionSummary() : [], status: 200, statusText: 'OK', headers: {}, config });
   const refreshedCleanup = mountStaffMetrics();
   try {
     await settle();
@@ -1955,7 +2037,7 @@ test('admin data views show retry errors rather than empty data after initial fa
     [ui.AdminUserManagement, 'users:list', ['users']],
     [ui.FEFOMonitor, 'dashboard:fefo-monitor', ['dashboard', 'inventory']],
     [ui.AdminOrders, 'orders:list', ['orders']],
-    [ui.AdminSalesHistory, 'sales:history:', ['sales']],
+    [ui.AdminSalesHistory, 'sales:history::All:page:1:5', ['sales']],
     [ui.AdminInventory, 'inventory:admin', ['inventory']],
   ]) {
     states = []; refs = []; effects = [];
@@ -1976,11 +2058,12 @@ test('Orders, Sales and Inventory retries recover into a valid empty state only 
   ui.http.defaults.adapter = async config => {
     requests.push(config.url);
     return { config, status: 200, headers: {}, data: config.url === '/settings/inventory/'
-      ? { low_stock_threshold: 20, near_expiry_threshold: 7, critical_expiry_threshold: 3 } : [] };
+      ? { low_stock_threshold: 20, near_expiry_threshold: 7, critical_expiry_threshold: 3 }
+      : config.url === '/sales/transactions/' ? { count: 0, next: null, previous: null, results: [] } : [] };
   };
   for (const [Page, key, group] of [
     [ui.AdminOrders, 'orders:list', 'orders'],
-    [ui.AdminSalesHistory, 'sales:history:', 'sales'],
+    [ui.AdminSalesHistory, 'sales:history::All:page:1:5', 'sales'],
     [ui.AdminInventory, 'inventory:admin', 'inventory'],
   ]) {
     states = []; refs = []; effects = [];
@@ -1992,7 +2075,7 @@ test('Orders, Sales and Inventory retries recover into a valid empty state only 
     const cleanups = effects.map(effect => effect());
     error.props.onRetry();
     await settle();
-    assert.deepEqual(ui.readDataCache(cacheKey).data, []);
+    assert.deepEqual(ui.readDataCache(cacheKey).data, Page === ui.AdminSalesHistory ? { count: 0, next: null, previous: null, results: [] } : []);
     assert.equal(ui.readDataCache(cacheKey).error, undefined);
     cleanups.reverse().forEach(cleanup => cleanup?.());
     states = []; refs = []; effects = [];
@@ -2516,6 +2599,129 @@ test('natural row measurement recovers an extra complete row without borrowing f
 });
 
 
+test('sales measurement stays stable across repeated Paid refreshes of a short final page while retaining responsive resizing', () => {
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  let cleanup, rowHeight = 56, rowCount = 6, scope = 'sales:history::All:0';
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  global.getComputedStyle = () => ({ lineHeight: '20px', paddingTop: '10px', paddingBottom: '10px' });
+  try {
+    const viewport = { offsetHeight: 380, clientHeight: 380 };
+    const surface = { clientHeight: 380, clientWidth: 1000,
+      querySelector: () => ({ parentElement: viewport }),
+      querySelectorAll: selector => selector === 'tbody tr'
+        ? Array.from({ length: rowCount }, () => ({ getBoundingClientRect: () => ({ height: rowHeight }) }))
+        : Array.from({ length: rowCount }, () => ({ children: [{ getBoundingClientRect: () => ({ height: 20 }) }] })) };
+    const header = { getBoundingClientRect: () => ({ height: 44 }) };
+    const Hook = () => ui.useAutoPageSize(56, 320, { minPageSize: 1, measureRows: true, fitContainer: true,
+      measureRenderedRows: true, measurementKey: scope });
+    const initial = render(Hook); initial.containerRef(surface); initial.headerRef(header);
+    render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 6);
+    rowCount = 2; rowHeight = 48;
+    for (let i = 0; i < 5; i++) {
+      render(Hook).remeasure();
+      assert.equal(render(Hook).pageSize, 6, 'Partial shorter rows must not alternate capacity between six and seven');
+    }
+    surface.clientHeight = 492; viewport.offsetHeight = viewport.clientHeight = 492;
+    render(Hook).remeasure(); assert.equal(render(Hook).pageSize, 8, 'Real viewport changes remain adaptive');
+    surface.clientHeight = 380; viewport.offsetHeight = viewport.clientHeight = 380;
+    scope = 'sales:history:cash:0'; render(Hook).remeasure();
+    // Run the scope-dependent measurement effect, as React does after a filter change.
+    cleanup?.(); render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 7, 'Explicit filter scopes can reclaim their shorter row density');
+  } finally {
+    cleanup?.(); captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
+test('compact Sales History payment density reclaims measured space while legitimate two-line rows remain unclipped', () => {
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  let cleanup, rowHeight = 70, rowCount = 4, scope = 'old-two-placeholder-layout';
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  global.getComputedStyle = () => ({ lineHeight: '16px', paddingTop: '10px', paddingBottom: '10px' });
+  try {
+    const viewport = { offsetHeight: 344, clientHeight: 344 };
+    const surface = { clientHeight: 344, clientWidth: 1000,
+      querySelector: () => ({ parentElement: viewport }),
+      querySelectorAll: selector => selector === 'tbody tr'
+        ? Array.from({ length: rowCount }, () => ({ getBoundingClientRect: () => ({ height: rowHeight }) }))
+        : Array.from({ length: rowCount }, () => ({ children: [{ getBoundingClientRect: () => ({ height: rowHeight - 21 }) }] })) };
+    const header = { getBoundingClientRect: () => ({ height: 44 }) };
+    const Hook = () => ui.useAutoPageSize(56, 320, { minPageSize: 1, measureRows: true, fitContainer: true,
+      measureRenderedRows: true, measurementKey: scope });
+    const initial = render(Hook); initial.containerRef(surface); initial.headerRef(header);
+    render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 4);
+    rowHeight = 45; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 4, 'The old high-water height explains unused space after layout changes');
+    scope = 'sales-history:single-payment-placeholder::All:0';
+    cleanup?.(); render(Hook); cleanup = layoutEffects.at(-1)();
+    assert.equal(render(Hook).pageSize, 6, 'Six measured compact rows fit inside the same 300px body budget');
+    for (const partial of [1, 2, 4, 6]) {
+      rowCount = partial; render(Hook).remeasure();
+      assert.equal(render(Hook).pageSize, 6, 'Partial pages cannot change the capacity or start a refetch loop');
+    }
+    rowHeight = 70; render(Hook).remeasure();
+    assert.equal(render(Hook).pageSize, 4, 'Real two-line payment cells still reserve their full measured height');
+    assert.ok(44 + render(Hook).pageSize * rowHeight <= surface.clientHeight);
+    surface.clientHeight = 44 + 8 * 70; viewport.clientHeight = viewport.offsetHeight = surface.clientHeight;
+    render(Hook).remeasure(); assert.equal(render(Hook).pageSize, 8, 'Larger screens remain fully dynamic');
+  } finally {
+    cleanup?.(); captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
+test('mixed Sales History rows use their actual summed heights rather than multiplying every row by the tallest', () => {
+  assert.equal(ui.calculateFittedPageSize(768, 344, 44, 70), 4);
+  assert.equal(ui.calculateMeasuredRowPageSize(300, [70, 45, 45, 45], 4, 70), 5);
+  assert.equal(ui.calculateMeasuredRowPageSize(300, [70, 45, 45, 45, 70], 5, 70), 5);
+  assert.equal(ui.calculateMeasuredRowPageSize(300, [45, 45, 45, 45], 4, 45), 6);
+  assert.equal(ui.calculateMeasuredRowPageSize(300, [70, 45, 45, 45, 45, 45], 6, 70), 6, 'One two-line Paid cell need not reduce every row to the tallest height');
+  assert.equal(ui.calculateMeasuredRowPageSize(300, [45], 6, 70), 6, 'A partial final page keeps its established capacity');
+  assert.equal(ui.calculateMeasuredRowPageSize(300, [70, 70, 70, 70, 70], 5, 70), 4);
+  assert.equal(ui.calculateMeasuredRowPageSize(300, [70, 45, 45, 45], 4, 70, 4), 4, 'A failed larger capacity is not repeatedly retried');
+});
+
+test('Sales History mixed-row capacity converges after a taller server page without repeated growth or clipping', () => {
+  const originalObserver = global.ResizeObserver, originalStyle = global.getComputedStyle;
+  captureLayoutEffects = true;
+  let cleanup, heights = [45, 45, 45, 45, 45, 45], requestedPageSize = 6;
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  global.getComputedStyle = () => ({ lineHeight: '16px', paddingTop: '10px', paddingBottom: '10px' });
+  try {
+    const viewport = { offsetHeight: 344, clientHeight: 344 };
+    const surface = { clientHeight: 344, clientWidth: 1000,
+      querySelector: () => ({ parentElement: viewport }),
+      querySelectorAll: selector => selector === 'tbody tr'
+        ? heights.map(height => ({ getBoundingClientRect: () => ({ height }) }))
+        : heights.map(height => ({ children: [{ getBoundingClientRect: () => ({ height: height - 21 }) }] })) };
+    const header = { getBoundingClientRect: () => ({ height: 44 }) };
+    const Hook = () => ui.useAutoPageSize(56, 320, { minPageSize: 1, measureRows: true, fitContainer: true,
+      measureRenderedRows: true, fitActualRows: true, requestedPageSize, measurementKey: 'sales-history:mixed' });
+    const initial = render(Hook); initial.containerRef(surface); initial.headerRef(header);
+    const measure = () => { cleanup?.(); render(Hook); cleanup = layoutEffects.at(-1)(); return render(Hook).pageSize; };
+    assert.equal(measure(), 6);
+    heights = [70, 45, 45, 45, 45, 45];
+    for (let i = 0; i < 4; i++) assert.equal(measure(), 6, 'A refreshed two-line payment cell fits without shrinking the other five rows');
+    heights = [45, 45]; assert.equal(measure(), 6, 'The last partial page keeps the same server capacity');
+    requestedPageSize = 4; heights = [70, 45, 45, 45]; assert.equal(measure(), 5);
+    requestedPageSize = 5; heights = [70, 45, 45, 45, 70]; assert.equal(measure(), 5);
+    heights = [70, 70, 70, 70, 70]; assert.equal(measure(), 4);
+    requestedPageSize = 4; heights = [70, 45, 45, 45];
+    for (let i = 0; i < 5; i++) assert.equal(measure(), 4, 'A full-page retry cannot alternate between four and five');
+    heights = [45]; assert.equal(measure(), 4, 'Partial pages do not restart capacity negotiation');
+    surface.clientHeight = 744; viewport.offsetHeight = viewport.clientHeight = 744;
+    assert.equal(measure(), 10, 'A real resize releases the prior measured bound');
+  } finally {
+    cleanup?.(); captureLayoutEffects = false;
+    global.ResizeObserver = originalObserver; global.getComputedStyle = originalStyle;
+  }
+});
+
 test('compact measured rows fit dynamically without positive tolerance or a fixed desktop row limit', () => {
   for (const count of [4, 5, 6, 8, 10, 14]) {
     const header = 44, row = 53, surface = header + count * row;
@@ -2847,7 +3053,7 @@ test('outflows require an explicit cost and distinguish expired stock from promo
 
 test('payment controls validate tender, persist only payment fields and prevent duplicate PATCH requests', async () => {
   const transaction = { id: 31, is_manually_encoded: true, is_voided: false, payment_status: 'pending', payment_method: 'cash', total_amount: '12.00', amount_tendered: null };
-  let updated, calls = 0, complete;
+  let updated, calls = 0, writes = 0, complete;
   const props = { transaction, onUpdated: value => { updated = value; } };
   let tree = render(ui.PaymentUpdateControl, props);
   elements(tree, node => node.type?.name === 'Btn' && node.props.children === 'Update payment')[0].props.onClick();
@@ -2856,13 +3062,18 @@ test('payment controls validate tender, persist only payment fields and prevent 
   field('Updated amount tendered').props.onChange({ target: { value: '11.99' } });
   const save = () => elements(render(ui.PaymentUpdateControl, props), node => node.props.title === 'Update payment')[0].props.footer.props.onClick();
   ui.http.defaults.adapter = config => {
-    calls++; assert.equal(config.method, 'patch'); assert.equal(config.url, '/sales/encoding/31/payment/');
+    calls++;
+    if (config.method === 'get') {
+      assert.equal(config.url, '/sales/encoding/31/');
+      return Promise.resolve({ status: 200, config, headers: {}, data: transaction });
+    }
+    writes++; assert.equal(config.method, 'patch'); assert.equal(config.url, '/sales/encoding/31/payment/');
     assert.deepEqual(JSON.parse(config.data), { payment_status: 'paid', payment_method: 'cash', amount_tendered: '12.00' });
     return new Promise(resolve => { complete = () => resolve({ status: 200, config, headers: {}, data: { ...transaction, payment_status: 'paid', amount_tendered: '12.00' } }); });
   };
   await save(); assert.equal(calls, 0);
   field('Updated amount tendered').props.onChange({ target: { value: '12' } });
-  const pending = save(); await settle(); await save(); assert.equal(calls, 1);
+  const pending = save(); await settle(); await save(); assert.equal(calls, 2); assert.equal(writes, 1);
   complete(); await pending; assert.equal(updated.payment_status, 'paid');
 });
 
@@ -2980,10 +3191,7 @@ test('staff sales and recent orders keep persistent retry states on failed initi
 
 test('staff sales metrics retain their values after a username change by matching immutable account IDs', () => {
   const today = ui.businessDate();
-  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-sales:7:${today}`, [
-    { date: today, total: 125, cashier: 'previous-name', transaction: { handled_by: { id: 7 } } },
-    { date: today, total: 999, cashier: 'new-name', transaction: { handled_by: { id: 8 } } },
-  ], ['dashboard', 'sales']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-sales-summary:7:${today}`, transactionSummary('125.00', 1), ['dashboard', 'sales']);
   ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-orders:7`, [], ['dashboard', 'orders']);
   ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:staff-products:7`, [], ['dashboard', 'inventory']);
   authState = { user: { id: 7, username: 'new-name' }, loading: false };
@@ -2992,14 +3200,11 @@ test('staff sales metrics retain their values after a username change by matchin
   assert.equal(cards.find(card => card.props.title === 'My Transactions Today').props.value, '1');
 });
 
-test('pending orders KPI counts fulfilled orders awaiting payment and excludes cancelled or unlinked orders', async () => {
-  ui.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data: config.url === '/sales/orders/' ? [
-    { status: 'fulfilled', transaction: { payment_status: 'pending' } },
-    { status: 'fulfilled', transaction: { payment_status: 'paid' } },
-    { status: 'cancelled', transaction: { payment_status: 'pending' } },
-    { status: 'fulfilled', transaction: null },
-    { status: 'fulfilled', transaction: { payment_status: 'unknown' } },
-  ] : [] });
+test('pending orders KPI reads the complete fulfilled/nonvoid pending-payment aggregate', async () => {
+  const requests = [];
+  ui.http.defaults.adapter = async config => { requests.push(config); return { status: 200, config, headers: {}, data:
+    config.url === '/sales/orders/summary/' ? { order_count: 5000, fulfilled_count: 4900, cancelled_count: 100, pending_payment_count: 1, total_revenue: '100.00' }
+    : config.url === '/sales/transactions/summary/' ? transactionSummary() : [] }; };
   render(ui.KPICards);
   const cleanup = effects.at(-1)();
   try {
@@ -3007,6 +3212,8 @@ test('pending orders KPI counts fulfilled orders awaiting payment and excludes c
     const pending = elements(render(ui.KPICards), node => node.props['aria-label'] === 'Pending Orders')[0];
     assert.ok(elements(pending, node => node.props.children === '1').length);
     assert.ok(elements(pending, node => node.props.children === 'Fulfilled orders awaiting payment').length);
+    assert.equal(requests.filter(request => request.url === '/sales/orders/summary/').length, 1);
+    assert.equal(requests.some(request => request.url === '/sales/orders/'), false);
   } finally { cleanup?.(); }
 });
 
@@ -4472,24 +4679,86 @@ function liveReceipt(id = 42, total = '100.00', status = 'pending') {
     total_amount: total, subtotal: total, discount_amount: '0.00', amount_tendered: null, change_due: null,
     handled_by: { id: 7, username: 'cashier' }, customer: null, items: [], is_manually_encoded: true, encoded_at: '2026-10-01T08:00:00Z' };
 }
+test('paged admin history keeps complete date-scoped totals and resolves open receipts outside the current page', () => {
+  const epoch = ui.dataCacheEpoch(), first = ui.toSale(liveReceipt());
+  ui.writeDataCache(`${epoch}:sales:history::All:page:1:5`, { count: 4801, results: [first] }, ['sales']);
+  ui.writeDataCache(`${epoch}:sales:history-summary:`, transactionSummary('90071992547409.93', 4801), ['sales']);
+  let tree = render(ui.AdminSalesHistory);
+  assert.ok(elements(tree, node => node.props.children === '₱90,071,992,547,409.93').length);
+  assert.ok(elements(tree, node => node.props.children === 4801).length);
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  assert.equal(table.props.remote.count, 4801);
+  table.props.renderMobileRow(first).props.onView(first);
+  table.props.remote.onChange({ page: 2, pageSize: 5, search: '', sortCol: null, sortDir: null });
+  const updated = ui.toSale(liveReceipt(42, '200.00', 'paid'));
+  ui.writeDataCache(`${epoch}:sales:history::All:page:2:5`, { count: 4801, results: [ui.toSale(liveReceipt(99))] }, ['sales']);
+  ui.writeDataCache(`${epoch}:sales:detail:42`, updated, ['sales']);
+  tree = render(ui.AdminSalesHistory);
+  const detail = elements(tree, node => node.type === ui.TransactionDetails)[0];
+  assert.equal(detail.props.sale.transaction.id, 42);
+  assert.equal(detail.props.sale.transaction.total_amount, '200.00');
+  assert.equal(detail.props.unavailable, false);
+  assert.equal(elements(tree, node => node.type === ui.EnhancedTable)[0].props.data[0].transaction.id, 99);
+});
+
+for (const [Page, role, key] of [
+  [ui.AdminSalesHistory, 'admin', 'sales:history::All:page:1:5'],
+  [ui.StaffSalesHistory, 'staff', 'sales:mine:7'],
+]) test(`${role} Sales History renders Paid after the Encoding payment mutation without reload or remount`, async () => {
+  authState = { user: { id: 7, username: 'encoder', role }, loading: false };
+  let saved = { ...liveReceipt(42, '123.45'), can_update_payment: true };
+  const calls = [], initial = ui.toSale(saved), epoch = ui.dataCacheEpoch();
+  ui.writeDataCache(`${epoch}:${key}`, role === 'admin' ? { count: 1, results: [initial] } : [initial], ['sales']);
+  ui.writeDataCache(`${epoch}:sales:history-summary:`, transactionSummary('123.45', 1), ['sales']);
+  ui.writeDataCache(`${epoch}:sales:mine-summary:7`, transactionSummary('123.45', 1), ['sales']);
+  ui.http.defaults.adapter = async config => {
+    calls.push(config);
+    if (config.method === 'patch') {
+      saved = { ...saved, payment_status: 'paid', can_update_payment: false };
+      return { status: 200, config, headers: {}, data: saved };
+    }
+    return { status: 200, config, headers: {}, data: config.url.endsWith('/summary/')
+      ? { ...transactionSummary('123.45', 1), paid_count: 1, pending_count: 0 }
+      : { count: 1, results: [saved], next: null, previous: null } };
+  };
+  const table = () => elements(render(Page), node => node.type === ui.EnhancedTable)[0];
+  assert.equal(table().props.data[0].transaction.payment_status, 'pending');
+  const cleanups = effects.splice(0).map(effect => effect());
+  try {
+    await ui.encodingService.updatePayment(42, { payment_status: 'paid', payment_method: 'online', amount_tendered: null });
+    await settle();
+    const updated = table();
+    assert.equal(updated.props.loading, false); assert.equal(updated.props.data.length, 1);
+    assert.equal(updated.props.data[0].transaction.payment_status, 'paid');
+    assert.equal(updated.props.data[0].transaction.total_amount, '123.45');
+    assert.equal(updated.props.data[0].transaction.can_update_payment, false);
+    const paymentCell = updated.props.columns.find(column => column.key === 'payment').render(updated.props.data[0]);
+    assert.equal(elements(paymentCell, node => node.type?.name === 'PaymentStatusBadge')[0].props.status, 'paid');
+    assert.equal(calls.filter(call => call.method === 'patch').length, 1);
+    assert.equal(calls.filter(call => call.url === '/sales/transactions/').length, 1);
+    assert.equal(calls.filter(call => call.url === '/sales/transactions/summary/').length, 1);
+  } finally { cleanups.reverse().forEach(cleanup => cleanup?.()); }
+});
+
 for (const [component, key, raw] of [
-  ['AdminSalesHistory', 'sales:history:', false], ['StaffSalesHistory', 'sales:mine:7', false], ['SalesEncoding', 'sales:encoding:::', true],
+  ['AdminSalesHistory', 'sales:history::All:page:1:5', false], ['StaffSalesHistory', 'sales:mine:7', false], ['SalesEncoding', 'sales:encoding::::page:1:5', true],
 ]) test(`${component} keeps an open transaction current by ID and handles removed records safely`, () => {
   authState.user = { id: 7, username: 'cashier', role: component === 'StaffSalesHistory' ? 'staff' : 'admin' };
   const cacheKey = `${ui.dataCacheEpoch()}:${key}`, first = liveReceipt();
-  ui.writeDataCache(cacheKey, raw ? [first] : [ui.toSale(first)], ['sales']);
+  const result = records => component === 'StaffSalesHistory' ? records : { count: records.length, results: records };
+  ui.writeDataCache(cacheKey, result(raw ? [first] : [ui.toSale(first)]), ['sales']);
   let tree = render(ui[component]); effects.splice(0).forEach(effect => effect());
   elements(tree, node => node.type === ui.EnhancedTable)[0].props.renderMobileRow(ui.toSale(first)).props.onView(ui.toSale(first));
   const detail = () => elements(render(ui[component]), node => node.type === ui.TransactionDetails)[0];
   assert.equal(detail().props.sale.transaction.total_amount, '100.00');
   const changed = liveReceipt(42, '200.00', 'paid');
-  ui.writeDataCache(cacheKey, raw ? [changed] : [ui.toSale(changed)], ['sales']);
+  ui.writeDataCache(cacheKey, result(raw ? [changed] : [ui.toSale(changed)]), ['sales']);
   assert.equal(detail().props.sale.transaction.total_amount, '200.00');
   assert.equal(detail().props.sale.transaction.payment_status, 'paid');
   assert.equal(detail().props.unavailable, false);
-  ui.writeDataCache(cacheKey, [], ['sales']);
+  ui.writeDataCache(cacheKey, result([]), ['sales']);
   assert.equal(detail().props.sale, null); assert.equal(detail().props.unavailable, true);
-  ui.writeDataCache(cacheKey, raw ? [changed] : [ui.toSale(changed)], ['sales']);
+  ui.writeDataCache(cacheKey, result(raw ? [changed] : [ui.toSale(changed)]), ['sales']);
   assert.equal(detail().props.sale.transaction.id, 42, 'Selection survives a temporary absence');
   detail().props.onClose(); assert.equal(detail().props.unavailable, false); assert.equal(detail().props.sale, null);
 });
@@ -4628,13 +4897,44 @@ test('mounted cancellable queries resync immediately while preserving loaded con
   assert.equal(requests.length, 0);
   ui.invalidateDataCache(['sales']); await settle(); assert.equal(requests.length, 1);
   ui.invalidateDataCache(['sales'], { deferPending: true }); await settle();
-  assert.equal(requests[0].signal.aborted, true); assert.equal(requests.length, 2);
+  assert.equal(requests[0].signal.aborted, false); assert.equal(requests.length, 1);
   assert.deepEqual(render(view).data, ['existing']); assert.equal(render(view).loading, false);
-  requests[1].resolve(['latest']); await settle(); requests[0].resolve(['stale']); await settle();
+  requests[0].resolve(['completed']); await settle();
+  assert.deepEqual(render(view).data, ['completed']); assert.equal(render(view).loading, false);
+  assert.equal(requests.length, 2); assert.equal(requests[1].signal.aborted, false);
+  requests[1].resolve(['latest']); await settle();
   assert.deepEqual(render(view).data, ['latest']); assert.equal(toastErrors.length, 0);
   cleanup();
   await render(view).refresh({ force: true }); await settle();
   assert.equal(requests.length, 2, 'A departed screen cannot restart its query');
+});
+
+test('history and Orders keep rows visible and expose retryable errors when background refresh fails', async () => {
+  authState = { user: { id: 7, username: 'audit', role: 'admin' }, loading: false };
+  const sale = ui.toSale(liveReceipt());
+  const order = { id: 9, staffId: 7, isHistorical: false, status: 'Fulfilled', customer: 'Customer', items: [] };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:sales:history-summary:`, transactionSummary('100.00', 1), ['sales']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:sales:mine-summary:7`, transactionSummary('100.00', 1), ['sales']);
+  for (const [Page, key, data] of [
+    [ui.AdminOrders, 'orders:list', [order]], [ui.StaffOrders, 'orders:list', [order]],
+    [ui.AdminSalesHistory, 'sales:history::All:page:1:5', { count: 9, results: [sale] }],
+    [ui.StaffSalesHistory, 'sales:mine:7', [sale]],
+    [ui.SalesEncoding, 'sales:encoding::::page:1:5', { count: 9, results: [sale.transaction] }],
+  ]) {
+    states = []; refs = []; effects = [];
+    const cacheKey = `${ui.dataCacheEpoch()}:${key}`;
+    ui.writeDataCache(cacheKey, data, ['sales', 'orders']);
+    await assert.rejects(ui.fetchDataCache(cacheKey, () => Promise.reject(new Error('Refresh offline')), ['sales', 'orders'], true));
+    const tree = render(Page);
+    const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+    assert.ok(table, Page.name); assert.equal(table.props.data.length, 1); assert.equal(table.props.loading, false);
+    const retry = elements(tree, node => node.type === ui.QueryErrorMessage)[0];
+    assert.equal(retry.props.error.message, 'Refresh offline');
+    const cleanups = effects.splice(0).map(effect => effect());
+    ui.writeDataCache(cacheKey, data, ['sales', 'orders']);
+    assert.equal(elements(render(Page), node => node.type === ui.QueryErrorMessage).length, 0);
+    cleanups.reverse().forEach(cleanup => cleanup?.());
+  }
 });
 
 test('all visible history/order consumers cancel their GET on departure', async () => {
@@ -4646,30 +4946,28 @@ test('all visible history/order consumers cancel their GET on departure', async 
     const requests = [], finish = [];
     ui.http.defaults.adapter = config => new Promise(resolve => { requests.push(config); finish.push(() => resolve({ data: { count: 100, results: [], next: 'next' }, status: 200, config, headers: {} })); });
     render(screen); const cleanups = effects.map(effect => effect()); await settle();
-    assert.equal(requests.length, 1, screen.name);
-    assert.equal(requests[0].signal?.aborted, false);
+    const expectedRequests = screen === ui.AdminSalesHistory || screen === ui.StaffSalesHistory ? 2 : 1;
+    assert.equal(requests.length, expectedRequests, screen.name);
+    assert.ok(requests.every(request => request.signal?.aborted === false));
     cleanups.reverse().forEach(cleanup => cleanup?.());
-    assert.equal(requests[0].signal.aborted, true);
+    assert.ok(requests.every(request => request.signal.aborted === true));
     finish.forEach(done => done()); await settle();
-    assert.equal(requests.length, 1, 'No extra history page after navigation');
+    assert.equal(requests.length, expectedRequests, 'No extra history page or summary after navigation');
   }
   assert.equal(toastErrors.length, 0);
 });
 
-test('pending-payment KPI still counts every order page with its existing meaning', async () => {
-  const orderPages = [];
+test('pending-payment KPI uses the full-result summary rather than downloading order pages', async () => {
+  const calls = [];
   ui.http.defaults.adapter = async config => {
-    let data = [];
-    if (config.url === '/sales/orders/') {
-      orderPages.push(config.params.page);
-      data = { count: 3, next: config.params.page === 1 ? 'next' : null, results: config.params.page === 1
-        ? [{ status: 'fulfilled', transaction: { payment_status: 'pending' } }, { status: 'cancelled', transaction: { payment_status: 'pending' } }]
-        : [{ status: 'fulfilled', transaction: { payment_status: 'pending' } }] };
-    }
-    return { status: 200, config, headers: {}, data };
+    calls.push(config);
+    return { status: 200, config, headers: {}, data: config.url === '/sales/orders/summary/'
+      ? { order_count: 4801, fulfilled_count: 4800, cancelled_count: 1, pending_payment_count: 2, total_revenue: '100.00' }
+      : config.url === '/sales/transactions/summary/' ? transactionSummary() : [] };
   };
   render(ui.KPICards); const cleanup = effects.at(-1)(); await settle();
-  assert.deepEqual(orderPages, [1, 2]);
+  assert.equal(calls.filter(request => request.url === '/sales/orders/summary/').length, 1);
+  assert.equal(calls.some(request => request.url === '/sales/orders/'), false);
   const card = elements(render(ui.KPICards), node => node.type === 'section' && node.props['aria-label'] === 'Pending Orders')[0];
   assert.ok(elements(card, node => node.type === 'div' && node.props.children === '2').length);
   cleanup();

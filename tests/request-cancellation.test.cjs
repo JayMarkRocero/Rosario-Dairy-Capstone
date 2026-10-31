@@ -81,18 +81,50 @@ test('cancellable shared cache reads abort only when the last consumer leaves', 
   assert.equal(api.readDataCache('orders').data, 'new');
 });
 
-test('live invalidation cancels obsolete reads immediately, keeps loaded data and ignores late results', async () => {
+test('explicit mutation invalidation cancels obsolete reads immediately, keeps loaded data and ignores late results', async () => {
   api.writeDataCache('sales', ['existing'], ['sales']);
   const result = deferred(); let oldSignal;
   const old = api.fetchDataCache('sales', signal => { oldSignal = signal; return result.promise; }, ['sales'], true, { cancelable: true });
   const rejected = assert.rejects(old, { name: 'AbortError' });
-  await settle(); api.invalidateDataCache(['sales'], { deferPending: true });
+  await settle(); api.invalidateDataCache(['sales']);
   assert.equal(oldSignal.aborted, true);
   assert.deepEqual(api.readDataCache('sales').data, ['existing']);
   await api.fetchDataCache('sales', async () => ['latest'], ['sales'], false, { cancelable: true });
   result.resolve(['obsolete']); await rejected;
   assert.deepEqual(api.readDataCache('sales').data, ['latest']);
   assert.equal(api.readDataCache('sales').error, undefined);
+});
+
+test('live events and polling let a complete Orders page chain settle and queue only one follow-up', async () => {
+  const calls = [], waiting = [];
+  const order = id => ({ id, customer: { id: 1, name: 'Customer' }, handled_by: { id: 7, username: 'Staff' },
+    status: 'fulfilled', transaction: null, items: [], created_at: '2026-10-01T00:00:00Z' });
+  api.http.defaults.adapter = config => new Promise(resolve => {
+    calls.push(config); waiting.push(data => resolve(reply(config, data)));
+  });
+  const load = () => api.fetchDataCache('orders:list', api.ordersService.getAll, ['orders'], false, { cancelable: true });
+  const leave = api.subscribeDataCache('orders:list', () => {
+    const value = api.readDataCache('orders:list');
+    if (!value.updatedAt && !value.error) void load().catch(() => {});
+  });
+  try {
+    const first = load(); await settle();
+    for (let i = 0; i < 4; i++) { api.invalidateDataCache(['orders'], { deferPending: true }); api.invalidateDataCache(['orders'], { poll: true }); }
+    assert.equal(calls.length, 1); assert.equal(calls[0].signal.aborted, false);
+    waiting[0]({ count: 2, next: 'next', results: [order(1)] }); await settle();
+    assert.deepEqual(calls.map(call => call.params.page), [1, 2]);
+    api.invalidateDataCache(['orders'], { deferPending: true });
+    waiting[1]({ count: 2, next: null, results: [order(2)] }); await first; await settle();
+    assert.deepEqual(api.readDataCache('orders:list').data.map(row => row.id), [2, 1]);
+    assert.deepEqual(calls.map(call => call.params.page), [1, 2, 1]);
+    assert.ok(calls.every(call => call.signal.aborted === false && call.params.page_size === 500));
+    waiting[2]({ count: 2, next: 'next', results: [order(1)] }); await settle();
+    waiting[3]({ count: 2, next: null, results: [order(2)] }); await settle();
+    assert.deepEqual(api.readDataCache('orders:list').data.map(row => row.id), [2, 1]);
+    assert.deepEqual(calls.map(call => call.params.page), [1, 2, 1, 2]);
+    assert.equal(api.readDataCache('orders:list').error, undefined);
+    assert.ok(api.readDataCache('orders:list').updatedAt > 0);
+  } finally { leave(); }
 });
 
 test('cache writes and session clearing abort obsolete GETs without deleting replacement data', async () => {
@@ -144,4 +176,68 @@ test('an obsolete 401 does not trigger JWT refresh or clear the active session',
   const rejected = assert.rejects(read, isCancel);
   await settle(); controller.abort(); response.resolve(); await rejected;
   assert.equal(calls.length, 1); assert.equal(api.getAccessToken(), 'valid-access'); assert.equal(api.getRefreshToken(), 'valid-refresh');
+});
+
+for (const role of ['admin', 'staff']) test(`${role} encoding payment PATCH refreshes history pages, encoding and summaries without reload and rejects a late pending response`, async () => {
+  let paid = false, holdOnce = false;
+  const slow = deferred(), calls = [];
+  const receipt = () => ({ id: 42, transaction_number: null, created_at: '2026-10-31T00:00:00Z',
+    handled_by: { id: 7, username: 'encoder', role }, customer: null, items: [], is_manually_encoded: true,
+    payment_status: paid ? 'paid' : 'pending', can_update_payment: !paid, payment_method: 'online',
+    subtotal: '123.45', total_amount: '123.45', amount_tendered: null, change_due: null,
+    payment_updated_by_user: paid ? { id: 8, username: 'payment-updater', role } : null });
+  api.http.defaults.adapter = async config => {
+    calls.push(config);
+    if (config.method === 'patch') {
+      assert.equal(config.url, '/sales/encoding/42/payment/');
+      paid = true; return reply(config, receipt());
+    }
+    if (config.url.endsWith('/summary/')) return reply(config, { transaction_count: 1, total_revenue: '123.45',
+      paid_count: paid ? 1 : 0, pending_count: paid ? 0 : 1, paid_amount: paid ? '123.45' : '0.00',
+      pending_amount: paid ? '0.00' : '123.45', unknown_count: 0, unknown_amount: '0.00' });
+    const saved = receipt();
+    if (holdOnce && config.url === '/sales/transactions/' && config.params.page === 2) {
+      holdOnce = false; await slow.promise;
+    }
+    return reply(config, { count: config.params?.page === 2 ? 6 : 1, results: [saved], next: null, previous: null });
+  };
+  const epoch = api.dataCacheEpoch();
+  const definitions = [
+    ['history', signal => api.salesService.getPage({ page: 2, pageSize: 5 }, signal)],
+    ['staff-history', signal => api.salesService.getMine(7, signal)],
+    ['encoding', signal => api.encodingService.getPage({ page: 2, pageSize: 5 }, signal)],
+    ['summary', signal => api.salesService.getSummary({}, signal)],
+    ['encoding-summary', signal => api.encodingService.getSummary({}, signal)],
+  ].map(([name, fetcher]) => ({ key: `${epoch}:${name}`, fetcher }));
+  await Promise.all(definitions.map(({ key, fetcher }) => api.fetchDataCache(key, fetcher, ['sales'], false, { cancelable: true })));
+  const inactive = `${epoch}:inactive-history`;
+  await api.fetchDataCache(inactive, signal => api.salesService.getPage({ page: 1, pageSize: 5 }, signal), ['sales']);
+  const cleanups = definitions.map(({ key, fetcher }) => api.subscribeDataCache(key, () => {
+    const value = api.readDataCache(key);
+    if (!value.updatedAt && !value.error) void api.fetchDataCache(key, fetcher, ['sales'], false, { cancelable: true }).catch(() => {});
+  }));
+  try {
+    holdOnce = true;
+    const old = api.fetchDataCache(definitions[0].key, definitions[0].fetcher, ['sales'], true, { cancelable: true });
+    const rejected = assert.rejects(old, error => isCancel(error) || error.name === 'AbortError');
+    await settle(); const oldSignal = calls.at(-1).signal;
+    const updated = await api.encodingService.updatePayment(42, { payment_status: 'paid', payment_method: 'online', amount_tendered: null });
+    assert.equal(updated.can_update_payment, false); assert.equal(oldSignal.aborted, true);
+    await settle(); slow.resolve(); await rejected; await settle();
+    const history = api.readDataCache(definitions[0].key).data;
+    assert.equal(history.count, 6); assert.equal(history.results.length, 1, 'A partial final page stays partial');
+    assert.equal(history.results[0].transaction.payment_status, 'paid');
+    assert.equal(history.results[0].transaction.total_amount, '123.45');
+    assert.equal(history.results[0].transaction.payment_updated_by_user.id, 8);
+    assert.equal(api.readDataCache(definitions[1].key).data[0].transaction.payment_status, 'paid');
+    assert.equal(api.readDataCache(definitions[2].key).data.results[0].payment_status, 'paid');
+    for (const index of [3, 4]) {
+      const summary = api.readDataCache(definitions[index].key).data;
+      assert.equal(summary.paid_count, 1); assert.equal(summary.pending_count, 0); assert.equal(summary.total_revenue, '123.45');
+    }
+    assert.equal(api.readDataCache(inactive).updatedAt, 0, 'Inactive history is invalidated too');
+    const reopened = await api.fetchDataCache(inactive, signal => api.salesService.getPage({ page: 1, pageSize: 5 }, signal), ['sales']);
+    assert.equal(reopened.results[0].transaction.payment_status, 'paid');
+    assert.equal(calls.filter(call => call.method === 'patch').length, 1);
+  } finally { cleanups.forEach(cleanup => cleanup()); }
 });

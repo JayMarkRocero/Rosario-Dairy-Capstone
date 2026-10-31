@@ -4,6 +4,7 @@ import http, { ApiError, getAllPages, type PaginatedResponse, type DjangoTransac
 import { pendingSale, submitSaleOnce, UnconfirmedSaleError } from "@/lib/saleSubmission";
 import { recordedCashierName } from "@/features/sales/api/sales.service";
 import { recordedCents } from "@/features/sales/utils/recordedMoney";
+import { historyParams, type OrderHistoryFilters, type OrderHistoryPageOptions, type OrderSummary } from "@/features/sales/types/history";
 import type { CreateOrderPayload, Order, OrderListLine, OrderListResponse, OrderListItem, DisplayOrderStatus } from "@/features/orders/types/order";
 
 function toDisplayStatus(status: Order["status"]): DisplayOrderStatus {
@@ -23,6 +24,16 @@ function sendOrder(body: CreateOrderPayload, recover = false): Promise<Order & {
 }
 
 export const ordersService = {
+  getPage: async (options: OrderHistoryPageOptions, signal?: AbortSignal): Promise<PaginatedResponse<OrderListItem>> => {
+    const { data } = await http.get<PaginatedResponse<OrderListResponse>>("/sales/orders/", {
+      params: { ...historyParams(options), status: options.status, page: options.page, page_size: options.pageSize, ordering: options.ordering ?? "-id" }, signal,
+    });
+    return { ...data, results: data.results.map(mapOrder) };
+  },
+  getSummary: async (filters: OrderHistoryFilters = {}, signal?: AbortSignal): Promise<OrderSummary> =>
+    (await http.get<OrderSummary>("/sales/orders/summary/", { params: { ...historyParams(filters), status: filters.status }, signal })).data,
+  getById: async (id: number, signal?: AbortSignal): Promise<OrderListItem> =>
+    mapOrder((await http.get<Order>(`/sales/orders/${id}/`, { signal })).data),
   getAll: async (signal?: AbortSignal): Promise<OrderListItem[]> => {
     const orders = await getAllPages<OrderListResponse>("/sales/orders/", { page_size: 500 }, signal);
     // Sort the complete list before either Orders view filters or paginates it.
@@ -62,6 +73,7 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
   const amount = (value: unknown): number | null => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
   const recorded = (value: string | null | undefined): string | null => recordedCents(value) === null ? null : value!;
   return {
+    paymentAudit: transaction ?? undefined,
     recordedAmounts: { total: recorded(transaction?.total_amount), subtotal: recorded(transaction?.subtotal),
       amountTendered: recorded(transaction?.amount_tendered), changeDue: recorded(transaction?.change_due) },
     id: o.id,

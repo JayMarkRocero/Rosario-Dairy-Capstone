@@ -8,11 +8,11 @@ import { Btn } from "@/components/buttons/Btn";
 import { Modal } from "@/components/overlays/Modal";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
+import { useHistoryPage } from "../hooks/useHistoryPage";
 import { encodingService } from "../api/encoding.service";
 import { toSale, recordedSaleAmount, type Sale } from "../api/sales.service";
 import { SaleComposer } from "../components/SaleComposer";
 import { PaymentStatusBadge } from "../components/PaymentStatusBadge";
-import { encodedByLabel } from "../utils/historyLabels";
 import { recordedPesos } from "../utils/recordedMoney";
 import { TransactionDetails } from "../components/TransactionDetails";
 import { MobileSaleCard } from "../components/MobileSaleCard";
@@ -27,21 +27,25 @@ export function SalesEncoding() {
   const [payment, setPayment] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const query = useCachedQuery(`sales:encoding:${payment}:${startDate}:${endDate}`, signal => encodingService.list({ payment_status: payment || undefined, start_date: startDate || undefined, end_date: endDate || undefined }, signal), ["sales", "orders", "customers"], true, { cancelable: true });
+  const query = useHistoryPage("sales:encoding", `${payment}:${startDate}:${endDate}`,
+    (page, pageSize, signal) => encodingService.getPage({ paymentStatus: payment ? payment as "pending" | "paid" : undefined, startDate: startDate || undefined, endDate: endDate || undefined, page, pageSize, ordering: "-created_at" }, signal),
+    signal => encodingService.list({ payment_status: payment || undefined, start_date: startDate || undefined, end_date: endDate || undefined }, signal), ["sales", "orders", "customers"]);
   const data = useMemo(() => (query.data ?? []).map(toSale), [query.data]);
-  const selectedRecord = data.find(record => record.transaction.id === selected?.transaction.id) ?? null;
+  const visibleRecord = data.find(record => record.transaction.id === selected?.transaction.id);
+  const detail = useCachedQuery(`sales:detail:${selected?.transaction.id}`, async signal => toSale(await encodingService.get(selected!.transaction.id, signal)), ["sales", "orders", "customers"], !!selected && !visibleRecord, { cancelable: true });
+  const selectedRecord = visibleRecord ?? detail.data ?? null;
   const columns: Column<Sale>[] = [
     { key: "receipt", header: "SI Number", width: "14%", render: sale => <span className="block truncate tabular-nums text-xs" title={sale.receipt}>{sale.receipt}</span> },
     { key: "customer", header: "Customer", width: "20%", render: sale => <span className="block truncate text-sm" title={sale.customer}>{sale.customer}</span> },
     { key: "date", header: "Sales date", width: "14%", render: sale => <span className="text-xs">{sale.date}</span> },
-    { key: "cashier", header: "Entered by", width: "16%", render: sale => <span className="block truncate text-xs" title={encodedByLabel(sale.transaction) ?? "Not recorded"}>{encodedByLabel(sale.transaction) ?? "Not recorded"}</span> },
+    { key: "cashier", header: "Entered by", width: "16%", render: sale => <span className="block truncate text-xs" title={sale.transaction.handled_by?.username || "Not recorded"}>{sale.transaction.handled_by?.username || "Not recorded"}</span> },
     { key: "payment", header: "Payment", width: "14%", render: sale => <PaymentStatusBadge status={sale.transaction.payment_status}/> },
     { key: "total", header: "Total", width: "12%", render: sale => <span className="text-sm font-semibold">{recordedPesos(recordedSaleAmount(sale), 2)}</span> },
     { key: "actions", header: "Actions", width: "10%", align: "center", render: sale => <ActionButton label="View encoded transaction" onClick={() => setSelected(sale)}><Eye size={14}/></ActionButton> },
   ];
   return <div className="records-page flex w-full max-w-[1400px] mx-auto flex-col gap-3 p-4 sm:p-6">
     <div data-mobile-page-actions className="flex shrink-0 flex-wrap items-center justify-end gap-3"><ModuleSubheading description="Record manual offline sales invoices and manage pending payment statuses." /><Btn variant="primary" icon={<Plus size={14}/>} onClick={() => setOpen(true)}>New sales entry</Btn></div>
-    <TableCard className="sales-encoding-table">{query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })}/> : <EnhancedTable responsivePageSize measureRenderedRows contentHeight data={data} columns={columns} rowKey={sale => sale.transaction.id} pageSize={5} loading={query.loading} searchKeys={sale => [sale.receipt, sale.customer, sale.cashier]} searchPlaceholder="Search SI number, customer or staff" showExport={false} emptyTitle="No encoded sales" emptyDesc="Record a paper invoice using New sales entry." onRowClick={setSelected} renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected}/>} extraControls={
+    <TableCard className="sales-encoding-table">{!!query.refreshError && <QueryErrorMessage error={query.refreshError} onRetry={() => void query.refresh({ force: true })}/>}{query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })}/> : <EnhancedTable responsivePageSize measureRenderedRows contentHeight data={data} remote={query.controls} columns={columns} rowKey={sale => sale.transaction.id} pageSize={5} loading={query.loading} searchKeys={sale => [sale.receipt, sale.customer, sale.cashier]} searchPlaceholder="Search SI number, customer or staff" showExport={false} emptyTitle="No encoded sales" emptyDesc="Record a paper invoice using New sales entry." onRowClick={setSelected} renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected}/>} extraControls={
       <div className="flex w-full flex-col gap-2 md:flex-row md:flex-wrap md:items-center xl:w-auto xl:flex-nowrap">
         <select aria-label="Filter encoding payment status" className={`${filterSelectClass} md:min-w-[9.5rem] md:flex-1 xl:w-[9.5rem] xl:flex-none`} value={payment} onChange={e => setPayment(e.target.value)}>
           <option value="">All payments</option><option value="pending">Pending</option><option value="paid">Paid</option>

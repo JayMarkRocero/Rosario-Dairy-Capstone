@@ -9,6 +9,8 @@ interface PageSizeLimits {
   naturalFit?: boolean;
   measurementKey?: unknown;
   measureRenderedRows?: boolean;
+  fitActualRows?: boolean;
+  requestedPageSize?: number;
 }
 
 export function calculatePageSize(containerHeight: number, headerHeight = 0, footerHeight = 0, rowHeight = 52, { minPageSize = 3, maxPageSize = Infinity }: PageSizeLimits = {}) {
@@ -28,6 +30,17 @@ export function calculateFittedPageSize(_viewportHeight: number, containerHeight
   return calculatePageSize(containerHeight, headerHeight, 0, rowHeight, { minPageSize: 1 });
 }
 
+/** Account for mixed native row heights; unknown additional rows reserve the tallest known height. */
+export function calculateMeasuredRowPageSize(bodyHeight: number, heights: number[], currentSize: number, rowHeight: number, limit = Infinity) {
+  if (!heights.length) return Math.max(1, Math.min(limit, currentSize));
+  let used = 0, fitted = 0;
+  for (const height of heights) { if (used + height > bodyHeight) break; used += height; fitted++; }
+  if (fitted < heights.length) return Math.max(1, Math.min(limit, fitted));
+  // A short final page is not evidence that a larger server page would fit.
+  if (heights.length < currentSize) return Math.max(1, Math.min(limit, currentSize));
+  return Math.max(1, Math.min(limit, heights.length + Math.floor(Math.max(0, bodyHeight - used) / rowHeight)));
+}
+
 // Keep cards intrinsic while limiting records to the space below their controls.
 export function calculateNaturalPageSize(viewportHeight: number, tableTop: number, headerHeight: number,
   footerHeight: number, rowHeight = 56, bottomSpace = 0) {
@@ -35,13 +48,15 @@ export function calculateNaturalPageSize(viewportHeight: number, tableTop: numbe
     rowHeight, { minPageSize: 1, maxPageSize: 5 });
 }
 
-export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSize = 3, maxPageSize = Infinity, measureRows = false, viewportBased = false, fitContainer = false, naturalFit = false, measurementKey, measureRenderedRows = false }: PageSizeLimits = {}) {
+export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSize = 3, maxPageSize = Infinity, measureRows = false, viewportBased = false, fitContainer = false, naturalFit = false, measurementKey, measureRenderedRows = false, fitActualRows = false, requestedPageSize }: PageSizeLimits = {}) {
   const [container, containerRef] = useState<HTMLElement | null>(null);
   const [header, headerRef] = useState<HTMLElement | null>(null);
   const [footer, footerRef] = useState<HTMLElement | null>(null);
   const [pageSize, setPageSize] = useState(naturalFit ? 5 : fitContainer ? 5 : viewportBased && typeof window !== "undefined" && window.innerHeight < 768 ? 5 : minPageSize);
   const measureRef = useRef<(() => void) | null>(null);
   const rowMeasurement = useRef({ width: -1, height: measureRenderedRows ? 0 : rowHeight, key: measurementKey, padding: 0 });
+  const currentSize = useRef(pageSize); currentSize.current = pageSize;
+  const fittedLimit = useRef({ width: -1, bodyHeight: -1, key: measurementKey, limit: Infinity });
   useLayoutEffect(() => {
     if (!container) {
       const estimate = () => setPageSize(naturalFit ? calculateNaturalPageSize(window.innerHeight, viewportOffset, 0, 0, rowHeight) : fitContainer ? calculatePageSize(window.innerHeight, viewportOffset, 0, rowHeight, { minPageSize: 1 }) : viewportBased
@@ -72,12 +87,13 @@ export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSiz
         });
       }
       let hasRenderedRows = false;
+      let renderedHeights: number[] = [];
       if (fitContainer && measureRenderedRows) {
         // These views use native, unstretched rows. Their actual border-box height
         // includes cell padding/borders without imposing the estimate's minimum.
         const rows = Array.from(container.querySelectorAll('tbody tr')).filter(row => !row.querySelector?.('td[colspan]'));
-        const heights = rows.map(row => row.getBoundingClientRect().height).filter(height => height > 0);
-        if (heights.length) { measuredRowHeight = Math.max(...heights); hasRenderedRows = true; }
+        renderedHeights = rows.map(row => row.getBoundingClientRect().height).filter(height => height > 0);
+        if (renderedHeights.length) { measuredRowHeight = Math.max(...renderedHeights); hasRenderedRows = true; }
       }
       if (fitContainer) {
         const width = container.clientWidth ?? 0;
@@ -99,7 +115,24 @@ export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSiz
         const horizontalScrollbar = Math.max(0, (tableViewport?.offsetHeight ?? 0) - (tableViewport?.clientHeight ?? 0));
         // Never borrow space from the footer: capacity uses the actual compact
         // row height, including padding/borders, and reserves horizontal scrollbars.
-        setPageSize(calculateFittedPageSize(window.innerHeight, container.clientHeight - horizontalScrollbar, headerHeight, measuredRowHeight));
+        if (fitActualRows && renderedHeights.length) {
+          const bodyHeight = container.clientHeight - horizontalScrollbar - headerHeight;
+          const width = container.clientWidth;
+          const geometryChanged = fittedLimit.current.width !== width || fittedLimit.current.bodyHeight !== bodyHeight || fittedLimit.current.key !== measurementKey;
+          if (geometryChanged) {
+            fittedLimit.current = { width, bodyHeight, key: measurementKey, limit: Infinity };
+          }
+          const requestedSize = requestedPageSize ?? currentSize.current;
+          const fitSize = geometryChanged && renderedHeights.length < requestedSize
+            ? calculateFittedPageSize(window.innerHeight, container.clientHeight - horizontalScrollbar, headerHeight, measuredRowHeight) : requestedSize;
+          const size = calculateMeasuredRowPageSize(bodyHeight, renderedHeights, fitSize, measuredRowHeight, fittedLimit.current.limit);
+          // A new page can contain taller records. Remember a failed larger
+          // capacity until geometry/filter scope changes, preventing A/B refetch loops.
+          if (renderedHeights.reduce((sum, height) => sum + height, 0) > bodyHeight) fittedLimit.current.limit = Math.min(fittedLimit.current.limit, size);
+          setPageSize(size);
+        } else {
+          setPageSize(calculateFittedPageSize(window.innerHeight, container.clientHeight - horizontalScrollbar, headerHeight, measuredRowHeight));
+        }
       } else if (viewportBased) {
         const card = container.closest('.table-card');
         const page = container.closest('.records-page');
@@ -129,8 +162,8 @@ export function useAutoPageSize(rowHeight = 52, viewportOffset = 0, { minPageSiz
     [container, header, footer, contentTable, ...(viewportBased ? Array.from(container.closest('.records-page')?.children ?? []) : [])].forEach(node => { if (node) observer.observe(node); });
     window.addEventListener("resize", measure);
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); measureRef.current = null; };
-  }, [container, header, footer, rowHeight, viewportOffset, minPageSize, maxPageSize, measureRows, viewportBased, fitContainer, naturalFit, measurementKey, measureRenderedRows]);
-  return { pageSize, containerRef, headerRef, footerRef, remeasure: () => measureRef.current?.(), resetMeasurement: () => { rowMeasurement.current.height = measureRenderedRows ? 0 : rowHeight; } };
+  }, [container, header, footer, rowHeight, viewportOffset, minPageSize, maxPageSize, measureRows, viewportBased, fitContainer, naturalFit, measurementKey, measureRenderedRows, fitActualRows, requestedPageSize]);
+  return { pageSize, containerRef, headerRef, footerRef, remeasure: () => measureRef.current?.(), resetMeasurement: () => { rowMeasurement.current.height = measureRenderedRows ? 0 : rowHeight; if (fitActualRows) fittedLimit.current.limit = Infinity; } };
 }
 
 export type AutoPageCapacity = ReturnType<typeof useAutoPageSize>;

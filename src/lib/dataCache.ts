@@ -57,7 +57,7 @@ export function fetchDataCache<T>(key: string, fetcher: (signal?: AbortSignal) =
   const checkCanceled = () => { if (controller?.signal.aborted) throw new DOMException("Request canceled", "AbortError"); };
   const pending = Promise.resolve().then(() => { checkCanceled(); return fetcher(controller?.signal); }).then(data => {
     checkCanceled();
-    if (session === epoch && revision === value.revision) { value.snapshot = { data, updatedAt: value.pollAgain ? 0 : Date.now() }; notify(key); }
+    if (session === epoch && revision === value.revision) { value.snapshot = { data, updatedAt: value.revalidate || value.pollAgain ? 0 : Date.now() }; notify(key); }
     return data;
   }, error => {
     if (!controller?.signal.aborted && session === epoch && revision === value.revision) {
@@ -79,15 +79,15 @@ export function fetchDataCache<T>(key: string, fetcher: (signal?: AbortSignal) =
 export function invalidateDataCache(groups: CacheGroup[], { deferPending = false, poll = false } = {}) {
   for (const [key, value] of entries) {
     if (!groups.some(group => value.groups.has(group))) continue;
-    // A periodic read does not prove the server changed. Let a slow read finish
-    // and display its result, then coalesce all missed ticks into one refresh.
+    // Polls and live resyncs must not starve a slow read. Publish its result as
+    // stale, then coalesce all intervening signals into one follow-up. Explicit
+    // mutations below still cancel/revise old reads before applying fresh data.
     if (poll && value.pending) { value.pollAgain = true; continue; }
-    if (deferPending && value.pending && value.revalidate && !value.controller) continue;
+    if (deferPending && value.pending) { value.revalidate = true; continue; }
     value.revision++;
     // Abort signal-aware GETs immediately; legacy/shared loaders keep their
     // existing deferred revalidation behavior until they support cancellation.
     if (value.controller) cancelPending(value);
-    else if (deferPending && value.pending) value.revalidate = true;
     else { value.pending = undefined; value.revalidate = false; }
     value.snapshot = { ...value.snapshot, updatedAt: 0, error: undefined };
     notify(key);

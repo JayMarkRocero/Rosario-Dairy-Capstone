@@ -1,5 +1,6 @@
-import { getAllPages, type DjangoTransaction } from "@/lib/api";
+import http, { getAllPages, type DjangoTransaction, type PaginatedResponse } from "@/lib/api";
 import { authService } from "@/features/auth/api/auth.service";
+import { historyParams, type HistoryFilters, type HistoryPageOptions, type TransactionSummary } from "../types/history";
 
 export interface Sale {
   receipt: string;
@@ -58,15 +59,24 @@ export function toSale(t: DjangoTransaction): Sale {
 }
 
 export const salesService = {
+  getPage: async (options: HistoryPageOptions, signal?: AbortSignal): Promise<PaginatedResponse<Sale>> => {
+    const { data } = await http.get<PaginatedResponse<DjangoTransaction>>("/sales/transactions/", {
+      params: { ...historyParams(options), page: options.page, page_size: options.pageSize, ordering: options.ordering }, signal,
+    });
+    return { ...data, results: data.results.map(toSale) };
+  },
+  getSummary: async (filters: HistoryFilters = {}, signal?: AbortSignal): Promise<TransactionSummary> =>
+    (await http.get<TransactionSummary>("/sales/transactions/summary/", { params: historyParams(filters), signal })).data,
+  getById: async (id: number, signal?: AbortSignal): Promise<Sale> =>
+    toSale((await http.get<DjangoTransaction>(`/sales/transactions/${id}/`, { signal })).data),
   getMine: async (knownUserId?: number, signal?: AbortSignal): Promise<Sale[]> => {
     const userId = knownUserId ?? await authService.getCurrentUserId();
     const sales = await salesService.getAll({ handledBy: userId }, signal);
     return sales.filter(sale => sale.transaction.handled_by.id === userId);
   },
-  getAll: async (filters?: { startDate?: string; endDate?: string; handledBy?: number; customerId?: number; paymentStatus?: "pending" | "paid" | "unknown"; includeVoided?: boolean }, signal?: AbortSignal): Promise<Sale[]> => {
+  getAll: async (filters?: HistoryFilters, signal?: AbortSignal): Promise<Sale[]> => {
     const transactions = await getAllPages<DjangoTransaction>("/sales/transactions/", {
-      start_date: filters?.startDate, end_date: filters?.endDate,
-      handled_by: filters?.handledBy, customer_id: filters?.customerId, payment_status: filters?.paymentStatus, include_voided: filters?.includeVoided,
+      ...historyParams(filters),
       page_size: 200,
     }, signal);
 

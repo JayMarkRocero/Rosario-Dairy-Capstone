@@ -16,6 +16,7 @@ export default axiosInstance;
 export class ApiError extends Error {
   status: number;
   retryAfterMs?: number;
+  code?: string;
 
   constructor(status: number, message: string, public fieldErrors: Record<string, string[]> = {}) {
     super(message);
@@ -271,6 +272,7 @@ axiosInstance.interceptors.response.use(
     }
 
     const apiError = new ApiError(status, message, fieldErrors);
+    if (data && typeof data === "object" && "code" in data && typeof data.code === "string") apiError.code = data.code;
     const retryAfter = error.response.headers?.["retry-after"];
     if (retryAfter != null) {
       const seconds = Number(retryAfter);
@@ -486,8 +488,10 @@ export interface DjangoTransaction {
   encoded_at?: string | null;
   encoding_request_id?: string | null;
   payment_status?: "pending" | "paid" | "unknown";
+  can_update_payment?: boolean | null;
   payment_updated_at?: string | null;
   payment_updated_by?: number | null;
+  payment_updated_by_user?: DjangoUserSummary | null;
   id: number;
   handled_by: DjangoUserSummary;
   order?: { customer?: DjangoCustomer | null } | null;

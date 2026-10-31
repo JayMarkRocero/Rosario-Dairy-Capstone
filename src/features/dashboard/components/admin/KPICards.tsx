@@ -1,11 +1,11 @@
 import { AlertTriangle, Calendar, ClipboardList, DollarSign } from "lucide-react";
-import { getAllPages, type DjangoTransaction } from "@/lib/api";
+import { salesService } from "@/features/sales/api/sales.service";
+import { ordersService } from "@/features/orders/api/orders.service";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { C } from "@/styles/tokens/colors";
 import { isLowStock } from "@/features/inventory/utils/stock";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
-import { recordedPesos, sumRecordedMoney, type RecordedMoney } from "@/features/sales/utils/recordedMoney";
-import type { OrderListResponse } from "@/features/orders/types/order";
+import { recordedPesos, type RecordedMoney } from "@/features/sales/utils/recordedMoney";
 
 interface Props {
   /** Override when pending orders are managed outside the current sales API. */
@@ -33,22 +33,21 @@ export function KPICards({ pendingOrderCount }: Props = {}) {
   const { data: metrics, loading, error } = useCachedQuery<Metrics>(`dashboard:admin-kpis:${businessDate()}:${pendingOrderCount ?? "api"}`, async signal => {
     const today = businessDate();
     const yesterday = businessDate(-1);
-    const [todayTransactions, yesterdayTransactions, products, batches, orders] = await Promise.all([
-      getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: today, end_date: today }, signal),
-      getAllPages<DjangoTransaction>("/sales/transactions/", { start_date: yesterday, end_date: yesterday }, signal),
+    const [todaySummary, yesterdaySummary, products, batches, orders] = await Promise.all([
+      salesService.getSummary({ startDate: today, endDate: today }, signal),
+      salesService.getSummary({ startDate: yesterday, endDate: yesterday }, signal),
       inventoryService.getLowStockProducts(),
       inventoryService.getExpiringProducts(),
-      pendingOrderCount === undefined ? getAllPages<OrderListResponse>("/sales/orders/", undefined, signal) : Promise.resolve([]),
+      pendingOrderCount === undefined ? ordersService.getSummary({}, signal) : Promise.resolve(null),
     ]);
-    const total = (rows: DjangoTransaction[]) => rows.reduce((sum, row) => sum + Number(row.total_amount), 0);
     return {
-        todaySales: total(todayTransactions), yesterdaySales: total(yesterdayTransactions),
-        todayRecorded: sumRecordedMoney(todayTransactions.map(row => row.total_amount)),
-        yesterdayRecorded: sumRecordedMoney(yesterdayTransactions.map(row => row.total_amount)),
+        todaySales: Number(todaySummary.total_revenue), yesterdaySales: Number(yesterdaySummary.total_revenue),
+        todayRecorded: todaySummary.total_revenue,
+        yesterdayRecorded: yesterdaySummary.total_revenue,
         lowStock: products.filter(product => product.is_active && isLowStock(product.total_stock, product.low_stock_threshold)).length,
         expiringSoon: batches.filter(batch => batch.product.is_active && batch.status === "available"
           && Number(batch.remaining_quantity) > 0 && batch.expiration_date >= today).length,
-        pendingOrders: orders.filter(order => order.status === "fulfilled" && order.transaction?.payment_status === "pending").length,
+        pendingOrders: pendingOrderCount ?? orders!.pending_payment_count,
     };
   }, ["dashboard"], true, { cancelable: true });
   const failed = !!error;

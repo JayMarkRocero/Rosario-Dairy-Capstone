@@ -8,6 +8,7 @@ const compiled = buildSync({ stdin: { contents: `
   export * from './src/lib/liveEvents';
   export * from './src/lib/dataCache';
   export { default as http, ApiError, getAccessToken, getRefreshToken, setAccessToken, refreshAccessToken } from './src/lib/api';
+  export { salesService } from './src/features/sales/api/sales.service';
 `, resolveDir: root }, bundle: true, packages: 'external', write: false, platform: 'node', format: 'cjs',
   define: { 'import.meta.env': '{}' }, alias: { '@': path.join(root, 'src') } }).outputFiles[0].text;
 const original = { fetch: global.fetch, window: global.window, document: global.document,
@@ -161,7 +162,7 @@ test('singleton replacement, logout/account changes and unmount abort streams an
   assert.equal(timers.size, 0);
 });
 
-test('live invalidation waits for one pending read, rejects its stale result and fetches once more', async () => {
+test('live invalidation waits for one pending read and settles on the coalesced fresh result', async () => {
   let finish, loads = 0;
   api.writeDataCache('sales', ['existing'], ['sales']);
   const read = () => api.fetchDataCache('sales', () => {
@@ -253,3 +254,66 @@ test('five-second fallback coalesces slow reads without aborting or hiding compl
   pending[2].resolve(['obsolete']); await settle();
   assert.deepEqual(api.readDataCache('slow-orders').data, ['fresh after mutation']);
 });
+
+test('stream ready and consecutive data_changed signals coalesce a slow authenticated GET instead of restarting it', async () => {
+  const pending = [];
+  const load = () => api.fetchDataCache('stream-orders', signal => new Promise(resolve => pending.push({ signal, resolve })), ['orders'], false, { cancelable: true }).catch(() => {});
+  subscriptions.push(api.subscribeDataCache('stream-orders', () => {
+    const value = api.readDataCache('stream-orders');
+    if (!value.updatedAt && !value.error) void load();
+  }));
+  void load(); await settle(); await start();
+  await event('ready', { groups: ['orders'], version: 'one' }); await tick(200);
+  await event('data_changed', { groups: ['orders'], version: 'two' }); await tick(1000);
+  await event('data_changed', { groups: ['orders'], version: 'three' }); await tick(1000);
+  assert.equal(pending.length, 1); assert.equal(pending[0].signal.aborted, false);
+  pending[0].resolve(['complete rows']); await settle();
+  assert.deepEqual(api.readDataCache('stream-orders').data, ['complete rows']);
+  assert.equal(pending.length, 2, 'All signals coalesce into one follow-up');
+  pending[1].resolve(['fresh rows']); await settle();
+  assert.deepEqual(api.readDataCache('stream-orders').data, ['fresh rows']);
+  assert.ok(api.readDataCache('stream-orders').updatedAt > 0);
+  assert.equal(pending.length, 2);
+});
+
+for (const [role, transport] of [['admin', 'sse'], ['staff', 'sse'], ['staff', 'fallback']]) {
+  test(`${role} history page and summary receive another user's paid payment through ${transport}`, async () => {
+    let paid = false;
+    const calls = [];
+    api.http.defaults.adapter = async config => {
+      calls.push(config);
+      const data = config.url.endsWith('/summary/')
+        ? { transaction_count: 6, total_revenue: '123.45', paid_count: paid ? 1 : 0, pending_count: paid ? 0 : 1 }
+        : { count: 6, next: null, results: [{ id: 42, created_at: '2026-10-31T00:00:00Z',
+          handled_by: { id: 7, username: 'encoder', role }, customer: null, items: [],
+          payment_status: paid ? 'paid' : 'pending', payment_method: 'online', total_amount: '123.45' }] };
+      return { status: 200, config, headers: {}, data };
+    };
+    const definitions = [
+      ['history', signal => api.salesService.getPage({ page: 2, pageSize: 5, handledBy: role === 'staff' ? 7 : undefined }, signal)],
+      ['summary', signal => api.salesService.getSummary({ handledBy: role === 'staff' ? 7 : undefined }, signal)],
+    ];
+    for (const [key, fetcher] of definitions) {
+      await api.fetchDataCache(key, fetcher, ['sales'], false, { cancelable: true });
+      subscriptions.push(api.subscribeDataCache(key, () => {
+        const value = api.readDataCache(key);
+        if (!value.updatedAt && !value.error) void api.fetchDataCache(key, fetcher, ['sales'], false, { cancelable: true }).catch(() => {});
+      }));
+    }
+    if (transport === 'fallback') global.fetch = async () => new Response('', { status: 503, headers: { 'Retry-After': '60' } });
+    await start(role);
+    if (transport === 'sse') { await event('ready', { groups: ['sales', 'orders'], version: 'before-payment' }); await tick(200); }
+    paid = true; // Represents a payment committed by a different tab/operator.
+    if (transport === 'sse') { await event('data_changed', { groups: ['sales', 'orders', 'customers', 'dashboard'], version: 'after-payment' }); await tick(1000); }
+    else await tick(5200);
+    const history = api.readDataCache('history').data;
+    assert.equal(history.count, 6); assert.equal(history.results.length, 1);
+    assert.equal(history.results[0].transaction.payment_status, 'paid');
+    assert.equal(history.results[0].transaction.total_amount, '123.45');
+    assert.equal(api.readDataCache('summary').data.paid_count, 1);
+    assert.equal(api.readDataCache('summary').data.pending_count, 0);
+    assert.ok(calls.every(call => call.method === 'get'), 'Live hints never submit or replay a payment');
+    assert.ok(calls.filter(call => call.url === '/sales/transactions/').every(call => call.params.page === 2 && call.params.page_size === 5));
+    if (transport === 'sse') { const count = calls.length; await tick(10_000); assert.equal(calls.length, count, 'A stable stream does not repeatedly reload bottom rows'); }
+  });
+}

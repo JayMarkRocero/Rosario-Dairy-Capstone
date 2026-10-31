@@ -1,5 +1,6 @@
 import { formatRecordedMoney, recordedPesos } from "@/features/sales/utils/recordedMoney";
 import { PaymentStatusBadge } from "@/features/sales/components/PaymentStatusBadge";
+import { paymentAuditFields } from "@/features/sales/utils/receiptDetails";
 import { ModuleSubheading } from "@/components/navigation/ModuleSubheading";
 import { MobileOrderCard } from "@/features/orders/components/MobileOrderCard";
 import { OrdersTable } from "@/features/orders/components/OrdersTable";
@@ -72,6 +73,7 @@ export function AdminOrders() {
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green],
       ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red], ["Warnings", orders.filter(o=>o.warning).length, C.orange],
     ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={query.error ? "Unavailable" : value} color={String(color)} />)}</div>
+    {!!query.refreshError && <QueryErrorMessage error={query.refreshError} onRetry={() => { void query.refresh({ force: true }); }} />}
     <OrdersTable errorContent={query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : undefined} contentHeight pageSize={5} rowHeight={52} columns={columns} data={data} rowKey={o=>o.id} searchable
       searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} onCancel={openCancel} busy={loading} />} onRowClick={view} showExport={false}
       loading={loadingList} emptyTitle="No orders found" emptyDesc="No orders match your filters."
@@ -82,6 +84,7 @@ export function AdminOrders() {
       {selected&&<div className="space-y-5">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{[["Order ID",`#${selected.id}`],["Customer",selected.customer],["Phone",selected.customerPhone||"—"],["Email",selected.customerEmail||"—"],["Date",selected.date],["Cashier",selected.staff]].map(([l,v])=><div key={l} className="min-w-0 rounded-xl p-3" style={{backgroundColor:C.bg}}><div className="text-xs" style={{color:C.muted}}>{l}</div><div className="break-all text-sm font-medium">{v}</div></div>)}</div>
         <StatusBadge status={selected.status}/> <PaymentStatusBadge status={selected.paymentStatus}/>
+        {selected.paymentAudit && <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">{paymentAuditFields(selected.paymentAudit).map(([label, value]) => <div key={label}><dt className="text-xs" style={{color:C.muted}}>{label}</dt><dd className="text-sm font-medium break-words">{value}</dd></div>)}</dl>}
         {selected.warning&&<div className="p-3 rounded-xl text-sm" style={{backgroundColor:C.orange+"12",color:C.orange}}>{selected.warning}</div>}
         <div className="rounded-xl overflow-hidden" style={{border:`1px solid ${C.border}`}}>{selected.items.map((item,i)=><div key={i} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:justify-between sm:gap-3"><span className="min-w-0 break-words">{item.product}</span><span className="shrink-0" style={{color:C.muted}}>{item.quantity} pcs — {item.netAmount == null ? `Subtotal PHP ${formatRecordedMoney(item.recordedAmounts?.subtotal ?? item.subtotal)}` : `Line PHP ${formatRecordedMoney(item.recordedAmounts?.netAmount ?? item.netAmount)}`}</span></div>)}</div>
         <div className="space-y-1 p-4 rounded-2xl text-sm" style={{backgroundColor:C.navy+"08"}}><div className="flex justify-between"><span>Subtotal</span><span>{recordedPesos(selected.recordedAmounts?.subtotal ?? selected.subtotal)}</span></div><div className="flex justify-between font-bold text-base"><span>Total</span><span style={{color:C.blue}}>{recordedPesos(selected.recordedAmounts?.total ?? selected.total)}</span></div><div className="text-xs" style={{color:C.muted}}>Payment: {selected.paymentMethod ?? "Not recorded"}</div></div>

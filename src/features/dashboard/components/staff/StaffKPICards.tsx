@@ -3,8 +3,8 @@ import { BarChart2, Check, ClipboardList, Package } from "lucide-react";
 import { KPICard } from "@/components/data-display/KPICard";
 import { C } from "@/styles/tokens/colors";
 import { useTheme } from "@/styles/ThemeProvider";
-import { salesService, recordedSaleAmount } from "@/features/sales/api/sales.service";
-import { recordedPesos, sumRecordedMoney } from "@/features/sales/utils/recordedMoney";
+import { salesService } from "@/features/sales/api/sales.service";
+import { recordedPesos } from "@/features/sales/utils/recordedMoney";
 import { ordersService } from "@/features/orders/api/orders.service";
 import { inventoryService } from "@/features/inventory/api/inventory.service";
 import { useAuth } from "@/features/auth/context/AuthContext";
@@ -39,34 +39,29 @@ export function StaffKPICards() {
 
   const today = todayStr();
   const enabled = !authLoading && userId !== null;
-  const salesQuery = useCachedQuery(`dashboard:staff-sales:${userId}:${today}`, signal => loadMetric(
-    () => salesService.getAll({ startDate: today, endDate: today, handledBy: userId ?? undefined }, signal), signal),
+  const salesQuery = useCachedQuery(`dashboard:staff-sales-summary:${userId}:${today}`, signal => loadMetric(
+    () => salesService.getSummary({ startDate: today, endDate: today, handledBy: userId ?? undefined }, signal), signal),
     ["dashboard", "sales"], enabled, { cancelable: true });
   const ordersQuery = useCachedQuery(`dashboard:staff-orders:${userId}`, signal => loadMetric(
     () => ordersService.getAll(signal), signal), ["dashboard", "orders"], enabled, { cancelable: true });
   const productsQuery = useCachedQuery(`dashboard:staff-products:${userId}`, signal => loadMetric(
     () => inventoryService.getAll(true), signal), ["dashboard", "inventory"], enabled, { cancelable: true });
-  const sales = salesQuery.data ?? [], orders = ordersQuery.data ?? [], products = productsQuery.data ?? [];
+  const sales = salesQuery.data, orders = ordersQuery.data ?? [], products = productsQuery.data ?? [];
   const queries = [salesQuery, salesQuery, ordersQuery, productsQuery];
 
   const kpis = useMemo(() => {
-    const today = todayStr();
-
-    const mySalesToday = sales.filter(s => s.date === today && s.transaction.handled_by.id === userId);
-    const myTotalToday = sumRecordedMoney(mySalesToday.map(recordedSaleAmount));
-
     const fulfilledOrders = orders.filter(o => o.status === "Fulfilled" && userId !== null && o.staffId === userId);
 
     const availableProducts = products.filter(p => p.stock > 0).length;
 
     return [
       {
-        title: "My Sales Today", value: recordedPesos(myTotalToday, 0, "Unavailable"), icon: <BarChart2 size={20}/>,
+        title: "My Sales Today", value: recordedPesos(sales?.total_revenue, 0, "Unavailable"), icon: <BarChart2 size={20}/>,
         trend: "neutral" as const, trendLabel: "Today", color: C.blue,
         detail: "Completed sales you processed",
       },
       {
-        title: "My Transactions Today", value: String(mySalesToday.length), icon: <Check size={20}/>,
+        title: "My Transactions Today", value: String(sales?.transaction_count ?? 0), icon: <Check size={20}/>,
         trend: "neutral" as const, trendLabel: "Today", color: C.green,
         detail: "Transactions you processed",
       },

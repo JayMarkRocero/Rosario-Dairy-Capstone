@@ -8,10 +8,10 @@ import { Card } from "@/components/data-display/Card";
 import { EnhancedTable, type Column } from "@/components/data-display/EnhancedTable";
 import { C } from "@/styles/tokens/colors";
 import { salesService, recordedSaleAmount, type Sale } from "@/features/sales/api/sales.service";
+import { useHistoryPage } from "../hooks/useHistoryPage";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { PaymentStatusBadge } from "../components/PaymentStatusBadge";
-import { encodedByLabel } from "../utils/historyLabels";
-import { recordedPesos, sumRecordedMoney } from "../utils/recordedMoney";
+import { recordedPesos } from "../utils/recordedMoney";
 
 const PAYMENT_METHODS = ["Cash", "Online"];
 
@@ -20,29 +20,27 @@ export function AdminSalesHistory() {
   const [dateFilter, setDateFilter] = useState("");
   const [selected, setSelected] = useState<Sale | null>(null);
 
-  const query = useCachedQuery(`sales:history:${dateFilter}`,
-    signal => salesService.getAll({ startDate: dateFilter || undefined, endDate: dateFilter || undefined }, signal), ["sales"], true, { cancelable: true });
+  const filters = { startDate: dateFilter || undefined, endDate: dateFilter || undefined };
+  const query = useHistoryPage<Sale>("sales:history", `${dateFilter}:${paymentFilter}`,
+    (page, pageSize, signal) => salesService.getPage({ ...filters, paymentMethod: paymentFilter === "All" ? undefined : paymentFilter === "Cash" ? "cash" : "online", page, pageSize, ordering: "-created_at" }, signal),
+    signal => salesService.getAll(filters, signal), ["sales"]);
+  // These cards have always followed the date only, independently of table filters.
+  const totals = useCachedQuery(`sales:history-summary:${dateFilter}`, signal => salesService.getSummary(filters, signal), ["sales"], true, { cancelable: true });
   const { data: cachedRecords, loading: recordsLoading } = query;
   const records = cachedRecords ?? [];
-  const selectedRecord = records.find(record => record.transaction.id === selected?.transaction.id) ?? null;
+  const visibleRecord = records.find(record => record.transaction.id === selected?.transaction.id);
+  const detail = useCachedQuery(`sales:detail:${selected?.transaction.id}`, signal => salesService.getById(selected!.transaction.id, signal), ["sales"], !!selected && !visibleRecord, { cancelable: true });
+  const selectedRecord = visibleRecord ?? detail.data ?? null;
 
   const filteredRecords = useMemo(() => {
     return records.filter(s => paymentFilter === "All" || s.payment === paymentFilter);
   }, [records, paymentFilter]);
 
-  const summary = useMemo(() => {
-    const total = sumRecordedMoney(records.map(recordedSaleAmount));
-    return { total, count: records.length };
-  }, [records]);
+  const summary = { total: totals.data?.total_revenue, count: totals.data?.transaction_count };
 
   const columns: Column<Sale>[] = [
     { key:"receipt", header:"SI Number", align:"left", width:"15%", sortKey: r => r.receipt,
-      render: r => {
-        const encoder = encodedByLabel(r.transaction);
-        return <div className="min-w-0"><span className="block truncate tabular-nums text-xs whitespace-nowrap" style={{ color: C.muted }} title={r.receipt}>{r.receipt}</span>
-          {encoder && <span className="block truncate text-[10px] leading-tight text-slate-500" title={encoder}>{encoder}</span>}
-        </div>;
-      } },
+      render: r => <span className="block truncate tabular-nums text-xs whitespace-nowrap" style={{ color: C.muted }} title={r.receipt}>{r.receipt}</span> },
     { key:"customer", header:"Customer", align:"left", width:"22%", sortKey: r => r.customer,
       render: r => <span className="font-medium text-sm whitespace-nowrap" style={{ color: C.text }}>{r.customer}</span> },
     { key:"cashier", header:"Cashier", align:"center", width:"14%", sortKey: r => r.cashier,
@@ -56,9 +54,9 @@ export function AdminSalesHistory() {
           : { bg: "var(--surface-inset)", color: C.muted };
         return (
           <div className="flex flex-wrap items-center justify-center gap-1">
-            <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ backgroundColor: pm.bg, color: pm.color }}>
+            {(r.payment !== "Not recorded" || r.transaction.payment_status === "paid" || r.transaction.payment_status === "pending") && <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ backgroundColor: pm.bg, color: pm.color }}>
               {r.payment}
-            </span>
+            </span>}
             <PaymentStatusBadge status={r.transaction.payment_status}/>
           </div>
         );
@@ -78,14 +76,14 @@ export function AdminSalesHistory() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 flex-shrink-0">
         <Card className="px-3.5 py-3 min-w-0">
           <div className="font-bold text-xl truncate" style={{ color: C.blue }}>
-            {query.error ? "Unavailable" : recordedPesos(summary.total, 0, "Unavailable")}
+            {totals.loading ? "..." : recordedPesos(summary.total, 0, "Unavailable")}
           </div>
           <div className="font-medium text-sm mt-1" style={{ color: C.text }}>Total Revenue</div>
-          <div className="text-xs mt-0.5" style={{ color: C.muted }}>{query.error ? "" : `${summary.count} transactions`}</div>
+          <div className="text-xs mt-0.5" style={{ color: C.muted }}>{summary.count == null ? "" : `${summary.count} transactions`}</div>
         </Card>
         <Card className="px-3.5 py-3 min-w-0">
           <div className="font-bold text-xl truncate" style={{ color: C.green }}>
-            {query.error ? "Unavailable" : summary.count}
+            {totals.loading ? "..." : summary.count ?? "Unavailable"}
           </div>
           <div className="font-medium text-sm mt-1" style={{ color: C.text }}>Total Transactions</div>
           <div className="text-xs mt-0.5" style={{ color: C.muted }}>
@@ -95,17 +93,21 @@ export function AdminSalesHistory() {
       </div>
 
       <TableCard className="viewport-table-card">
+        {!!query.refreshError && <QueryErrorMessage error={query.refreshError} onRetry={() => { void query.refresh({ force: true }); }} />}
         <div className="h-auto flex flex-col">
           {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <EnhancedTable
           responsivePageSize measureRenderedRows autoPageSize={false} pageCapacity={undefined}
+            fitActualRows
+            measurementKey={`sales-history:single-payment-placeholder:${query.controls.resetKey}`}
             contentHeight
             reserveTableHeight={false}
             pageSize={5}
             rowHeight={52}
             columns={columns}
             data={filteredRecords}
+            remote={query.controls}
             rowKey={r => r.transaction.id}
-            renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected} />}
+            renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected} deduplicatePayment />}
 
             searchable
             searchKeys={r => [r.receipt, r.customer, r.cashier]}
