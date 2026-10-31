@@ -28,6 +28,8 @@ const compiled = buildSync({
   stdin: { contents: `
     export { default as http } from './src/lib/api';
     export { AuthProvider } from './src/features/auth/context/AuthContext';
+    export { IdleSessionWarning } from './src/features/auth/components/IdleSessionWarning';
+    export * from './src/lib/idleSession';
     export { default as App, AppShell } from './src/app/App';
     export { Login } from './src/app/Login';
     export { AppErrorBoundary } from './src/components/feedback/AppErrorBoundary';
@@ -962,6 +964,51 @@ test('session connection failures present an accessible Retry connection action'
   const pending = render(ui.AppShell);
   assert.equal(pending.props['aria-busy'], 'true');
   assert.equal(elements(pending, node => node.type === ui.EmptyState).length, 0);
+});
+
+test('login adopts server session metadata without an extra status request and keeps the matching user', async () => {
+  const id = '33333333-3333-4333-8333-333333333333';
+  const access = `header.${Buffer.from(JSON.stringify({ user_id: 7, sid: id })).toString('base64url')}.signature`;
+  const session = { id, idle_timeout_seconds: 900, warning_seconds: 60, server_time: new Date().toISOString(), last_activity_at: new Date(Date.now() - 1000).toISOString(), idle_expires_at: new Date(Date.now() + 900000).toISOString() };
+  const calls = [], current = { id: 7, username: 'staff', role: 'staff' };
+  ui.http.defaults.adapter = async config => { calls.push(config.url); return { config, status: 200, headers: {}, data: config.url === '/accounts/login/' ? { access, refresh: 'refresh', session } : current }; };
+  await render(ui.AuthProvider).props.value.login('staff', 'valid-password');
+  assert.deepEqual(calls, ['/accounts/login/', '/accounts/user/']);
+  assert.deepEqual(ui.getIdleSession(), session); assert.deepEqual(render(ui.AuthProvider).props.value.user, current);
+});
+test('restored JWT sessions verify the server deadline before mounting authenticated views', async () => {
+  const id = '44444444-4444-4444-8444-444444444444';
+  const access = `header.${Buffer.from(JSON.stringify({ user_id: 7, sid: id })).toString('base64url')}.signature`;
+  const values = new Map([['rosario_access_token', access], ['rosario_refresh_token', 'refresh']]);
+  global.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  const session = { id, idle_timeout_seconds: 900, warning_seconds: 60, server_time: new Date().toISOString(), last_activity_at: new Date(Date.now() - 1000).toISOString(), idle_expires_at: new Date(Date.now() + 900000).toISOString() };
+  const calls = [];
+  ui.http.defaults.adapter = async config => { calls.push(config.url); return { config, status: 200, headers: {}, data: config.url === '/accounts/session/' ? session : { id: 7, username: 'admin', role: 'admin' } }; };
+  render(ui.AuthProvider); effects[0](); effects[1](); await settle();
+  assert.deepEqual(calls, ['/accounts/session/', '/accounts/user/']);
+  assert.equal(render(ui.AuthProvider).props.value.loading, false); assert.equal(ui.getIdleSession().id, id);
+});
+test('idle warning preserves drafts, exposes countdown and actions, and remains open while continuation fails', () => {
+  let signedOut = 0;
+  render(ui.IdleSessionWarning, { enabled: true, onSignOut: () => signedOut++ });
+  states[0] = { warning: true, seconds: 42, busy: false, error: 'Unable to continue your session.' };
+  let tree = render(ui.IdleSessionWarning, { enabled: true, onSignOut: () => signedOut++ });
+  assert.equal(tree.props.open, true); assert.equal(elements(tree, node => node.props.role === 'timer')[0].props.children, 42);
+  assert.equal(elements(tree, node => node.props.role === 'alert')[0].props.children, states[0].error);
+  const buttons = elements(tree, node => node.type === 'button');
+  assert.deepEqual(buttons.map(node => node.props.children), ['Sign out', 'Continue Session']);
+  assert.equal(elements(tree, node => node.props.className?.includes('overflow-y-auto')).length, 1);
+  buttons[0].props.onClick(); assert.equal(signedOut, 1);
+  states[0] = { ...states[0], busy: true };
+  tree = render(ui.IdleSessionWarning, { enabled: true, onSignOut: () => signedOut++ });
+  assert.equal(elements(tree, node => node.type === 'button')[1].props.disabled, true);
+  assert.equal(tree.props.open, true);
+});
+test('inactivity cleanup routes to Login with the exact explanation', () => {
+  let cleared = 0;
+  authState = { user: null, loading: false, sessionExpired: true, sessionExpiredReason: 'session_idle_timeout', clearSessionExpiredFlag: () => cleared++ };
+  render(ui.AppShell); effects.at(-1)();
+  assert.equal(toastErrors[0][0], ui.IDLE_MESSAGE); assert.equal(cleared, 1); assert.equal(states[0], 'Login');
 });
 
 const settingsFixture = () => ({

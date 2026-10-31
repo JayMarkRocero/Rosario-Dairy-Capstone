@@ -3,6 +3,8 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { ApiError, getSessionGeneration, getApiErrorMessage, getRefreshToken, setRefreshToken, getAccessToken, setAccessToken, onUnauthorized, onSessionStorageChange, synchronizeSessionStorage, type CurrentUser } from "@/lib/api";
 import { toast } from "sonner";
 import { authService } from "@/features/auth/api/auth.service";
+import { acceptIdleSession, currentSessionId, getIdleSession, syncIdleSessionToken, type SessionEndReason } from "@/lib/idleSession";
+import { IdleSessionWarning } from "../components/IdleSessionWarning";
 
 interface AuthState {
   user: CurrentUser | null;
@@ -10,6 +12,7 @@ interface AuthState {
   authError: string | null;
   retrySession: () => void;
   sessionExpired: boolean;   // true right after a 401-triggered logout
+  sessionExpiredReason?: SessionEndReason;
   login: (username: string, password: string) => Promise<CurrentUser>;
   setCurrentUser: (user: CurrentUser) => void;
   logout: () => void;
@@ -25,13 +28,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const sessionCheck = useRef(0);
+  const [sessionExpiredReason, setSessionExpiredReason] = useState<SessionEndReason>();
 
-  const clearSession = useCallback((expired = false) => {
+  const clearSession = useCallback((expired = false, reason?: SessionEndReason) => {
     sessionCheck.current += 1;
     setAccessToken(null);
     setRefreshToken(null);
     setUser(null);
     setSessionExpired(expired);
+    setSessionExpiredReason(reason);
     setAuthError(null);
     setLoading(false);
   }, []);
@@ -42,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     const isCurrent = () => active && check === sessionCheck.current;
     const token = getAccessToken();
+    syncIdleSessionToken(token);
     setAuthError(null);
     if (!token) {
       setUser(null);
@@ -50,7 +56,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setLoading(true);
-    authService.getCurrentUser()
+    (async () => {
+      if (currentSessionId()) await authService.getSession();
+      return authService.getCurrentUser();
+    })()
       .then(currentUser => { if (isCurrent()) setUser(currentUser); })
       .catch((error: unknown) => {
         if (!isCurrent()) return;
@@ -73,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Any 401 from any API call anywhere in the app routes here.
   useEffect(() => {
-    const removeUnauthorized = onUnauthorized(() => clearSession(true));
+    const removeUnauthorized = onUnauthorized(reason => clearSession(true, reason));
     const removeStorage = onSessionStorageChange(() => {
       // Storage already contains the other tab's credentials. Never write them
       // back or blacklist them while discarding the old account's React state.
@@ -81,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setAuthError(null);
       setSessionExpired(false);
+      setSessionExpiredReason(undefined);
       setLoading(!!getAccessToken());
       setSessionAttempt(attempt => attempt + 1);
     });
@@ -95,12 +105,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (attempt !== sessionCheck.current || origin !== getSessionGeneration()) throw new ApiError(409, "Sign-in was replaced by another session.");
     setAccessToken(tokens.access);
     setRefreshToken(tokens.refresh);
+    if (tokens.session) acceptIdleSession(tokens.session);
     const loginSession = getSessionGeneration();
     try {
+      if (currentSessionId() && !getIdleSession()) await authService.getSession();
       const currentUser = await authService.getCurrentUser();
       if (loginSession !== getSessionGeneration()) throw new ApiError(409, "Session changed.");
       setUser(currentUser);
       setSessionExpired(false);
+      setSessionExpiredReason(undefined);
       return currentUser;
     } catch (error) {
       if (loginSession === getSessionGeneration()) { setAccessToken(null); setRefreshToken(null); }
@@ -114,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     authError,
     retrySession,
     sessionExpired,
+    sessionExpiredReason,
     login,
     setCurrentUser: setUser,
     logout: () => {
@@ -129,7 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearSessionExpiredFlag: () => setSessionExpired(false),
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{children}<IdleSessionWarning enabled={!!user && !loading && !authError} onSignOut={value.logout} /></AuthContext.Provider>;
 }
 
 export function useAuth(): AuthState {

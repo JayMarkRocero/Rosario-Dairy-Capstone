@@ -12,23 +12,24 @@ import { EmptyState, Skeleton } from "@/components/EmptyState";
 import { Btn } from "@/components/buttons/Btn";
 import { AppErrorBoundary } from "@/components/feedback/AppErrorBoundary";
 import { useLiveUpdates } from "@/hooks/useLiveUpdates";
+import { IDLE_MESSAGE, SESSION_MESSAGE } from "@/lib/idleSession";
 
 type View = "landing" | "Login";
 
 export function AppShell() {
   const { theme } = useTheme();
-  const { user, loading, authError, retrySession, sessionExpired, logout, clearSessionExpiredFlag } = useAuth();
+  const { user, loading, authError, retrySession, sessionExpired, sessionExpiredReason, logout, clearSessionExpiredFlag } = useAuth();
   const [view, setView] = useState<View>("landing");
   const reducedMotion = useReducedMotion();
   useLiveUpdates(!loading && !authError && !!user);
 
   useEffect(() => {
     if (sessionExpired) {
-      toast.error("Your session has expired. Please log in again.");
+      toast.error(sessionExpiredReason === "session_idle_timeout" ? IDLE_MESSAGE : sessionExpiredReason === "session_required" ? SESSION_MESSAGE : "Your session has expired. Please log in again.");
       setView("Login");
       clearSessionExpiredFlag();
     }
-  }, [sessionExpired, clearSessionExpiredFlag]);
+  }, [sessionExpired, sessionExpiredReason, clearSessionExpiredFlag]);
 
   const handleLogout = () => {
     logout();

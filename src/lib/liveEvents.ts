@@ -1,4 +1,4 @@
-import http, { ApiError, getAccessToken, getSessionGeneration, onSessionStorageChange, onUnauthorized } from "./api";
+import http, { ApiError, getAccessToken, getSessionGeneration, handleTerminalSession, onSessionStorageChange, onUnauthorized } from "./api";
 import { CACHE_GROUPS, dataCacheEpoch, invalidateDataCache, type CacheGroup } from "./dataCache";
 
 /** Incremental SSE framing; UTF-8 byte decoding belongs to the stream reader. */
@@ -117,7 +117,8 @@ export function startLiveUpdates(role: "admin" | "staff", recheckSession: () => 
       if (!valid()) { void response.body?.cancel().catch(() => {}); return; }
       clearTimeout(watchdog);
       if (response.status === 401 || response.status === 403) {
-        await response.body?.cancel();
+        const payload = await response.json().catch(() => null);
+        if (valid() && response.status === 401 && handleTerminalSession(payload?.code, session)) return;
         if (response.status === 403) { forbidden = true; await recheckSession(); }
         else await verify();
         return;

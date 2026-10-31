@@ -1,5 +1,6 @@
 import axios, { AxiosError } from "axios";
 import { clearDataCache, invalidateDataCache, INVENTORY_UPDATED } from "./dataCache";
+import { acceptIdleSession, currentSessionId, endIdleSession, getIdleSession, IDLE_MESSAGE, isTerminalSessionCode, onIdleSessionEnd, SESSION_MESSAGE, sessionDeadlineReached, storedSessionEnd, syncIdleSessionToken, tokenSessionId, type LoginSession, type SessionEndReason } from "./idleSession";
 
 const REFRESH_TOKEN_KEY = "rosario_refresh_token";
 
@@ -25,7 +26,7 @@ export class ApiError extends Error {
   }
 }
 
-type UnauthorizedListener = () => void;
+type UnauthorizedListener = (reason?: SessionEndReason) => void;
 const unauthorizedListeners = new Set<UnauthorizedListener>();
 
 export function onUnauthorized(listener: UnauthorizedListener): () => void {
@@ -33,8 +34,18 @@ export function onUnauthorized(listener: UnauthorizedListener): () => void {
   return () => unauthorizedListeners.delete(listener);
 }
 
-function notifyUnauthorized() {
-  unauthorizedListeners.forEach((listener) => listener());
+function notifyUnauthorized(reason?: SessionEndReason) {
+  unauthorizedListeners.forEach((listener) => listener(reason));
+}
+
+onIdleSessionEnd((reason, id) => {
+  // A delayed expiry event must never clear a newer sign-in's shared credentials.
+  if (id && tokenSessionId(getAccessToken()) !== id) { synchronizeSessionStorage(); return; }
+  setAccessToken(null); setRefreshToken(null); notifyUnauthorized(reason);
+});
+export function handleTerminalSession(code: unknown, generation = sessionGeneration) {
+  if (!isTerminalSessionCode(code) || generation !== sessionGeneration) return false;
+  endIdleSession(code); return true;
 }
 
 // Keep a session usable when browser policy blocks token persistence.
@@ -47,7 +58,7 @@ const sessionStorageListeners = new Set<() => void>();
 let storageWindow: Window | undefined;
 let knownTokens: (string | null)[] = [];
 
-function rememberTokens() { knownTokens = [getAccessToken(), getRefreshToken()]; }
+function rememberTokens() { knownTokens = [getAccessToken(), getRefreshToken()]; syncIdleSessionToken(knownTokens[0]); }
 
 function storageChanged(event: StorageEvent) {
   if (event.key !== null && ![ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY].includes(event.key)) return;
@@ -66,12 +77,16 @@ function ensureSessionStorageSync() {
 export function synchronizeSessionStorage() {
   ensureSessionStorageSync();
   const tokens = [getAccessToken(), getRefreshToken()];
-  if (!knownTokens.length) { knownTokens = tokens; return; }
+  if (!knownTokens.length) { knownTokens = tokens; syncIdleSessionToken(tokens[0]); return; }
   if (tokens.every((token, index) => token === knownTokens[index])) return;
+  const previousId = currentSessionId();
+  const endedReason = !tokens[0] && previousId ? storedSessionEnd(previousId) : undefined;
   knownTokens = tokens;
   sessionGeneration += 1;
+  syncIdleSessionToken(tokens[0]);
   clearDataCache();
   sessionStorageListeners.forEach(listener => listener());
+  if (endedReason) notifyUnauthorized(endedReason);
 }
 
 export function onSessionStorageChange(listener: () => void) {
@@ -99,6 +114,7 @@ function writeToken(key: string, token: string | null) {
 export function setAccessToken(token: string | null, refreshingSession = false) {
   if (!refreshingSession && token !== getAccessToken()) { sessionGeneration += 1; clearDataCache(); }
   writeToken(ACCESS_TOKEN_KEY, token);
+  syncIdleSessionToken(token);
   rememberTokens();
 }
 
@@ -126,12 +142,13 @@ export function refreshAccessToken(): Promise<string> {
   refreshGeneration = generation;
   const refresh = getRefreshToken();
   if (!refresh) return Promise.reject(new ApiError(401, "Please log in again."));
-  refreshRequest = axiosInstance.post<{ access: string; refresh?: string }>("/accounts/refresh/", { refresh })
+  refreshRequest = axiosInstance.post<{ access: string; refresh?: string; session?: LoginSession }>("/accounts/refresh/", { refresh })
     .then(({ data }) => {
       if (sessionGeneration !== generation || getRefreshToken() !== refresh) throw new ApiError(401, "Session changed. Please log in again.");
       if (!data.access) throw new ApiError(401, "Unable to refresh your session.");
       setAccessToken(data.access, true);
       if (data.refresh) setRefreshToken(data.refresh);
+      if (data.session) acceptIdleSession(data.session);
       return data.access;
     }).finally(() => { if (refreshGeneration === generation) refreshRequest = null; });
   return refreshRequest;
@@ -169,6 +186,14 @@ axiosInstance.interceptors.request.use((config) => {
   if (config.url) config.url = appendTrailingSlash(config.url);
   if (origin !== sessionGeneration && !PUBLIC_AUTH_PATHS.includes(config.url ?? "")) {
     throw new ApiError(409, "Your account changed in another tab. Wait for your session to reload before trying again.");
+  }
+  if (!["/accounts/login/", "/accounts/forgot-password/", "/accounts/reset-password/", "/accounts/logout/"].includes(config.url ?? "") && sessionDeadlineReached()) {
+    endIdleSession("session_idle_timeout");
+    const error = new ApiError(401, IDLE_MESSAGE); error.code = "session_idle_timeout"; throw error;
+  }
+  if (currentSessionId() && !getIdleSession() && !["get", "head", "options"].includes(config.method ?? "get") &&
+      !PUBLIC_AUTH_PATHS.includes(config.url ?? "") && config.url !== "/accounts/logout/") {
+    throw new ApiError(503, "Your session deadline has not been verified. Reconnect before submitting changes.");
   }
   (config as typeof config & SessionRequest).sessionGeneration ??= sessionGeneration;
 
@@ -239,6 +264,18 @@ axiosInstance.interceptors.response.use(
     if (!isPublicAuthRequest && requestUrl !== "/accounts/logout/" && !activeSession()) {
       return Promise.reject(new ApiError(status, "This request belongs to a previous session."));
     }
+    // Inspect terminal session codes before any token refresh or mutation replay.
+    let data = error.response.data;
+    if (data instanceof Blob) {
+      try { data = JSON.parse(await data.text()); } catch { data = null; }
+    }
+    const payload = data as { code?: unknown } | undefined;
+    if (status === 401 && requestUrl !== "/accounts/login/" && requestUrl !== "/accounts/logout/" &&
+        activeSession() && isTerminalSessionCode(payload?.code)) {
+      handleTerminalSession(payload.code);
+      const terminal = new ApiError(401, payload.code === "session_idle_timeout" ? IDLE_MESSAGE : SESSION_MESSAGE);
+      terminal.code = payload.code; return Promise.reject(terminal);
+    }
     if (status === 401 && !isPublicAuthRequest && requestUrl !== "/accounts/logout/" && config && !config.retried && getRefreshToken()) {
       config.retried = true;
       try {
@@ -247,15 +284,12 @@ axiosInstance.interceptors.response.use(
         config.headers.Authorization = `Bearer ${token}`;
         return axiosInstance.request(config);
       } catch (refreshError) {
+        if (refreshError instanceof ApiError && isTerminalSessionCode(refreshError.code)) throw refreshError;
         // A temporary refresh outage must not discard a valid refresh token.
         if (!(refreshError instanceof ApiError) || ![400, 401].includes(refreshError.status)) throw refreshError;
       }
     }
     const fallback = status === 429 ? "Too many attempts. Please wait before trying again." : `Request failed (${status})`;
-    let data = error.response.data;
-    if (data instanceof Blob) {
-      try { data = JSON.parse(await data.text()); } catch { data = null; }
-    }
     const fieldErrors: Record<string, string[]> = {};
     if (data && typeof data === "object") {
       for (const [key, value] of Object.entries(data)) {
@@ -291,6 +325,7 @@ export interface LoginPayload {
 export interface TokenPair {
   access: string;
   refresh: string;
+  session?: LoginSession;
 }
 
 export interface CurrentUser {

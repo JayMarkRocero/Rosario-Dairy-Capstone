@@ -1,4 +1,10 @@
 import http, { ApiError, refreshAccessToken, getAccessToken, type CurrentUser, type LoginPayload, type TokenPair } from "@/lib/api";
+import { acceptIdleSession, isLoginSession, type LoginSession } from "@/lib/idleSession";
+
+function receiveSession(data: unknown): LoginSession {
+  if (!isLoginSession(data)) throw new ApiError(502, "Unable to verify the server session deadline. Please try again.");
+  acceptIdleSession(data); return data;
+}
 
 export interface RecoveryIdentity { username: string; email: string }
 export interface RecoveryResetPayload extends RecoveryIdentity { otp: string; new_password: string }
@@ -20,6 +26,15 @@ export function getSessionUserId(user?: Pick<CurrentUser, "id"> | null): number 
 }
 
 export const authService = {
+  getSession: async (signal?: AbortSignal): Promise<LoginSession> => {
+    // The endpoint returns Cache-Control: no-store; avoid extra CORS request headers.
+    const { data } = await http.get<LoginSession>("/accounts/session/", { signal });
+    return receiveSession(data);
+  },
+  reportActivity: async (signal?: AbortSignal): Promise<LoginSession> => {
+    const { data } = await http.post<LoginSession>("/accounts/session/activity/", {}, { signal });
+    return receiveSession(data);
+  },
   requestEmailChange: async (payload: EmailChangePayload): Promise<void> => {
     await http.post("/accounts/email-change/", payload);
   },
