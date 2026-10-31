@@ -1,5 +1,5 @@
 import http, { ApiError, type DjangoProductBatch, type DjangoUserSummary } from "@/lib/api";
-import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest } from "@/features/sales/api/pendingRequest";
+import { clearPendingRequest, isDefiniteRequestFailure, readPendingRequest, storePendingRequest, verifyDurablePendingRequest } from "@/features/sales/api/pendingRequest";
 import { newEncodingRequestId } from "@/features/sales/utils/manualPricing";
 import { canAdjustBatch } from "../utils/batchEligibility";
 export type OutflowType = "spoilage" | "complimentary" | "free_taste" | "expired";
@@ -18,7 +18,7 @@ export interface OutflowPayload { product_batch_id: number; adjustment_type: Out
 const active = new Map<string, { fingerprint: string; request: Promise<StockAdjustment> }>();
 export const outflowsService = {
   pending: () => readPendingRequest<OutflowPayload>("outflow"),
-  clearPending: () => { const pending = outflowsService.pending(); if (pending && !active.has(pending.key)) clearPendingRequest(pending); },
+  clearPending: () => { const pending = outflowsService.pending(); if (pending && !active.has(pending.key)) clearPendingRequest(pending, { durable: true }); },
   batches: async (): Promise<OutflowBatch[]> => {
     const { data: products } = await http.get<DjangoProductBatch[]>("/inventory/product-batches/");
     return products.filter(batch => canAdjustBatch(batch)).map(batch => ({ id: batch.id, key: `product-${batch.id}`, kind: "product" as const, name: [batch.product.name, batch.product.variant].filter(Boolean).join(" "), batch: batch.batch_number, stock: Number(batch.remaining_quantity), unit: batch.product.unit, cost: batch.unit_price, expiry: batch.expiration_date, status: batch.status }))
@@ -37,10 +37,14 @@ export const outflowsService = {
     if (!Number.isInteger(body.product_batch_id) || body.product_batch_id <= 0) return Promise.reject(new ApiError(400, "Select a valid product batch."));
     // The API has no request-id contract: keep the ID locally and fail closed
     // after ambiguous writes instead of sending an ignored key and retrying.
-    const pending = storePendingRequest("outflow", newEncodingRequestId(), fingerprint, body);
+    let pending;
+    try {
+      pending = storePendingRequest("outflow", newEncodingRequestId(), fingerprint, body, { durable: true });
+      verifyDurablePendingRequest(pending);
+    } catch (error) { return Promise.reject(error); }
     const request = http.post<StockAdjustment>("/inventory/stock-adjustments/", body)
-      .then(({ data }) => { clearPendingRequest(pending); return data; })
-      .catch(error => { if (isDefiniteRequestFailure(error)) clearPendingRequest(pending); throw error; })
+      .then(({ data }) => { clearPendingRequest(pending, { durable: true }); return data; })
+      .catch(error => { if (isDefiniteRequestFailure(error)) clearPendingRequest(pending, { durable: true }); throw error; })
       .finally(() => { if (active.get(pending.key)?.request === request) active.delete(pending.key); });
     active.set(pending.key, { fingerprint, request });
     return request;

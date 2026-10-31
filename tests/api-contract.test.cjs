@@ -55,6 +55,7 @@ let calls;
 let responseData;
 let responseStatus;
 beforeEach(() => {
+  require('./browser-locks.cjs').installBrowserLocks();
   api.clearDataCache();
   const session = new Map();
   Object.defineProperty(global, 'sessionStorage', { configurable: true, writable: true, value: {
@@ -1729,7 +1730,8 @@ test('a refresh that finishes after logout cannot restore tokens or emit session
     return Promise.reject(new AxiosError('Expired', undefined, config, undefined, { status: 401, data: {}, config, headers: {} }));
   };
   const request = api.http.get('/sales/transactions/');
-  await new Promise(resolve => setImmediate(resolve));
+  for (let n = 0; n < 200 && !completeRefresh; n++) await new Promise(resolve => setTimeout(resolve, 1));
+  assert.equal(typeof completeRefresh, 'function');
   api.setAccessToken(null); api.setRefreshToken(null);
   completeRefresh(); await assert.rejects(request);
   assert.equal(api.getAccessToken(), null); assert.equal(api.getRefreshToken(), null); assert.equal(unauthorized, 0); remove();
@@ -2403,7 +2405,7 @@ test('outflows share an active write, clear definite validation failures and pre
   api.outflowsService.clearPending();
 });
 
-test('blocked storage retains outflow guards in memory across component remounts', async () => {
+test('blocked storage prevents outflow submission instead of relying on a memory-only guard', async () => {
   api.setAccessToken(`header.${Buffer.from(JSON.stringify({ user_id: 703 })).toString('base64url')}.signature`);
   const originalStorage = global.localStorage;
   try {
@@ -2411,10 +2413,10 @@ test('blocked storage retains outflow guards in memory across component remounts
     let posts = 0;
     api.http.defaults.adapter = async () => { posts++; throw new Error('Offline'); };
     const payload = { product_batch_id: 4, adjustment_type: 'spoilage', quantity: '1.00', unit_cost: '0.00' };
-    await assert.rejects(api.outflowsService.create(payload));
-    assert.ok(api.outflowsService.pending());
-    await assert.rejects(api.outflowsService.create(payload), /unconfirmed/);
-    assert.equal(posts, 1);
+    await assert.rejects(api.outflowsService.create(payload), /storage.*unavailable/i);
+    assert.equal(api.outflowsService.pending(), null);
+    await assert.rejects(api.outflowsService.create(payload), /storage.*unavailable/i);
+    assert.equal(posts, 0);
     api.outflowsService.clearPending();
     assert.equal(api.outflowsService.pending(), null);
   } finally { global.localStorage = originalStorage; }

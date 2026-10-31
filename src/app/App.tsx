@@ -18,7 +18,7 @@ type View = "landing" | "Login";
 
 export function AppShell() {
   const { theme } = useTheme();
-  const { user, loading, authError, retrySession, sessionExpired, sessionExpiredReason, logout, clearSessionExpiredFlag } = useAuth();
+  const { user, loading, authError, reauthenticationRequired, retrySession, sessionExpired, sessionExpiredReason, logout, clearSessionExpiredFlag } = useAuth();
   const [view, setView] = useState<View>("landing");
   const reducedMotion = useReducedMotion();
   useLiveUpdates(!loading && !authError && !!user);
@@ -58,7 +58,7 @@ export function AppShell() {
       <div role="alert" className="min-h-dvh p-4 sm:p-8" style={{ backgroundColor: "var(--background)" }}>
         <div className="mx-auto max-w-6xl space-y-6">
           <EmptyState title="Unable to verify your session" description={authError}
-            action={<Btn onClick={retrySession}>Retry connection</Btn>} />
+            action={<Btn onClick={reauthenticationRequired ? handleLogout : retrySession}>{reauthenticationRequired ? "Sign in again" : "Retry connection"}</Btn>} />
         </div>
       </div>
     );

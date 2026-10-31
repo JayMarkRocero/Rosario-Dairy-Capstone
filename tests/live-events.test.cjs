@@ -27,7 +27,7 @@ beforeEach(() => {
   global.clearTimeout = global.clearInterval = id => timers.delete(id);
   Date.now = () => clock; Math.random = () => 0.5;
   global.window = new EventTarget(); global.document = new EventTarget(); document.visibilityState = 'visible';
-  Object.defineProperty(global, 'navigator', { configurable: true, value: { onLine: true } });
+  Object.defineProperty(global, 'navigator', { configurable: true, value: { onLine: true, locks: require('./browser-locks.cjs').createBrowserLocks() } });
   const tokens = new Map([['rosario_access_token', token(2_100_000_000)], ['rosario_refresh_token', 'refresh-original']]);
   global.localStorage = { getItem: key => tokens.get(key) ?? null, setItem: (key, value) => tokens.set(key, value), removeItem: key => tokens.delete(key) };
   global.fetch = async (url, options) => {
@@ -134,10 +134,11 @@ test('unavailable frames enable fallback and capped exponential backoff without 
 });
 
 test('auth_required reuses single-flight refresh, retains rotated tokens and reconnects with the new access token', async () => {
-  let refreshes = 0;
+  let refreshes = 0, refreshing;
   api.http.defaults.adapter = async config => { refreshes++; assert.equal(config.url, '/accounts/refresh/'); return { config, status: 200, headers: {}, data: { access: token(2_200_000_000), refresh: 'rotated-refresh' } }; };
-  await start('admin', async () => { await Promise.all([api.refreshAccessToken(), api.refreshAccessToken()]); return true; });
+  await start('admin', async () => { refreshing = Promise.all([api.refreshAccessToken(), api.refreshAccessToken()]); await refreshing; return true; });
   await event('ready', { groups: ['sales'], version: 'one' }); await event('auth_required', { reason: 'session_expired_or_changed' });
+  await refreshing; await settle();
   await tick(3000); assert.equal(refreshes, 1); assert.equal(api.getRefreshToken(), 'rotated-refresh');
   assert.equal(requests.at(-1).options.headers.Authorization, `Bearer ${token(2_200_000_000)}`);
 });

@@ -965,6 +965,15 @@ test('session connection failures present an accessible Retry connection action'
   assert.equal(pending.props['aria-busy'], 'true');
   assert.equal(elements(pending, node => node.type === ui.EmptyState).length, 0);
 });
+test('unavailable safe session renewal offers explicit sign-in instead of retrying an uncertain refresh', () => {
+  let signedOut = 0, retried = 0;
+  authState = { user: null, loading: false, authError: 'Session renewal cannot be confirmed.', reauthenticationRequired: true,
+    retrySession: () => retried++, logout: () => signedOut++ };
+  const tree = render(ui.AppShell);
+  const error = elements(tree, node => node.type === ui.EmptyState)[0];
+  assert.equal(error.props.action.props.children, 'Sign in again'); error.props.action.props.onClick();
+  assert.equal(signedOut, 1); assert.equal(retried, 0); assert.equal(states[0], 'Login');
+});
 
 test('login adopts server session metadata without an extra status request and keeps the matching user', async () => {
   const id = '33333333-3333-4333-8333-333333333333';
@@ -4442,6 +4451,19 @@ test('customer history does not display the encoder as an unknown original cashi
   assert.ok(content.includes('Not recorded'));
   assert.ok(!content.includes('ENTRY-OWNER'));
 });
+for (const [amount, formatted] of [['9007199254740993.01', '₱9,007,199,254,740,993.01'], ['0.00', '₱0.00'], ['120.10', '₱120.10']]) {
+  test(`customer history preserves exact recorded currency ${amount}`, () => {
+    const customer = { id: 9, name: 'Customer' };
+    const transaction = { id: 11, transaction_number: 'SI-11', created_at: '2026-10-01T00:00:00Z',
+      total_amount: amount, payment_method: 'cash', payment_status: 'paid', recorded_cashier: null,
+      is_manually_encoded: true, handled_by: { id: 7, username: 'ENTRY-OWNER' } };
+    const before = JSON.stringify(transaction);
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:customers:history:9:1:false`, { count: 1, results: [transaction] }, ['customers', 'sales']);
+    const tree = render(ui.CustomerHistory, { customer, onClose() {} });
+    assert.ok(elements(tree, node => node.type === 'span' && node.props.children === formatted).length);
+    assert.equal(JSON.stringify(transaction), before);
+  });
+}
 
 test('expired status cannot be used for promotional outflows even when its expiry date is not past', async () => {
   const batch = { id: 1, key: 'product-1', kind: 'product', name: 'Milk', batch: 'B1', stock: 2,

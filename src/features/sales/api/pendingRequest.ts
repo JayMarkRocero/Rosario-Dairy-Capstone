@@ -10,7 +10,7 @@ export interface PendingRequest<T> {
 
 const remembered = new Map<string, PendingRequest<unknown>>();
 const overrides = new Map<string, PendingRequest<unknown> | null>();
-const durableStorageMessage = "Browser storage is unavailable or could not be verified. Enable local storage before submitting or recovering a sales entry. Your saved submission has not been changed.";
+const durableStorageMessage = "Browser storage is unavailable or could not be verified. Enable local storage before submitting or recovering a sales entry or stock outflow. Your saved submission has not been changed.";
 
 function matches<T>(raw: string | null, pending: PendingRequest<T>): boolean {
   if (raw === null) return false;

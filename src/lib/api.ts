@@ -1,6 +1,6 @@
 import axios, { AxiosError } from "axios";
 import { clearDataCache, invalidateDataCache, INVENTORY_UPDATED } from "./dataCache";
-import { acceptIdleSession, currentSessionId, endIdleSession, getIdleSession, IDLE_MESSAGE, isTerminalSessionCode, onIdleSessionEnd, SESSION_MESSAGE, sessionDeadlineReached, storedSessionEnd, syncIdleSessionToken, tokenSessionId, type LoginSession, type SessionEndReason } from "./idleSession";
+import { acceptIdleSession, currentSessionId, endIdleSession, getIdleSession, IDLE_MESSAGE, isTerminalSessionCode, onIdleSessionEnd, reconcileStoredSession, SESSION_MESSAGE, sessionDeadlineReached, storedSessionEnd, syncIdleSessionToken, tokenSessionId, type LoginSession, type SessionEndReason } from "./idleSession";
 
 const REFRESH_TOKEN_KEY = "rosario_refresh_token";
 
@@ -80,6 +80,10 @@ export function synchronizeSessionStorage() {
   if (!knownTokens.length) { knownTokens = tokens; syncIdleSessionToken(tokens[0]); return; }
   if (tokens.every((token, index) => token === knownTokens[index])) return;
   const previousId = currentSessionId();
+  if (previousId && tokenSessionId(tokens[0]) === previousId && tokens[0] && tokens[1]) {
+    // Rotating the same sign-in must not unmount forms or clear private caches.
+    knownTokens = tokens; reconcileStoredSession(); return;
+  }
   const endedReason = !tokens[0] && previousId ? storedSessionEnd(previousId) : undefined;
   knownTokens = tokens;
   sessionGeneration += 1;
@@ -136,21 +140,98 @@ const PUBLIC_AUTH_PATHS = ["/accounts/login/", "/accounts/forgot-password/", "/a
 
 let refreshRequest: Promise<string> | null = null;
 let refreshGeneration = -1;
+const REFRESH_ATTEMPT_KEY = "rosario:refresh-attempt";
+function refreshUnavailable(message = "Automatic session renewal is unavailable. Sign out and sign in again using a browser with session coordination enabled.") {
+  const error = new ApiError(503, message); error.code = "refresh_coordination_unavailable"; return error;
+}
+async function withTokenRefreshLock<T>(work: () => Promise<T>): Promise<T> {
+  if (typeof navigator === "undefined" || !navigator.locks) throw refreshUnavailable();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  let entered = false;
+  try {
+    return await navigator.locks.request("rosario:token-refresh", { signal: controller.signal }, () => { entered = true; return work(); });
+  } catch (error) { if (!entered) throw refreshUnavailable(); throw error; }
+  finally { clearTimeout(timer); }
+}
+/** The refresh token itself is never copied into coordination metadata. */
+async function claimRefresh(refresh: string): Promise<(retryAfterMs?: number) => void> {
+  if (!globalThis.crypto?.subtle) throw refreshUnavailable();
+  const fingerprint = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(refresh))), byte => byte.toString(16).padStart(2, "0")).join("");
+  const uncertain = () => refreshUnavailable("The previous session renewal could not be confirmed. Sign out and sign in again; no automatic refresh retry was sent.");
+  try {
+    const previous = localStorage.getItem(REFRESH_ATTEMPT_KEY);
+    if (previous) {
+      const saved = JSON.parse(previous);
+      if (saved.fingerprint === fingerprint) {
+        if (!Number.isFinite(saved.retryAt)) throw uncertain();
+        if (saved.retryAt > Date.now()) { const error = new ApiError(429, "Session renewal is temporarily limited. Please try again later."); error.retryAfterMs = saved.retryAt - Date.now(); throw error; }
+      }
+    }
+    const value = JSON.stringify({ fingerprint });
+    localStorage.setItem(REFRESH_ATTEMPT_KEY, value);
+    if (localStorage.getItem(REFRESH_ATTEMPT_KEY) !== value) throw refreshUnavailable();
+    return retryAfterMs => { try {
+      if (localStorage.getItem(REFRESH_ATTEMPT_KEY) !== value) return;
+      if (retryAfterMs !== undefined) localStorage.setItem(REFRESH_ATTEMPT_KEY, JSON.stringify({ fingerprint, retryAt: Date.now() + retryAfterMs }));
+      else localStorage.removeItem(REFRESH_ATTEMPT_KEY);
+    } catch { /* Retain the fail-closed guard. */ } };
+  } catch (error) { if (error instanceof ApiError) throw error; throw refreshUnavailable(); }
+}
+/** Explicit logout may use captured credentials after local cleanup; never revive them. */
+export function refreshLogoutCredentials(access: string, refresh: string, generation: number) {
+  const id = tokenSessionId(access);
+  return withTokenRefreshLock(async () => {
+    synchronizeSessionStorage();
+    const peerAccess = getAccessToken(), peerRefresh = getRefreshToken();
+    if (id && peerAccess && peerRefresh && tokenSessionId(peerAccess) === id && peerRefresh !== refresh) return { access: peerAccess, refresh: peerRefresh };
+    const release = await claimRefresh(refresh);
+    try {
+      const { data } = await axiosInstance.post<{ access: string; refresh?: string }>("/accounts/refresh/", { refresh }, { headers: {}, ...{ sessionGeneration: generation } });
+      if (!data.access) throw new ApiError(502, "Unable to refresh your session for logout.");
+      release(); return { access: data.access, refresh: data.refresh ?? refresh };
+    } catch (error) {
+      if (error instanceof ApiError && [400, 401, 403].includes(error.status)) release();
+      else if (error instanceof ApiError && error.status === 429) release(error.retryAfterMs ?? 60_000);
+      throw error;
+    }
+  });
+}
 export function refreshAccessToken(): Promise<string> {
   const generation = sessionGeneration;
   if (refreshRequest && refreshGeneration === generation) return refreshRequest;
   refreshGeneration = generation;
   const refresh = getRefreshToken();
+  const originalAccess = getAccessToken(), id = tokenSessionId(originalAccess);
   if (!refresh) return Promise.reject(new ApiError(401, "Please log in again."));
-  refreshRequest = axiosInstance.post<{ access: string; refresh?: string; session?: LoginSession }>("/accounts/refresh/", { refresh })
-    .then(({ data }) => {
+  refreshRequest = withTokenRefreshLock(async () => {
+    synchronizeSessionStorage();
+    const peerAccess = getAccessToken(), peerRefresh = getRefreshToken();
+    if (peerRefresh !== refresh) {
+      if (id && peerAccess && peerRefresh && tokenSessionId(peerAccess) === id && !sessionDeadlineReached()) return peerAccess;
+      throw new ApiError(409, "Session changed. Please log in again.");
+    }
+    if (sessionGeneration !== generation || peerAccess !== originalAccess) throw new ApiError(409, "Session changed. Please log in again.");
+    const release = await claimRefresh(refresh);
+    try {
+      if (sessionGeneration !== generation || getRefreshToken() !== refresh) throw new ApiError(409, "Session changed.");
+      const { data } = await axiosInstance.post<{ access: string; refresh?: string; session?: LoginSession }>("/accounts/refresh/", { refresh }, { headers: {}, ...{ sessionGeneration: generation } });
       if (sessionGeneration !== generation || getRefreshToken() !== refresh) throw new ApiError(401, "Session changed. Please log in again.");
-      if (!data.access) throw new ApiError(401, "Unable to refresh your session.");
+      if (!data.access) throw refreshUnavailable("Unable to confirm session renewal. Sign out and sign in again.");
       setAccessToken(data.access, true);
       if (data.refresh) setRefreshToken(data.refresh);
       if (data.session) acceptIdleSession(data.session);
+      // Clear only after both rotated credentials can be shared with waiting tabs.
+      try { if (localStorage.getItem(ACCESS_TOKEN_KEY) === data.access && localStorage.getItem(REFRESH_TOKEN_KEY) === (data.refresh ?? refresh)) release(); } catch { /* Keep recovery blocked for other tabs. */ }
       return data.access;
-    }).finally(() => { if (refreshGeneration === generation) refreshRequest = null; });
+    } catch (error) {
+      synchronizeSessionStorage();
+      if (id && getAccessToken() && getRefreshToken() !== refresh && tokenSessionId(getAccessToken()) === id && !sessionDeadlineReached()) return getAccessToken()!;
+      if (error instanceof ApiError && [400, 401, 403].includes(error.status)) release();
+      else if (error instanceof ApiError && error.status === 429) release(error.retryAfterMs ?? 60_000);
+      throw error;
+    }
+  }).finally(() => { if (refreshGeneration === generation) refreshRequest = null; });
   return refreshRequest;
 }
 
@@ -279,6 +360,12 @@ axiosInstance.interceptors.response.use(
     if (status === 401 && !isPublicAuthRequest && requestUrl !== "/accounts/logout/" && config && !config.retried && getRefreshToken()) {
       config.retried = true;
       try {
+        const usedAccess = String(config.headers.Authorization ?? "").replace(/^Bearer /, "");
+        const currentAccess = getAccessToken();
+        if (currentAccess && currentAccess !== usedAccess && tokenSessionId(currentAccess) && tokenSessionId(currentAccess) === tokenSessionId(usedAccess)) {
+          config.headers.Authorization = `Bearer ${currentAccess}`;
+          return axiosInstance.request(config);
+        }
         const token = await refreshAccessToken();
         if (!activeSession()) throw new ApiError(409, "Session changed.");
         config.headers.Authorization = `Bearer ${token}`;

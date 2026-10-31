@@ -60,7 +60,7 @@ async function start() {
 beforeEach(() => {
   time = 0; wall = base; timers = new Map(); seq = 0; storage = new Map(); stops = []; requests = []; serverExpiry = 900_000; serverActivity = 0;
   global.window = new EventTarget(); global.document = new EventTarget(); document.visibilityState = 'visible';
-  Object.defineProperty(global, 'navigator', { configurable: true, value: { onLine: true } });
+  Object.defineProperty(global, 'navigator', { configurable: true, value: { onLine: true, locks: require('./browser-locks.cjs').createBrowserLocks() } });
   Object.defineProperty(global, 'performance', { configurable: true, value: { now: () => time } });
   global.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key) };
   const schedule = (fn, delay = 0, interval = 0) => { const id = ++seq; timers.set(id, { fn, at: time + delay, interval }); return id; };

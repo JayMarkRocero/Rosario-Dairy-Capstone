@@ -9,6 +9,7 @@ const compiled = buildSync({ stdin: { contents: `
   export { default as http } from './src/lib/api';
   export * from './src/features/sales/api/encoding.service';
   export * from './src/features/sales/api/pendingRequest';
+  export { outflowsService } from './src/features/inventory/api/outflows.service';
 `, resolveDir: root }, bundle: true, packages: 'external', write: false, platform: 'node', format: 'cjs',
   define: { 'import.meta.env': '{}' }, alias: { '@': path.join(root, 'src') } }).outputFiles[0].text;
 function load() {
@@ -117,4 +118,38 @@ test('default pending-request storage remains compatible for non-encoding consum
   const pending = api.storePendingRequest('outflow', payload.request_id, 'outflow', { quantity: '1' });
   assert.equal(api.readPendingRequest('outflow').id, pending.id);
   assert.equal(api.clearPendingRequest(pending), true); assert.equal(api.readPendingRequest('outflow'), null);
+});
+
+const outflow = { product_batch_id: 4, adjustment_type: 'complimentary', quantity: '2.00', unit_cost: '0.00' };
+for (const failure of ['get', 'set', 'silent-set', 'readback']) test(`outflow never POSTs with ${failure} storage failure`, async () => {
+  let stored = false;
+  global.localStorage = { ...storage,
+    getItem(key) { if (key.startsWith('rosario:pending-') && (failure === 'get' || failure === 'readback' && stored)) throw Error('Blocked'); return storage.getItem(key); },
+    setItem(key, value) { if (failure === 'set') throw Error('Quota full'); if (failure !== 'silent-set') storage.setItem(key, value); stored = true; },
+  };
+  await assert.rejects(api.outflowsService.create(outflow), /storage.*unavailable|could not be verified/i);
+  assert.equal(writes.length, 0);
+});
+test('uncertain outflow retains its exact durable UUID/body across reload and never replays automatically', async () => {
+  api.http.defaults.adapter = async config => { writes.push(JSON.parse(config.data)); throw new AxiosError('Timeout', AxiosError.ECONNABORTED); };
+  await assert.rejects(api.outflowsService.create(outflow));
+  const original = api.outflowsService.pending(); assert.deepEqual(original.payload, outflow);
+  assert.equal('request_id' in writes[0], false, 'The outflow backend has no idempotency contract');
+  api = load(); api.http.defaults.adapter = async config => { writes.push(JSON.parse(config.data)); return reply(config); };
+  assert.deepEqual(api.outflowsService.pending(), original);
+  await assert.rejects(api.outflowsService.create(outflow), /unconfirmed/); assert.equal(writes.length, 1);
+  global.localStorage = { ...storage, removeItem() { throw Error('Blocked'); } };
+  api.outflowsService.clearPending(); assert.deepEqual(api.outflowsService.pending(), original);
+  global.localStorage = storage; api.outflowsService.clearPending(); assert.equal(api.outflowsService.pending(), null);
+});
+test('outflow persistence is present and verified before POST; simultaneous clicks share one request', async () => {
+  let finish;
+  api.http.defaults.adapter = config => {
+    const pending = api.outflowsService.pending(); assert.ok(pending.id); api.verifyDurablePendingRequest(pending);
+    assert.deepEqual(JSON.parse(config.data), outflow); writes.push(JSON.parse(config.data));
+    return new Promise(resolve => { finish = () => resolve(reply(config)); });
+  };
+  const first = api.outflowsService.create(outflow), second = api.outflowsService.create(outflow);
+  assert.equal(first, second); await new Promise(setImmediate); finish(); await first;
+  assert.equal(writes.length, 1); assert.equal(api.outflowsService.pending(), null);
 });

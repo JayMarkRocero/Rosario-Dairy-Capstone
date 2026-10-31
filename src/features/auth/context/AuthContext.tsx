@@ -10,6 +10,7 @@ interface AuthState {
   user: CurrentUser | null;
   loading: boolean;          // true during session initialization or retry
   authError: string | null;
+  reauthenticationRequired?: boolean;
   retrySession: () => void;
   sessionExpired: boolean;   // true right after a 401-triggered logout
   sessionExpiredReason?: SessionEndReason;
@@ -29,6 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const sessionCheck = useRef(0);
   const [sessionExpiredReason, setSessionExpiredReason] = useState<SessionEndReason>();
+  const [authErrorCode, setAuthErrorCode] = useState<string>();
 
   const clearSession = useCallback((expired = false, reason?: SessionEndReason) => {
     sessionCheck.current += 1;
@@ -38,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionExpired(expired);
     setSessionExpiredReason(reason);
     setAuthError(null);
+    setAuthErrorCode(undefined);
     setLoading(false);
   }, []);
 
@@ -49,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = getAccessToken();
     syncIdleSessionToken(token);
     setAuthError(null);
+    setAuthErrorCode(undefined);
     if (!token) {
       setUser(null);
       setRefreshToken(null);
@@ -66,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error instanceof ApiError && error.status === 401) {
           clearSession();
         } else {
+          setAuthErrorCode(error instanceof ApiError ? error.code : undefined);
           setAuthError(getApiErrorMessage(error, "Unable to connect to the server. Please try again."));
         }
       })
@@ -125,6 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     loading,
     authError,
+    reauthenticationRequired: authErrorCode === "refresh_coordination_unavailable",
     retrySession,
     sessionExpired,
     sessionExpiredReason,

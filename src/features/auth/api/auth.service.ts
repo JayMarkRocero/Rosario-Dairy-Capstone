@@ -1,4 +1,4 @@
-import http, { ApiError, refreshAccessToken, getAccessToken, type CurrentUser, type LoginPayload, type TokenPair } from "@/lib/api";
+import http, { ApiError, refreshAccessToken, refreshLogoutCredentials, getSessionGeneration, getAccessToken, type CurrentUser, type LoginPayload, type TokenPair } from "@/lib/api";
 import { acceptIdleSession, isLoginSession, type LoginSession } from "@/lib/idleSession";
 
 function receiveSession(data: unknown): LoginSession {
@@ -51,18 +51,18 @@ export const authService = {
     return id;
   },
   logout: async (refreshToken: string): Promise<void> => {
+    const accessToken = getAccessToken() ?? "", generation = getSessionGeneration();
     const blacklist = (access: string, refresh: string) => http.post("/accounts/logout/", { refresh_token: refresh }, {
       headers: { Authorization: `Bearer ${access}` },
     });
     try {
-      await blacklist(getAccessToken() ?? "", refreshToken);
+      await blacklist(accessToken, refreshToken);
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 401) throw error;
       // Use captured credentials: AuthContext clears storage immediately on logout.
       // Do not persist these tokens or revive a session that is signing out.
-      const { data } = await http.post<{ access: string; refresh?: string }>("/accounts/refresh/", { refresh: refreshToken });
-      if (!data.access) throw new ApiError(401, "Unable to refresh your session for logout.");
-      await blacklist(data.access, data.refresh ?? refreshToken);
+      const tokens = await refreshLogoutCredentials(accessToken, refreshToken, generation);
+      await blacklist(tokens.access, tokens.refresh);
     }
   },
 
