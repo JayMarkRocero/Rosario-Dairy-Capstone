@@ -136,11 +136,9 @@ function DashboardShowcase({ scale }: { scale?: MotionValue<number> }) {
       <motion.div whileHover={reducedMotion ? undefined : { y: -2 }} transition={{ duration: 0.2 }} className="overflow-hidden rounded-3xl border p-4 sm:p-5" style={{ backgroundColor: C.white, borderColor: C.border, boxShadow: "0 28px 70px -32px rgba(23,55,94,0.42)" }}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: C.muted }}>Executive overview</p>
             <p className="mt-1 text-base font-bold sm:text-lg" style={{ color: C.text }}>Operations Dashboard</p>
           </div>
           <span className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium" style={{ color: C.blue, backgroundColor: `${C.blue}12` }}>
-            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: C.blue }} />Demo Preview
           </span>
         </div>
 
