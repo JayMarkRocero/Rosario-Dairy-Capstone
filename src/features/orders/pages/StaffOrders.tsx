@@ -28,6 +28,8 @@ export function StaffOrders() {
   const { user, loading: authLoading } = useAuth();
   const userId = user ? getSessionUserId(user) : null;
   const { data: cachedOrders, loading, refresh, error, refreshError } = useCachedQuery("orders:list", ordersService.getAll, ["orders"], !authLoading && userId !== null, { cancelable: true });
+  const summaryPlaceholder = authLoading || loading ? "—"
+    : error || userId === null || cachedOrders === undefined ? "Unavailable" : null;
   const orders = useMemo(() => !authLoading && userId !== null
     ? (cachedOrders ?? []).filter(order => order.staffId === userId && !order.isHistorical)
     : [], [cachedOrders, userId, authLoading]);
@@ -54,7 +56,7 @@ export function StaffOrders() {
     <div data-mobile-page-actions className="flex shrink-0 justify-end gap-2"><ModuleSubheading description="Monitor, track, and manage customer order fulfillments." /><Btn variant="primary" icon={<Plus size={14}/>} onClick={()=>setCreateOpen(true)}>Create Order</Btn></div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">{[
       ["Total", orders.length, C.blue], ["Fulfilled", orders.filter(o=>o.status==="Fulfilled").length, C.green], ["Cancelled", orders.filter(o=>o.status==="Cancelled").length, C.red],
-    ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={value} color={String(color)} />)}</div>
+    ].map(([label,value,color])=><SummaryCard compact key={String(label)} label={String(label)} value={summaryPlaceholder ?? value} color={String(color)} />)}</div>
     {!!refreshError && <QueryErrorMessage error={refreshError} onRetry={() => void refresh({ force: true })} />}
     <StaffOrdersTable errorContent={error ? <QueryErrorMessage error={error} onRetry={() => void refresh({ force: true })} /> : undefined} columns={columns} data={filtered} rowKey={o=>o.id} searchable searchKeys={o=>[String(o.id),o.invoiceNumber,o.customer,o.staff]} renderMobileRow={order => <MobileOrderCard order={order} onView={view} />} searchPlaceholder="Search orders…" showExport={false} onRowClick={view} loading={loading} emptyTitle="No orders found" emptyDesc="No orders match your filters." extraControls={<select value={status} onChange={e=>setStatus(e.target.value)} className={filterSelectClass}><option value="All">All Statuses</option>{STATUSES.map(s=><option key={s}>{s}</option>)}</select>}/>
     <Drawer open={viewOpen} onClose={()=>setViewOpen(false)} title="Order Details" subtitle={selected?`#${selected.id}`:""} size="md">

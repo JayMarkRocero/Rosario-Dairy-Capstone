@@ -431,12 +431,92 @@ test('Staff Orders waits for initialized identity and never exposes cached order
     const tree = render(ui.StaffOrders);
     effects.at(-1)(); await settle();
     assert.deepEqual(elements(tree, node => node.type === ui.EnhancedTable)[0].props.data, []);
-    assert.deepEqual(elements(tree, node => ['Total', 'Fulfilled', 'Cancelled'].includes(node.props.label)).map(node => node.props.value), [0, 0, 0]);
+    assert.deepEqual(elements(tree, node => ['Total', 'Fulfilled', 'Cancelled'].includes(node.props.label)).map(node => node.props.value),
+      Array(3).fill(context.loading ? '—' : 'Unavailable'));
   }
   assert.equal(requests, 0);
   authState = { user: { id: 8, username: 'other' }, loading: false };
   const tree = render(ui.StaffOrders);
   assert.deepEqual(elements(tree, node => node.type === ui.EnhancedTable)[0].props.data, [orders[1]]);
+});
+
+const staffOrderSummary = tree => elements(tree, node => ['Total', 'Fulfilled', 'Cancelled'].includes(node.props.label)).map(node => node.props.value);
+
+test('Staff Orders summary shows placeholders while the initial request is pending', async () => {
+  let finish;
+  const response = new Promise(resolve => { finish = resolve; });
+  ui.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data: await response });
+  render(ui.StaffOrders);
+  const cleanup = effects.at(-1)();
+  try {
+    await settle();
+    const tree = render(ui.StaffOrders);
+    assert.deepEqual(staffOrderSummary(tree), ['—', '—', '—']);
+    assert.equal(elements(tree, node => node.type === ui.EnhancedTable)[0].props.loading, true);
+  } finally { finish([]); await settle(); cleanup?.(); }
+});
+
+test('Staff Orders summary shows zeros after a successful empty response', async () => {
+  const key = `${ui.dataCacheEpoch()}:orders:list`;
+  await ui.fetchDataCache(key, async () => [], ['orders']);
+  const tree = render(ui.StaffOrders);
+  assert.deepEqual(staffOrderSummary(tree), [0, 0, 0]);
+  assert.equal(elements(tree, node => node.type === ui.EnhancedTable)[0].props.loading, false);
+  assert.equal(elements(tree, node => node.type === ui.QueryErrorMessage).length, 0);
+});
+
+test('Staff Orders summary reports unavailable when the initial request fails without cached records', async () => {
+  const key = `${ui.dataCacheEpoch()}:orders:list`;
+  await assert.rejects(ui.fetchDataCache(key, async () => { throw new Error('Orders offline'); }, ['orders']));
+  const tree = render(ui.StaffOrders);
+  assert.deepEqual(staffOrderSummary(tree), ['Unavailable', 'Unavailable', 'Unavailable']);
+  assert.equal(elements(tree, node => node.type === ui.QueryErrorMessage)[0].props.error.message, 'Orders offline');
+  assert.equal(elements(tree, node => node.type === ui.EnhancedTable).length, 0);
+});
+
+test('Staff Orders summary retains confirmed staff counts and rows after a background refresh fails', async () => {
+  const key = `${ui.dataCacheEpoch()}:orders:list`;
+  const records = [
+    { id: 1, staffId: 7, status: 'Fulfilled', isHistorical: false },
+    { id: 2, staffId: 7, status: 'Cancelled', isHistorical: false },
+    { id: 3, staffId: 8, status: 'Fulfilled', isHistorical: false },
+  ];
+  ui.writeDataCache(key, records, ['orders']);
+  await assert.rejects(ui.fetchDataCache(key, async () => { throw new Error('Refresh offline'); }, ['orders'], true));
+  const tree = render(ui.StaffOrders);
+  assert.deepEqual(staffOrderSummary(tree), [2, 1, 1]);
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  assert.deepEqual(table.props.data, records.slice(0, 2));
+  assert.equal(table.props.loading, false);
+  assert.equal(elements(tree, node => node.type === ui.QueryErrorMessage)[0].props.error.message, 'Refresh offline');
+});
+
+test('Staff Orders summary recovers from an initial error through the existing retry action', async () => {
+  let requests = 0, finish;
+  const response = new Promise(resolve => { finish = resolve; });
+  ui.http.defaults.adapter = async config => {
+    assert.equal(config.url, '/sales/orders/');
+    if (++requests === 1) throw new Error('Orders offline');
+    return { status: 200, config, headers: {}, data: await response };
+  };
+  render(ui.StaffOrders);
+  const cleanup = effects.at(-1)();
+  try {
+    await settle();
+    const failed = render(ui.StaffOrders);
+    assert.deepEqual(staffOrderSummary(failed), ['Unavailable', 'Unavailable', 'Unavailable']);
+    elements(failed, node => node.type === ui.QueryErrorMessage)[0].props.onRetry();
+    await settle();
+    assert.deepEqual(staffOrderSummary(render(ui.StaffOrders)), ['—', '—', '—']);
+    finish([{ id: 9, status: 'fulfilled', customer: { id: 3, name: 'Customer' },
+      handled_by: { id: 7, username: 'audit' }, transaction: null, items: [], created_at: '2026-11-01T00:00:00Z' }]);
+    await settle();
+    const recovered = render(ui.StaffOrders);
+    assert.deepEqual(staffOrderSummary(recovered), [1, 1, 0]);
+    assert.equal(elements(recovered, node => node.type === ui.QueryErrorMessage).length, 0);
+    assert.equal(elements(recovered, node => node.type === ui.EnhancedTable)[0].props.data[0].id, 9);
+    assert.equal(requests, 2, 'Retry coalesces into one GET and does not change the request lifecycle');
+  } finally { finish([]); await settle(); cleanup?.(); }
 });
 
 test('mobile customer cards preserve record details and active/inactive actions', () => {
