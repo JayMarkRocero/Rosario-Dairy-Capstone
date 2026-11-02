@@ -1,8 +1,10 @@
 import type { ExpiredInventoryBatch } from "@/features/inventory/api/inventory.service";
+import { formatInventoryQuantity } from "../utils/formatQuantity";
 
 function stock(value: unknown, unit: string | undefined): string | undefined {
-  if (value == null || String(value).trim() === "" || !Number.isFinite(Number(value))) return undefined;
-  return `${value}${unit?.trim() ? ` ${unit.trim()}` : ""}`;
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const formatted = formatInventoryQuantity(value, unit);
+  return formatted === "—" ? undefined : formatted;
 }
 
 export function BatchDetailsFields({ batch }: { batch: ExpiredInventoryBatch }) {

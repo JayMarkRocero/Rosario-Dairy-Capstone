@@ -6,7 +6,7 @@ export function currentInventoryRecord(records: readonly InventoryItem[], select
   return records.find(record => selected.catalogKey ? record.catalogKey === selected.catalogKey
     : record.id === selected.id && (selected.expiredBatch
       ? record.expiredBatch?.id === selected.expiredBatch.id && record.expiredBatch.kind === selected.expiredBatch.kind
-      : !record.expiredBatch)) ?? null;
+      : !record.expiredBatch && !record.expiredDisposal)) ?? null;
 }
 
 export function currentBatchRecord(records: readonly InventoryItem[], selected: ExpiredInventoryBatch | null): ExpiredInventoryBatch | null {

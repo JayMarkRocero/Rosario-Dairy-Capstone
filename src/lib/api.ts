@@ -469,7 +469,7 @@ export interface DjangoProductBatch {
   initial_quantity: string;
   remaining_quantity: string;
   expiration_date: string;
-  expiry_status?: "critical" | "near_expiry";
+  expiry_status?: "critical" | "near_expiry" | "expired";
   date_received: string;
   status: string;
   notes: string | null;

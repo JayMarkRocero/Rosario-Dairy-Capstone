@@ -26,6 +26,8 @@ import { MobileInventoryCard } from "@/features/inventory/components/MobileInven
 import { InventoryStatusBadge, InventoryStockValue, InventoryExpiryValue } from "@/features/inventory/components/InventoryWarnings";
 import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
+import { useExpiredInventory } from "../hooks/useExpiredInventory";
+import { ExpiredInventoryFilter, expiredEmptyStates } from "../components/ExpiredInventoryFilter";
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 interface FormState {
@@ -95,13 +97,14 @@ function ProductForm({ form, onChange, categories, mode }: {
 export function AdminInventory() {
   const query = useCachedQuery("inventory:admin", () => inventoryService.getCatalogOverview(), ["inventory"]);
   const items = query.data ?? [];
-  const itemsLoading = query.loading;
   const loadItems = query.refresh;
   const categoryQuery = useCachedQuery("categories:active", () => inventoryService.getCategoriesRaw(), ["categories"]);
   const categories = categoryQuery.data ?? [];
 
   const [catFilter,    setCatFilter]    = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+  const expiredActive = statusFilter === "Expired";
+  const expired = useExpiredInventory(query, expiredActive);
   const [addOpen,     setAddOpen]    = useState(false);
   const [editOpen,    setEditOpen]   = useState(false);
   const [deleteOpen,  setDeleteOpen] = useState(false);
@@ -116,7 +119,7 @@ export function AdminInventory() {
   const submissionLock = useRef(false);
 
   const filteredItems = useMemo(() => {
-  return items
+  return expired.rows
     .filter(i => {
       const matchesCat = catFilter === "All" || i.cat === catFilter;
       const warning = getInventoryWarnings(i);
@@ -124,11 +127,12 @@ export function AdminInventory() {
         statusFilter === "All" ||
         (statusFilter === "Low Stock" ? warning.lowStock :
          statusFilter === "Near Expiry" ? warning.nearExpiry :
-         statusFilter === "Expired" && warning.expired);
+         expiredActive);
       return matchesCat && matchesStatus;
     })
     // FEFO ordering: soonest expiry first. Items with no expiry date sort last.
     .sort((a, b) => {
+      if (expiredActive) return 0;
       const expiredOrder = Number(getInventoryWarnings(b).expired) - Number(getInventoryWarnings(a).expired);
       if (expiredOrder) return expiredOrder;
       if (!a.expiry && !b.expiry) return 0;
@@ -136,7 +140,7 @@ export function AdminInventory() {
       if (!b.expiry) return -1;
       return a.expiry.localeCompare(b.expiry);
     });
-}, [items, catFilter, statusFilter]);
+}, [expired.rows, catFilter, statusFilter]);
 
   const stats = useMemo(() => {
     const totalProducts = new Set(items.map(item => item.id)).size;
@@ -267,7 +271,7 @@ export function AdminInventory() {
           </div>
           <div>
             <div className="font-medium text-sm" style={{color:C.text}}>{r.name}</div>
-            <div className="text-xs mt-0.5 md:mt-0" style={{color:C.muted}}>{r.expiredBatch ? `Batch ${r.expiredBatch.batch}` : `PRD-${String(r.id).padStart(3,"0")}`}</div>
+            <div className="text-xs mt-0.5 md:mt-0" style={{color:C.muted}}>{r.expiredBatch || r.expiredDisposal ? `Batch ${r.expiredBatch?.batch ?? r.expiredDisposal?.batch}` : `PRD-${String(r.id).padStart(3,"0")}`}</div>
           </div>
         </div>
       ),
@@ -281,11 +285,11 @@ export function AdminInventory() {
       ),
     },
     {
-      key:"stock", header:"Stock", align:"center", width:"10%",
-      sortKey: r => r.stock,
+      key:"stock", header:expiredActive ? "Quantity" : "Stock", align:"center", width:"10%",
+      sortKey: r => r.expiredDisposal ? Number(r.expiredDisposal.quantity) : r.stock,
       render: r => <InventoryStockValue product={r} />,
     },
-    { key:"expiry", header:"Expiry", align:"center", width:"13%", sortKey: r => r.expiry,
+    { key:"expiry", header:expiredActive ? expired.view === "awaiting" ? "Expires" : expired.view === "disposed" ? "Disposed" : "Dates" : "Expiry", align:"center", width:"13%", sortKey: r => r.expiredDisposal?.disposedAt ?? r.expiry,
       render: r => <span className="text-xs"><InventoryExpiryValue product={r} /></span> },
     { key:"status", header:"Status", align:"center", width:"13%",
       render: r => <InventoryStatusBadge product={r} /> },
@@ -317,6 +321,8 @@ export function AdminInventory() {
     </>
   );
 
+  const filterCategories = Array.from(new Set([...categories.map(category => category.name),
+    ...(expiredActive ? expired.rows.map(item => item.cat) : [])]));
   const filterControls = (
     <div className="grid w-full min-w-0 grid-cols-2 gap-2 md:flex md:w-auto">
       <select
@@ -326,7 +332,7 @@ export function AdminInventory() {
         className={`${filterSelectClass} w-full min-w-0 md:w-auto`}
       >
         <option value="All">All Categories</option>
-        {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+        {filterCategories.map(name => <option key={name} value={name}>{name}</option>)}
       </select>
       <select
         value={statusFilter}
@@ -337,6 +343,7 @@ export function AdminInventory() {
         <option value="All">All Statuses</option>
         {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
+      {expiredActive && <ExpiredInventoryFilter value={expired.view} onChange={expired.setView} />}
     </div>
   );
 
@@ -376,8 +383,10 @@ export function AdminInventory() {
 
       {/* Table */}
       <TableCard className="inventory-table-card">
+        {(expiredActive ? expired.error : query.refreshError) ? <QueryErrorMessage error={expiredActive ? expired.error : query.refreshError} onRetry={() => { void expired.retry(); }} /> : null}
+        {expired.historyLoading && <p role="status" className="text-xs text-slate-500">Loading disposal history…</p>}
         <div className="flex h-auto min-w-0 flex-col justify-start">
-          {query.error ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <ProductTable
+          {query.error && !expiredActive ? <QueryErrorMessage error={query.error} onRetry={() => { void query.refresh({ force: true }); }} /> : <ProductTable
             contentHeight
             pageSize={5}
             renderMobileRow={product => <MobileInventoryCard product={product} status={getStatus(product)} busy={loading} onEdit={openEdit} onDelete={openDelete} />}
@@ -387,12 +396,12 @@ export function AdminInventory() {
             rowKey={r => r.id}
 
             searchable
-            searchKeys={r => [r.name, r.cat]}
+            searchKeys={r => [r.name, r.cat, r.expiredBatch?.batch ?? r.expiredDisposal?.batch ?? ""]}
             searchPlaceholder="Search products…"
             onRowClick={openView}
-            loading={itemsLoading}
-            emptyTitle="No products found"
-            emptyDesc="Add your first product to get started."
+            loading={expired.loading}
+            emptyTitle={expiredActive ? expired.error ? "Expired inventory unavailable" : expiredEmptyStates[expired.view].title : "No products found"}
+            emptyDesc={expiredActive ? expired.error ? "Retry the failed request or choose another expired status." : expiredEmptyStates[expired.view].description : "Add your first product to get started."}
             showExport={false}
             extraControls={filterControls}
           />}

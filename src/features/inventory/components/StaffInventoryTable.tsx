@@ -17,10 +17,10 @@ type Props = ComponentProps<typeof EnhancedTable<InventoryItem>> & { errorConten
 export function StaffInventoryTable({ errorContent, ...props }: Props) {
   const [selected, setSelected] = useState<InventoryItem | null>(null);
   const current = currentInventoryRecord(props.data, selected);
-  const view = (item: InventoryItem) => props.onRowClick ? props.onRowClick(item) : setSelected(item);
+  const view = (item: InventoryItem) => { if (!item.expiredDisposal) props.onRowClick ? props.onRowClick(item) : setSelected(item); };
   const actionColumn: Column<InventoryItem> = {
     key: "actions", header: "Actions", align: "center", width: "12%",
-    render: item => <div onClick={event => event.stopPropagation()}>
+    render: item => item.expiredDisposal ? <span aria-label="No actions available" className="text-xs text-slate-500">—</span> : <div onClick={event => event.stopPropagation()}>
       <ActionButton label="View details" onClick={() => view(item)} className="border border-slate-200"><Eye size={13} /></ActionButton>
     </div>,
   };

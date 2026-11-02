@@ -127,7 +127,7 @@ export const outflowsService = {
     return products.filter(batch => canAdjustBatch(batch)).map(batch => ({ id: batch.id, key: `product-${batch.id}`, kind: "product" as const, name: [batch.product.name, batch.product.variant].filter(Boolean).join(" "), batch: batch.batch_number, stock: Number(batch.remaining_quantity), unit: batch.product.unit, cost: batch.unit_price, expiry: batch.expiration_date, status: batch.status }))
       .sort((a, b) => a.expiry.localeCompare(b.expiry));
   },
-  list: async (filters: { adjustment_type?: string; start_date?: string; end_date?: string }) => (await http.get<StockAdjustment[]>("/inventory/stock-adjustments/", { params: filters })).data,
+  list: async (filters: { adjustment_type?: string; start_date?: string; end_date?: string }, signal?: AbortSignal) => (await http.get<StockAdjustment[]>("/inventory/stock-adjustments/", { params: filters, signal })).data,
   create: (payload: OutflowPayload): Promise<StockAdjustment> => {
     const body: OutflowPayload = { product_batch_id: payload.product_batch_id, adjustment_type: payload.adjustment_type,
       quantity: payload.quantity, unit_cost: payload.unit_cost, ...(payload.reason !== undefined && { reason: payload.reason }) };

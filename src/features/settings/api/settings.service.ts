@@ -18,8 +18,6 @@ export interface NotificationSettings {
   low_stock_alerts: boolean;
   near_expiry_alerts: boolean;
   new_order_alerts: boolean;
-  forecast_warnings: boolean;
-  report_ready_notifications: boolean;
 }
 
 export interface AppSettings {

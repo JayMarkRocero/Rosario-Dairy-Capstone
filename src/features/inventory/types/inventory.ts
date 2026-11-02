@@ -16,6 +16,14 @@ export interface FEFOItem {
 export interface InventoryItem {
   catalogKey?: string;
   expiredBatch?: import('@/features/inventory/api/inventory.service').ExpiredInventoryBatch;
+  expiredDisposal?: {
+    adjustmentId: number;
+    batchId: number;
+    batch: string;
+    quantity: string;
+    disposedAt: string;
+    adjustedBy?: string;
+  };
   id: number;
   name: string;
   cat: string;

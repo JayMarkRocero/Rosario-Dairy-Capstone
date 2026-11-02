@@ -50,9 +50,9 @@ function fefoStatus(days: number, settings?: InventorySettings, expiryStatus?: D
 }
 
 export const inventoryService = {
-  getExpiredBatches: async (staffVisibleOnly = false, allowPartial = false, productBatches?: Promise<DjangoProductBatch[]>): Promise<ExpiredInventoryBatch[]> => {
+  getExpiredBatches: async (staffVisibleOnly = false, allowPartial = false): Promise<ExpiredInventoryBatch[]> => {
     let products: DjangoProductBatch[];
-    try { products = await (productBatches ?? http.get<DjangoProductBatch[]>('/inventory/product-batches/').then(({ data }) => data)); }
+    try { products = (await http.get<DjangoProductBatch[]>('/inventory/expired/products/')).data; }
     catch (error) { if (allowPartial) return []; throw error; }
     return products.filter(batch => isExpiredStockBatch(batch) && (!staffVisibleOnly ||
       batch.product.is_active && batch.product.category.is_active && batch.product.category.is_visible_to_staff))
@@ -63,10 +63,10 @@ export const inventoryService = {
         batch: batch.batch_number, quantity: Number(batch.remaining_quantity), unit: batch.product.unit, expiry: batch.expiration_date }));
   },
   getCatalogOverview: async (staff = false): Promise<InventoryItem[]> => {
-    // Share this request only within this load; later refreshes still read fresh batches.
+    // Sellable metadata and expired stock use their respective batch feeds.
     const productBatches = http.get<DjangoProductBatch[]>('/inventory/product-batches/').then(({ data }) => data);
     const [productFeed, batchFeed] = await Promise.allSettled([
-      inventoryService.getOverview(staff, productBatches), inventoryService.getExpiredBatches(staff, false, productBatches),
+      inventoryService.getOverview(staff, productBatches), inventoryService.getExpiredBatches(staff),
     ]);
     // Settle both consumers before exposing a failure so an immediate retry
     // cannot inherit a still-rejecting nested product-cache request.
@@ -162,7 +162,8 @@ export const inventoryService = {
     return items.map(item => {
       if (Array.isArray(config)) {
         const batch = config.find(batch => batch.product.id === item.id && batch.expiration_date === item.expiry);
-        return { ...item, expiryStatus: batch?.expiry_status };
+        const expiryStatus = batch?.expiry_status;
+        return { ...item, expiryStatus: expiryStatus === 'critical' || expiryStatus === 'near_expiry' ? expiryStatus : undefined };
       }
       return { ...item, nearExpiryThreshold: config.near_expiry_threshold, criticalExpiryThreshold: config.critical_expiry_threshold };
     });

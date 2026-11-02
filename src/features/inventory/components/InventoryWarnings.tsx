@@ -4,6 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import { StatusBadge } from "@/components/data-display/StatusBadge";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
 import { getInventoryWarnings } from "@/features/inventory/utils/warnings";
+import { formatInventoryQuantity } from "../utils/formatQuantity";
 
 export function InventoryWarningTooltip({ message, expired = false }: { message: string; expired?: boolean }) {
   const id = useId();
@@ -32,6 +33,8 @@ export function InventoryWarningTooltip({ message, expired = false }: { message:
 }
 
 export function InventoryStatusBadge({ product }: { product: InventoryItem }) {
+  if (product.expiredDisposal) return <span className="inline-flex max-w-full whitespace-normal rounded-full bg-slate-100 px-2.5 py-1 text-center text-xs font-medium text-slate-600">Disposed</span>;
+  if (product.expiredBatch) return <span className="inline-flex max-w-full whitespace-normal rounded-full bg-red-50 px-2.5 py-1 text-center text-xs font-medium leading-tight text-red-600">Awaiting Disposal</span>;
   const { status } = getInventoryWarnings(product);
   if (status === 'Expired') return <span className="inline-flex bg-red-50 text-red-600 font-medium px-2.5 py-1 rounded-full text-xs">Expired</span>;
   return <span className="inline-flex max-w-full [&>span]:whitespace-normal [&>span]:text-center [&>span]:leading-tight">
@@ -40,6 +43,8 @@ export function InventoryStatusBadge({ product }: { product: InventoryItem }) {
 }
 
 export function InventoryStockValue({ product }: { product: InventoryItem }) {
+  if (product.expiredDisposal) return <span className="inline-flex max-w-full flex-col whitespace-normal break-words text-sm text-slate-900"><span>{formatInventoryQuantity(product.expiredDisposal.quantity, product.unit)}</span><span className="text-[11px] font-normal text-slate-500">Disposed quantity</span></span>;
+  if (product.expiredBatch) return <span className="inline-flex max-w-full flex-col whitespace-normal break-words text-sm text-slate-900"><span>{formatInventoryQuantity(product.expiredBatch.source?.remaining_quantity ?? product.stock, product.unit)}</span><span className="text-[11px] font-normal text-slate-500">Remaining stock</span></span>;
   const warning = getInventoryWarnings(product);
   return <span className="inline-flex items-center gap-1">
     <span className={`font-medium ${warning.lowStock ? "text-amber-600" : "text-slate-900"}`}>{product.stock.toLocaleString("en-PH")}</span>
@@ -48,9 +53,16 @@ export function InventoryStockValue({ product }: { product: InventoryItem }) {
 }
 
 export function InventoryExpiryValue({ product }: { product: InventoryItem }) {
+  if (product.expiredDisposal) {
+    const disposed = new Date(product.expiredDisposal.disposedAt);
+    return <span className="inline-flex max-w-full flex-col whitespace-normal text-xs text-slate-700">
+      <span title={`Disposal date: ${product.expiredDisposal.disposedAt}`}>Disposed: {Number.isFinite(disposed.getTime()) ? disposed.toLocaleDateString("en-PH", { timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric" }) : "Not recorded"}</span>
+      <span className="text-[11px] text-slate-500">Expires: {product.expiry || "Not recorded"}</span>
+    </span>;
+  }
   const warning = getInventoryWarnings(product);
   return <span className="inline-flex max-w-full items-center gap-1">
-    <span className={warning.expired ? "font-semibold text-red-600" : warning.nearExpiry ? "font-semibold text-orange-600" : "text-slate-500"}>{product.expiry || "Not available"}</span>
+    <span className={`${product.expiredBatch ? "min-w-0 whitespace-normal " : ""}${warning.expired ? "font-semibold text-red-600" : warning.nearExpiry ? "font-semibold text-orange-600" : "text-slate-500"}`}>{product.expiredBatch ? "Expires: " : ""}{product.expiry || "Not available"}</span>
     {(warning.expired || warning.nearExpiry) && <InventoryWarningTooltip message={warning.expiryMessage} expired={warning.expired} />}
   </span>;
 }

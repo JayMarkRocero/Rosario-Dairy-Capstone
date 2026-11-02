@@ -98,6 +98,9 @@ const compiled = buildSync({
     export { StaffInventoryTable } from './src/features/inventory/components/StaffInventoryTable';
     export { StaffOrdersTable } from './src/features/orders/components/StaffOrdersTable';
     export { StaffInventory } from './src/features/inventory/pages/StaffInventory';
+    export { ExpiredInventoryFilter } from './src/features/inventory/components/ExpiredInventoryFilter';
+    export { useExpiredInventory } from './src/features/inventory/hooks/useExpiredInventory';
+    export { mapExpiredDisposals } from './src/features/inventory/utils/expiredInventory';
     export { AdminCategories } from './src/features/inventory/pages/AdminCategories';
     export { AdminCustomers } from './src/features/customers/pages/AdminCustomers';
     export { AdminUserManagement } from './src/features/users/pages/AdminUserManagement';
@@ -1730,12 +1733,14 @@ test('admin and staff inventory filters expose alert statuses and retain compoun
     { ...base, id: 2, name: 'Low', stock: 5 },
     { ...base, id: 3, name: 'Near', expiry: nearDate },
     { ...base, id: 4, name: 'Dual', stock: 2, expiry: nearDate },
-    { ...base, id: 5, name: 'Expired', expiry: '2000-01-01' },
+    { ...base, id: 5, catalogKey: 'expired-product-15', name: 'Expired', expiry: '2000-01-01',
+      expiredBatch: { id: 15, key: 'product-15', kind: 'product', status: 'available', batch: 'EX-15', quantity: 20, expiry: '2000-01-01', dateReceived: '1999-01-01' } },
   ];
   for (const [component, key, label] of [[ui.AdminInventory, 'inventory:admin', 'Filter by status'], [ui.StaffInventory, 'inventory:staff', 'Status']]) {
     states = []; refs = []; effects = [];
     ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, products, ['inventory']);
     ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:active`, [], ['categories']);
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:expired-disposals:${component === ui.StaffInventory}`, [], ['inventory']);
     const table = tree => elements(tree, node => Array.isArray(node.props.columns) && Array.isArray(node.props.data))[0];
     let tree = render(component);
     const dropdown = elements(table(tree).props.extraControls, node => node.type === 'select' && node.props['aria-label'] === label)[0];
@@ -1993,6 +1998,347 @@ for (const [role, Layout, Sidebar, Inventory, Wrapper] of [
 }
 
 
+for (const [Page, staff] of [[ui.AdminInventory, false], [ui.StaffInventory, true]]) test(`${Page.name} Expired filter preserves individual batches and existing permissions without an extra dialog`, () => {
+  const product = { id: 1, catalogKey: 'product-1', name: 'Milk', cat: 'Dairy', stock: 12, expiry: '2099-01-01', low: false };
+  const expired = id => ({ ...product, catalogKey: `expired-product-${id}`, stock: id, expiry: '2000-01-01',
+    expiredBatch: { id, key: `product-${id}`, kind: 'product', name: 'Milk', category: 'Dairy', batch: `EX-${id}`, quantity: id,
+      status: 'available', dateReceived: '1999-12-01', expiry: '2000-01-01', unit: 'L' } });
+  const batches = [expired(7), expired(8)];
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:${staff ? 'staff' : 'admin'}`, [product, ...batches], ['inventory']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:active`, [{ id: 1, name: 'Dairy' }], ['categories']);
+  let tree = render(Page);
+  assert.equal(elements(tree, node => node.type === ui.InventoryOutflows).length, 1);
+  assert.doesNotMatch(JSON.stringify(tree), /Expired Products/);
+  const Table = staff ? ui.StaffInventoryTable : ui.ProductTable;
+  let table = elements(tree, node => node.type === Table)[0];
+  elements(table.props.extraControls, node => node.type === 'select' && /status/i.test(node.props['aria-label']))[0].props.onChange({ target: { value: 'Expired' } });
+  tree = render(Page); table = elements(tree, node => node.type === Table)[0];
+  assert.deepEqual(table.props.data, batches);
+  assert.deepEqual(table.props.data.map(row => row.stock), [7, 8]);
+  assert.ok(table.props.searchKeys(batches[0]).includes('EX-7'));
+  assert.match(JSON.stringify(table.props.columns[0].render(batches[0])), /EX-7/);
+  states = []; refs = []; effects = [];
+  const enhanced = elements(render(Table, table.props), node => node.type === ui.EnhancedTable)[0];
+  assert.deepEqual(batches.map(enhanced.props.rowKey), ['expired-product-7', 'expired-product-8']);
+  const actions = elements(enhanced.props.columns.at(-1).render(batches[0]), node => !!node.props.label);
+  assert.equal(actions.length, staff ? 1 : 3);
+  if (staff) {
+    assert.equal(actions[0].props.label, 'View details');
+    const mobile = enhanced.props.renderMobileRow(batches[0]);
+    assert.match(JSON.stringify(mobile.type(mobile.props)), /EX-7/);
+  } else assert.ok(actions.some(action => /Dispose/.test(action.props.label)));
+});
+
+for (const [Page, staff] of [[ui.AdminInventory, false], [ui.StaffInventory, true]]) test(`${Page.name} preserves expired rows and retry feedback during a background failure`, async () => {
+  const row = { id: 1, catalogKey: 'expired-product-7', name: 'Milk', cat: 'Dairy', stock: 7, expiry: '2000-01-01', low: false,
+    expiredBatch: { id: 7, kind: 'product', key: 'product-7', batch: 'EX-7', quantity: 7 } };
+  const key = `${ui.dataCacheEpoch()}:inventory:${staff ? 'staff' : 'admin'}`;
+  ui.writeDataCache(key, [row], ['inventory']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:active`, [], ['categories']);
+  await assert.rejects(ui.fetchDataCache(key, () => Promise.reject(new Error('Inventory refresh offline')), ['inventory'], true));
+  const tree = render(Page);
+  const table = elements(tree, node => node.type === (staff ? ui.StaffInventoryTable : ui.ProductTable))[0];
+  assert.deepEqual(table.props.data, [row]); assert.equal(table.props.loading, false);
+  assert.equal(elements(tree, node => node.type === ui.QueryErrorMessage)[0].props.error.message, 'Inventory refresh offline');
+});
+
+const expiredHistoryFixture = (overrides = {}) => ({ id: 71, adjustment_type: 'expired', quantity: '2.50', unit_cost: '99.00',
+  created_at: '2026-10-30T08:00:00+08:00', adjusted_by: { id: 7, username: 'audit' },
+  product_batch: { id: 15, batch_number: 'EX-15', expiration_date: '2000-01-01', status: 'disposed', remaining_quantity: '0.00',
+    product: { id: 1, name: 'Milk', unit: 'L', category: { name: 'Dairy' } } }, ...overrides });
+const awaitingExpiredFixture = () => ({ id: 1, catalogKey: 'expired-product-15', name: 'Milk', cat: 'Dairy', unit: 'L', stock: 7.5,
+  expiry: '2000-01-01', low: false, expiredBatch: { id: 15, key: 'product-15', kind: 'product', name: 'Milk', category: 'Dairy',
+    batch: 'EX-15', status: 'expired', quantity: 7.5, expiry: '2000-01-01', dateReceived: '1999-01-01' } });
+
+for (const [Page, staff] of [[ui.AdminInventory, false], [ui.StaffInventory, true]]) test(`${Page.name} Expired subfilter separates remaining batches from read-only disposal events without changing KPIs`, () => {
+  const awaiting = awaitingExpiredFixture();
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:${staff ? 'staff' : 'admin'}`, [awaiting], ['inventory']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:active`, [{ id: 1, name: 'Dairy' }], ['categories']);
+  const record = expiredHistoryFixture();
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:expired-disposals:${staff}`, [record, record,
+    expiredHistoryFixture({ id: 72, quantity: '1.25' })], ['inventory']);
+  const Table = staff ? ui.StaffInventoryTable : ui.ProductTable;
+  const table = tree => elements(tree, node => node.type === Table)[0];
+  const stats = tree => elements(tree, node => node.type?.name === 'SummaryCard').map(card => [card.props.label, card.props.value]);
+  let tree = render(Page); const initialStats = stats(tree);
+  assert.equal(elements(table(tree).props.extraControls, node => node.type === ui.ExpiredInventoryFilter).length, 0);
+  elements(table(tree).props.extraControls, node => node.type === 'select' && /status/i.test(node.props['aria-label']))[0].props.onChange({ target: { value: 'Expired' } });
+  tree = render(Page);
+  const selector = () => elements(table(render(Page)).props.extraControls, node => node.type === ui.ExpiredInventoryFilter)[0];
+  const control = ui.ExpiredInventoryFilter(selector().props);
+  const select = elements(control, node => node.type === 'select')[0];
+  assert.equal(select.props['aria-label'], 'Disposal status');
+  assert.match(control.props.className, /h-10/);
+  assert.match(control.props.className, /col-span-2.*min-w-0/);
+  assert.ok(elements(control, node => node.type === 'span' && node.props.children === 'Disposal:').length);
+  assert.deepEqual(elements(select, node => node.type === 'option').map(option => option.props.children), ['All', 'Awaiting Disposal', 'Disposed']);
+  assert.equal(table(tree).props.data.length, 3, 'one remaining batch plus two distinct recorded reductions, never a duplicate event');
+  assert.deepEqual(stats(tree), initialStats, 'historical quantities do not enter stock KPI calculations');
+  assert.equal(table(tree).props.columns.find(column => column.key === 'stock').header, 'Quantity');
+  selector().props.onChange('awaiting'); tree = render(Page);
+  assert.deepEqual(table(tree).props.data, [awaiting]);
+  selector().props.onChange('disposed'); tree = render(Page);
+  const rows = table(tree).props.data;
+  assert.equal(rows.length, 2); assert.ok(rows.every(row => row.stock === 0 && !row.expiredBatch));
+  assert.deepEqual(rows.map(row => row.expiredDisposal.quantity), ['1.25', '2.50']);
+  assert.ok(table(tree).props.searchKeys(rows[0]).includes('EX-15'));
+  assert.deepEqual(stats(tree), initialStats);
+  assert.equal(elements(tree, node => node.type === ui.InventoryOutflows).length, 1);
+});
+
+test('expired disposal categories remain filterable when no current catalog product supplies the category', () => {
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:admin`, [], ['inventory']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:active`, [], ['categories']);
+  const record = expiredHistoryFixture(); record.product_batch.product.category.name = 'Archived category';
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:expired-disposals:false`, [record], ['inventory']);
+  let tree = render(ui.AdminInventory);
+  const table = value => elements(value, node => node.type === ui.ProductTable)[0];
+  elements(table(tree).props.extraControls, node => node.props['aria-label'] === 'Filter by status')[0].props.onChange({ target: { value: 'Expired' } });
+  tree = render(ui.AdminInventory);
+  const category = elements(table(tree).props.extraControls, node => node.props['aria-label'] === 'Filter by category')[0];
+  assert.ok(elements(category, node => node.type === 'option' && node.props.value === 'Archived category').length);
+  category.props.onChange({ target: { value: 'Archived category' } });
+  assert.equal(table(render(ui.AdminInventory)).props.data.length, 1);
+});
+
+for (const Table of [ui.ProductTable, ui.StaffInventoryTable]) test(`${Table.name} makes disposed records read-only on desktop and mobile without exposing money`, () => {
+  const [record] = ui.mapExpiredDisposals([expiredHistoryFixture()]); let opened = 0;
+  const props = { data: [record], columns: [{ key: 'name', header: 'Product' }, { key: 'actions', header: 'Actions' }],
+    rowKey: row => row.id, onRowClick: () => opened++, renderMobileRow: () => { throw new Error('Disposed records cannot use editable product cards'); } };
+  let tree = render(Table, props);
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  const action = table.props.columns.at(-1).render(record);
+  assert.equal(action.props.children, '—');
+  assert.equal(action.props['aria-label'], 'No actions available');
+  assert.equal(elements(action, node => node.type === 'button' || node.props.label).length, 0);
+  table.props.onRowClick(record); tree = render(Table, props);
+  assert.equal(opened, 0); assert.equal(elements(tree, node => node.type === ui.Modal && node.props.open).length, 0);
+  const card = table.props.renderMobileRow(record), mobile = card.type(card.props);
+  assert.equal(elements(mobile, node => node.type === 'button').length, 0);
+  assert.match(JSON.stringify(mobile), /No actions available/); assert.doesNotMatch(JSON.stringify(mobile), /Read-only|99\.00|₱|unit_cost/);
+  assert.equal(ui.InventoryStatusBadge({ product: record }).props.children, 'Disposed');
+  assert.match(JSON.stringify(ui.InventoryStockValue({ product: record })), /2\.5 L/);
+  assert.equal(record.expiredDisposal.quantity, '2.50');
+  assert.match(JSON.stringify(ui.InventoryExpiryValue({ product: record })), /Oct 30, 2026|30 Oct 2026/);
+});
+
+test('expired quantities share exact readable formatting for remaining stock and disposal records', () => {
+  for (const [quantity, unit, expected] of [
+    ['7.00', 'unit', '7 units'], ['15.00', 'unit', '15 units'], ['1.00', 'units', '1 unit'],
+    ['7.50', 'L', '7.5 L'], ['9007199254740993.1200', 'unit', '9007199254740993.12 units'],
+  ]) {
+    const product = awaitingExpiredFixture();
+    product.unit = unit; product.expiredBatch.source = { remaining_quantity: quantity };
+    const remaining = ui.InventoryStockValue({ product });
+    assert.equal(remaining.props.children[0].props.children, expected);
+    assert.equal(product.expiredBatch.source.remaining_quantity, quantity);
+    const [disposed] = ui.mapExpiredDisposals([expiredHistoryFixture({ quantity })]); disposed.unit = unit;
+    assert.equal(ui.InventoryStockValue({ product: disposed }).props.children[0].props.children, expected);
+    assert.equal(disposed.expiredDisposal.quantity, quantity);
+  }
+});
+
+test('expired dates clearly label expiration and disposal on table values and mobile cards', () => {
+  const awaiting = awaitingExpiredFixture();
+  const currentDate = ui.InventoryExpiryValue({ product: awaiting });
+  assert.match(JSON.stringify(currentDate), /Expires: /);
+  const [disposed] = ui.mapExpiredDisposals([expiredHistoryFixture()]);
+  const date = JSON.stringify(ui.InventoryExpiryValue({ product: disposed }));
+  assert.match(date, /Disposed: /); assert.match(date, /Expires: /);
+  assert.match(date, /Disposal date: 2026-10-30/);
+  const props = { data: [disposed], columns: [{ key: 'name', header: 'Name' }], rowKey: row => row.catalogKey };
+  const table = elements(render(ui.StaffInventoryTable, props), node => node.type === ui.EnhancedTable)[0];
+  const record = table.props.renderMobileRow(disposed);
+  assert.match(JSON.stringify(record.type(record.props)), /Disposal date/);
+  states = []; refs = []; effects = [];
+  let mobile = render(ui.MobileInventoryCard, { product: awaiting, onEdit() {}, onDelete() {} });
+  elements(mobile, node => node.type === 'button' && node.props['aria-expanded'] !== undefined)[0].props.onClick();
+  mobile = render(ui.MobileInventoryCard, { product: awaiting, onEdit() {}, onDelete() {} });
+  assert.match(JSON.stringify(mobile), /Expiration date/);
+  assert.match(JSON.stringify(mobile), /Expired batch/);
+});
+
+for (const [Page, staff] of [[ui.AdminInventory, false], [ui.StaffInventory, true]]) test(`${Page.name} uses distinct empty states and date headings for each expired view`, () => {
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:${staff ? 'staff' : 'admin'}`, [], ['inventory']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:categories:active`, [], ['categories']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:inventory:expired-disposals:${staff}`, [], ['inventory']);
+  const Table = staff ? ui.StaffInventoryTable : ui.ProductTable;
+  const table = tree => elements(tree, node => node.type === Table)[0];
+  let tree = render(Page);
+  elements(table(tree).props.extraControls, node => node.type === 'select' && /status/i.test(node.props['aria-label']))[0].props.onChange({ target: { value: 'Expired' } });
+  for (const [value, title, dateHeader, description] of [
+    ['all', 'No expired records found', 'Dates', /awaiting disposal.*recorded expired-stock disposals/],
+    ['awaiting', 'No batches awaiting disposal', 'Expires', /expired batches with remaining stock/],
+    ['disposed', 'No disposed records found', 'Disposed', /recorded expired-stock disposals/],
+  ]) {
+    tree = render(Page);
+    elements(table(tree).props.extraControls, node => node.type === ui.ExpiredInventoryFilter)[0].props.onChange(value);
+    tree = render(Page);
+    assert.equal(table(tree).props.emptyTitle, title); assert.match(table(tree).props.emptyDesc, description);
+    assert.equal(table(tree).props.columns.find(column => column.key === 'expiry').header, dateHeader);
+    assert.equal(table(tree).props.pageSize, 5); assert.equal(table(tree).props.rowHeight, 52);
+    assert.equal(table(tree).props.data.length, 0); assert.equal(table(tree).props.loading, false);
+  }
+});
+
+test('a disposal event cannot masquerade as a selected current product after changing filters', () => {
+  const product = { id: 1, name: 'Milk', cat: 'Dairy', stock: 7, expiry: '2099-01-01', low: false };
+  const props = { data: [product], columns: [{ key: 'name', header: 'Product' }], rowKey: row => row.id };
+  let tree = render(ui.StaffInventoryTable, props);
+  elements(tree, node => node.type === ui.EnhancedTable)[0].props.onRowClick(product);
+  const [record] = ui.mapExpiredDisposals([expiredHistoryFixture()]);
+  tree = render(ui.StaffInventoryTable, { ...props, data: [record] });
+  assert.equal(elements(tree, node => node.type === ui.Drawer)[0].props.open, true);
+  assert.equal(elements(tree, node => node.type?.name === 'ProductDetail').length, 0);
+});
+
+test('disposed-event pagination keeps distinct adjustments, clamps the final page and resets after batch/product search', () => {
+  const records = Array.from({ length: 12 }, (_, index) => {
+    const item = expiredHistoryFixture({ id: 100 + index });
+    item.product_batch.product.name = index === 0 ? 'Target milk' : 'Milk';
+    return item;
+  });
+  const data = ui.mapExpiredDisposals(records);
+  const wrapper = render(ui.ProductTable, { data, rowKey: item => item.id, contentHeight: true,
+    columns: [{ key: 'name', header: 'Product' }], searchKeys: item => [item.name, item.expiredDisposal.batch] });
+  const props = elements(wrapper, node => node.type === ui.EnhancedTable)[0].props;
+  assert.equal(new Set(data.map(props.rowKey)).size, 12);
+  states = []; refs = []; effects = [];
+  const view = () => render(ui.EnhancedTable, props);
+  const rows = tree => elements(elements(tree, node => node.type === 'tbody')[0], node => node.type === 'tr');
+  let tree = view(); assert.equal(rows(tree).length, 5);
+  assert.match(JSON.stringify(tree), /Page 1 of 3/);
+  elements(tree, node => node.type === 'button').at(-1).props.onClick();
+  tree = view(); assert.equal(rows(tree).length, 5);
+  elements(tree, node => node.type === 'button').at(-1).props.onClick();
+  tree = view(); assert.equal(rows(tree).length, 2);
+  assert.match(JSON.stringify(tree), /Page 3 of 3/);
+  elements(tree, node => node.type === 'input')[0].props.onChange({ target: { value: 'Target milk' } });
+  tree = view(); assert.equal(rows(tree).length, 1);
+  assert.match(JSON.stringify(tree), /Page 1 of 1/);
+});
+
+test('expired history starts only when selected, cancels obsolete reads and cannot inject a late response', async () => {
+  const pending = [], awaiting = awaitingExpiredFixture(); let active = false;
+  const current = { data: [awaiting], loading: false, refresh() {} };
+  ui.http.defaults.adapter = config => new Promise(resolve => pending.push({ config, resolve }));
+  const view = () => ui.useExpiredInventory(current, active, true);
+  render(view); effects.at(-1)(); await settle(); assert.equal(pending.length, 0);
+  active = true; render(view); const cleanup = effects.at(-1)(); await settle();
+  assert.equal(pending.length, 1); assert.equal(pending[0].config.url, '/inventory/stock-adjustments/');
+  assert.deepEqual(pending[0].config.params, { adjustment_type: 'expired' });
+  assert.equal(render(view).loading, true); assert.deepEqual(render(view).rows, [awaiting]);
+  render(view).setView('awaiting'); cleanup(); render(view); effects.at(-1)();
+  assert.equal(pending[0].config.signal.aborted, true);
+  pending[0].resolve({ status: 200, config: pending[0].config, headers: {}, data: [expiredHistoryFixture()] }); await settle();
+  assert.deepEqual(render(view).rows, [awaiting]); assert.equal(render(view).loading, false);
+  assert.equal(pending.length, 1); assert.equal(toastErrors.length, 0);
+});
+
+test('expired history errors remain distinct from an empty result and recover without hiding remaining stock', async () => {
+  let fail = true;
+  const awaiting = awaitingExpiredFixture(), current = { data: [awaiting], loading: false, refresh() {} };
+  ui.http.defaults.adapter = async config => {
+    if (fail) throw new Error('Disposal history offline');
+    return { status: 200, config, headers: {}, data: [expiredHistoryFixture()] };
+  };
+  const view = () => ui.useExpiredInventory(current, true);
+  render(view); const cleanup = effects.at(-1)();
+  try {
+    await settle(); assert.match(render(view).error.message, /offline/);
+    assert.deepEqual(render(view).rows, [awaiting]); assert.equal(render(view).loading, false);
+    render(view).setView('disposed'); assert.equal(render(view).rows.length, 0);
+    fail = false; await render(view).retry(); await settle();
+    assert.equal(!!render(view).error, false); assert.equal(render(view).rows.length, 1);
+    assert.equal(render(view).rows[0].expiredDisposal.quantity, '2.50');
+  } finally { cleanup?.(); }
+});
+
+test('expired disposal history remains visible through live refresh and changes only when a current read completes', async () => {
+  const first = expiredHistoryFixture(), key = `${ui.dataCacheEpoch()}:inventory:expired-disposals:false`;
+  ui.writeDataCache(key, [first], ['inventory']);
+  let request, finish;
+  ui.http.defaults.adapter = config => new Promise(resolve => { request = config; finish = resolve; });
+  const current = { data: [awaitingExpiredFixture()], loading: false, refresh() {} };
+  const view = () => ui.useExpiredInventory(current, true);
+  render(view); const cleanup = effects.at(-1)();
+  try {
+    ui.invalidateDataCache(['inventory'], { deferPending: true }); await settle();
+    assert.equal(render(view).rows.length, 2); assert.equal(render(view).loading, false);
+    finish({ status: 200, config: request, headers: {}, data: [first, expiredHistoryFixture({ id: 72, quantity: '1.25' })] }); await settle();
+    assert.equal(render(view).rows.length, 3); assert.equal(render(view).loading, false);
+  } finally { cleanup?.(); }
+});
+
+test('expired-products table distinguishes initial loading and confirmed empty results', async () => {
+  ui.http.defaults.adapter = async config => ({ status: 200, config, headers: {}, data: [] });
+  let tree = render(ui.ExpiredBatchTable);
+  let table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  assert.equal(table.props.loading, true);
+  const cleanup = effects.at(-1)();
+  await settle();
+  tree = render(ui.ExpiredBatchTable); table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  assert.equal(table.props.loading, false); assert.deepEqual(table.props.data, []);
+  assert.equal(table.props.emptyTitle, 'No expired batches found');
+  cleanup?.();
+});
+
+test('expired-products initial API failure shows retry instead of an empty result and recovers', async () => {
+  let requests = 0;
+  ui.http.defaults.adapter = async config => {
+    assert.equal(config.url, '/inventory/expired/products/');
+    if (++requests === 1) throw new Error('Expired inventory offline');
+    return { status: 200, config, headers: {}, data: [] };
+  };
+  render(ui.ExpiredBatchTable); const cleanup = effects.at(-1)();
+  try {
+    await settle(); let tree = render(ui.ExpiredBatchTable);
+    assert.equal(elements(tree, node => node.type === ui.EnhancedTable).length, 0);
+    const retry = elements(tree, node => node.type === ui.QueryErrorMessage)[0];
+    assert.match(retry.props.error.message, /offline/); retry.props.onRetry();
+    await settle(); tree = render(ui.ExpiredBatchTable);
+    assert.equal(elements(tree, node => node.type === ui.QueryErrorMessage).length, 0);
+    assert.equal(elements(tree, node => node.type === ui.EnhancedTable)[0].props.loading, false);
+    assert.equal(requests, 2);
+  } finally { cleanup?.(); }
+});
+
+test('expired-products background failure preserves cached rows and mobile batch actions', async () => {
+  const batch = { id: 7, key: 'product-7', kind: 'product', name: 'Long product name'.repeat(8), category: 'Dairy', batch: 'B-7',
+    quantity: 5, unit: 'liter', expiry: '2000-01-01', status: 'available' };
+  const key = `${ui.dataCacheEpoch()}:inventory:expired-batches:true`;
+  ui.writeDataCache(key, [batch], ['inventory']);
+  await assert.rejects(ui.fetchDataCache(key, () => Promise.reject(new Error('Refresh offline')), ['inventory'], true));
+  const tree = render(ui.ExpiredBatchTable, { staff: true });
+  const table = elements(tree, node => node.type === ui.EnhancedTable)[0];
+  assert.deepEqual(table.props.data, [batch]); assert.equal(table.props.loading, false);
+  assert.match(tree.props.children[0].props.className, /\[&_th\]:whitespace-normal/);
+  assert.match(table.props.columns[0].render(batch).props.className, /whitespace-normal/);
+  assert.match(table.props.columns.find(column => column.key === 'batch').render(batch).props.className, /whitespace-normal/);
+  assert.equal(elements(tree, node => node.type === ui.QueryErrorMessage)[0].props.error.message, 'Refresh offline');
+  const card = table.props.renderMobileRow(batch);
+  assert.match(card.props.className, /min-w-0.*break-words/);
+  assert.match(JSON.stringify(card), /B-7/); assert.match(JSON.stringify(card), /2000-01-01/);
+  const actions = elements(card, node => node.props.label);
+  assert.equal(actions.length, 2); assert.equal(actions[1].props.disabled, false);
+  assert.match(actions[1].props.className, /h-11 w-11/);
+});
+
+test('expired-products open details follow fresh batches and handle completed disposals', () => {
+  const batch = { id: 7, key: 'product-7', kind: 'product', name: 'Milk', category: 'Dairy', batch: 'B-7', quantity: 5 };
+  const key = `${ui.dataCacheEpoch()}:inventory:expired-batches:false`;
+  ui.writeDataCache(key, [batch], ['inventory']);
+  let tree = render(ui.ExpiredBatchTable); const cleanup = effects.at(-1)();
+  elements(elements(tree, node => node.type === ui.EnhancedTable)[0].props.columns.at(-1).render(batch), node => node.props.label)[0].props.onClick();
+  const fresh = { ...batch, quantity: 2 };
+  ui.writeDataCache(key, [fresh], ['inventory']); tree = render(ui.ExpiredBatchTable);
+  assert.equal(elements(tree, node => node.type === ui.BatchDetailsFields)[0].props.batch, fresh);
+  ui.writeDataCache(key, [], ['inventory']); tree = render(ui.ExpiredBatchTable);
+  assert.equal(elements(tree, node => node.type === ui.BatchDetailsFields).length, 0);
+  assert.match(JSON.stringify(elements(tree, node => node.type === ui.Modal)[0].props.children), /no longer available/);
+  cleanup?.();
+});
+
 test('expired batch actions open details and a confirmation without writing stock on click', () => {
   const batch = { id: 7, key: 'product-7', kind: 'product', name: 'Milk', category: 'Dairy', batch: 'EX-01',
     quantity: 5, unit: 'liter', expiry: '2000-01-01', status: 'available', initialQuantity: 8, unitCost: '12.34' };
@@ -2055,7 +2401,7 @@ test('batch details use serializer values, preserve zero, and omit null and plac
   const rows = tree => Object.fromEntries(elements(tree, node => node.type === 'div').map(row => [elements(row, node => node.type === 'dt')[0].props.children, elements(row, node => node.type === 'dd')[0].props.children]));
   let values = rows(render(ui.BatchDetailsFields, { batch }));
   assert.equal(values['Product name'], 'Milk');
-  assert.equal(values['Remaining stock'], '0.00 liter');
+  assert.equal(values['Remaining stock'], '0 liters');
   assert.equal(values.Category, 'Dairy');
   for (const label of ['Type', 'Grade', 'Unit cost', 'Date received', 'Notes']) assert.equal(label in values, false);
   values = rows(render(ui.BatchDetailsFields, { batch: { ...batch, source: { ...source, unit_price: '0.00', notes: 'Keep refrigerated' } } }));

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Edit, Trash2 } from "lucide-react";
 import { InventoryStatusBadge, InventoryStockValue, InventoryExpiryValue } from "./InventoryWarnings";
 import type { InventoryItem } from "@/features/inventory/types/inventory";
+import { formatInventoryQuantity } from "../utils/formatQuantity";
 
 interface Props {
   product: InventoryItem;
@@ -36,7 +37,7 @@ export function MobileInventoryCard({ product, busy, deleteDisabled = false, onE
       <dl className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-3 text-sm">
         {[
           ["Stock level", <InventoryStockValue product={product} />],
-          ["Expiry date", <InventoryExpiryValue product={product} />],
+          [product.expiredBatch ? "Expiration date" : "Expiry date", <InventoryExpiryValue product={product} />],
           ["Global reorder threshold", product.reorderThreshold != null ? `${product.reorderThreshold.toLocaleString("en-PH")} ${product.unit || "units"}` : "Not available"],
           ["Product code", `PRD-${String(product.id).padStart(3, "0")}`],
         ].map(([label, value]) => <div key={String(label)} className="min-w-0">
@@ -44,8 +45,8 @@ export function MobileInventoryCard({ product, busy, deleteDisabled = false, onE
           <dd className="mt-1 break-words font-medium text-slate-900">{value}</dd>
         </div>)}
         <div className="col-span-2 min-w-0">
-          <dt className="text-xs text-slate-500">Nearest available batch (FEFO)</dt>
-          <dd className="mt-1 break-words font-medium text-slate-900">{product.expiredBatch ? `${product.expiredBatch.batch} · ${product.stock} expired units` : product.nearestBatch
+          <dt className="text-xs text-slate-500">{product.expiredBatch ? "Expired batch" : "Nearest available batch (FEFO)"}</dt>
+          <dd className="mt-1 break-words font-medium text-slate-900">{product.expiredBatch ? `${product.expiredBatch.batch} · ${formatInventoryQuantity(product.expiredBatch.source?.remaining_quantity ?? product.stock, product.unit)} remaining` : product.nearestBatch
             ? `${product.nearestBatch.number} · ${product.nearestBatch.quantity.toLocaleString("en-PH")} in stock`
             : "No available batch"}</dd>
         </div>
