@@ -2,6 +2,7 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card } from "@/components/data-display/Card";
 import { EmptyState } from "@/components/EmptyState";
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
 import { reportsService } from "@/features/reports/api/reports.service";
 
@@ -21,7 +22,9 @@ export function BestSellersChart() {
     <Card className="p-5 h-full flex flex-col">
       <SectionHeader title="Best Selling Products" subtitle="Top 6 products by units sold" />
 
-      {loading ? (
+      {query.error ? (
+        <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} />
+      ) : loading ? (
         <EmptyState compact loading title="Finding top products" />
       ) : bestSellers.length === 0 ? (
         <EmptyState compact title="No top products yet" description="Completed sales will fill this list." />

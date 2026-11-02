@@ -2,6 +2,7 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { Card } from "@/components/data-display/Card";
 import { EmptyState } from "@/components/EmptyState";
+import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
 import { SectionHeader } from "@/components/data-display/SectionHeader";
 import { C } from "@/styles/tokens/colors";
 import { reportsService } from "@/features/reports/api/reports.service";
@@ -13,9 +14,11 @@ export function SalesCategoryChart() {
 
   return (
     <Card className="p-5">
-      <SectionHeader title="Sales by Category" subtitle="Current month breakdown" />
+      <SectionHeader title="Sales by Category" subtitle="All-time units sold breakdown." />
 
-      {loading ? (
+      {query.error ? (
+        <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} />
+      ) : loading ? (
         <EmptyState compact loading title="Gathering category sales" />
       ) : categoryData.length === 0 ? (
         <EmptyState compact title="No category sales yet" description="Sales will appear once transactions are completed." />

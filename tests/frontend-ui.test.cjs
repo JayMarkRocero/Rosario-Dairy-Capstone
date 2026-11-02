@@ -42,6 +42,8 @@ const compiled = buildSync({
     export { useAutoPageSize, calculatePageSize, calculateViewportPageSize, calculateFittedPageSize, calculateNaturalPageSize, calculateMeasuredRowPageSize } from './src/hooks/useAutoPageSize';
     export { TableCard, TABLE_CARD_CLASS_NAME } from './src/components/data-display/TableCard';
     export { FEFOMonitor } from './src/features/dashboard/components/admin/FEFOMonitor';
+    export { SalesCategoryChart } from './src/features/dashboard/components/admin/SalesCategoryChart';
+    export { BestSellersChart } from './src/features/dashboard/components/admin/BestSellersChart';
     export { ForecastChart, ForecastGraphTooltip } from './src/features/dashboard/components/admin/ForecastChart';
     export { ForecastMetadata, ForecastAnnualDetails } from './src/features/dashboard/components/admin/ForecastMetadata';
     export * from './src/features/dashboard/utils/forecastV6';
@@ -2513,6 +2515,55 @@ test('FEFO monitor displays five items while summary totals cover the whole feed
   assert.equal(elements(tree, node => node.type === 'p' && /^Milk /.test(node.props.children ?? '')).length, 5);
   assert.ok(elements(tree, node => node.props.children === '7').length > 0);
 });
+
+for (const [Page, key, endpoint, loadingTitle, emptyTitle, row, field] of [
+  [ui.SalesCategoryChart, 'dashboard:sales-categories', '/sales/reports/sales-by-category/', 'Gathering category sales', 'No category sales yet', { name: 'Milk', value: 0, color: '#3B82F6' }, 'value'],
+  [ui.BestSellersChart, 'dashboard:best-sellers:6', '/sales/reports/best-sellers/', 'Finding top products', 'No top products yet', { product: 'Milk', sales: 0 }, 'sales'],
+]) {
+  const freshChart = () => { states = []; refs = []; effects = []; return render(Page); };
+  const chartData = tree => elements(tree, node => Array.isArray(node.props.data) && field in (node.props.data[0] ?? {}))[0]?.props.data;
+
+  test(`${key} preserves loading and confirmed empty states`, () => {
+    const loading = render(Page);
+    assert.ok(elements(loading, node => node.type === ui.EmptyState && node.props.loading && node.props.title === loadingTitle).length);
+    assert.equal(elements(loading, node => node.type === ui.QueryErrorMessage).length, 0);
+    if (Page === ui.SalesCategoryChart) assert.equal(elements(loading, node => node.type === ui.SectionHeader)[0].props.subtitle, 'All-time units sold breakdown.');
+    ui.writeDataCache(`${ui.dataCacheEpoch()}:${key}`, [], ['dashboard']);
+    const empty = freshChart();
+    assert.ok(elements(empty, node => node.type === ui.EmptyState && !node.props.loading && node.props.title === emptyTitle).length);
+    assert.equal(elements(empty, node => node.type === ui.QueryErrorMessage).length, 0);
+  });
+
+  test(`${key} shows an initial error and retries the existing GET into populated data`, async () => {
+    const cacheKey = `${ui.dataCacheEpoch()}:${key}`;
+    await assert.rejects(ui.fetchDataCache(cacheKey, async () => { throw new Error('Chart unavailable'); }, ['dashboard']));
+    const failed = render(Page);
+    const error = elements(failed, node => node.type === ui.QueryErrorMessage)[0];
+    assert.ok(error);
+    assert.equal(error.props.error.message, 'Chart unavailable');
+    assert.equal(elements(failed, node => node.type === ui.EmptyState).length, 0);
+    const requests = [];
+    ui.http.defaults.adapter = async config => { requests.push(config); return { config, status: 200, headers: {}, data: [row] }; };
+    error.props.onRetry(); await settle();
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].method, 'get');
+    assert.equal(requests[0].url, endpoint);
+    assert.deepEqual(requests[0].params, Page === ui.BestSellersChart ? { limit: 6 } : undefined);
+    const recovered = freshChart();
+    assert.equal(elements(recovered, node => node.type === ui.QueryErrorMessage || node.type === ui.EmptyState).length, 0);
+    assert.equal(chartData(recovered)[0][field], 0);
+    assert.equal(ui.readDataCache(cacheKey).error, undefined);
+  });
+
+  test(`${key} retains recorded data after a background refresh failure`, async () => {
+    const cacheKey = `${ui.dataCacheEpoch()}:${key}`;
+    ui.writeDataCache(cacheKey, [row], ['dashboard']);
+    await assert.rejects(ui.fetchDataCache(cacheKey, async () => { throw new Error('Background refresh unavailable'); }, ['dashboard'], true));
+    const tree = render(Page);
+    assert.equal(elements(tree, node => node.type === ui.QueryErrorMessage || node.type === ui.EmptyState).length, 0);
+    assert.equal(chartData(tree)[0][field], 0);
+  });
+}
 
 test('admin data views show retry errors rather than empty data after initial failure', async () => {
   authState = { user: { username: 'audit', email: 'audit@example.com' }, loading: false };
