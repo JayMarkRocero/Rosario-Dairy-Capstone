@@ -60,7 +60,7 @@ export function InventoryOutflows() {
   const pages = Math.max(1, Math.ceil(rows.length / 10));
   const safePage = Math.min(page, pages);
   return <><Btn variant="primary" size="sm" onClick={() => setOpen(true)}>Stock outflows</Btn>
-    <Modal open={open} busy={busy} onClose={() => { if (!lock.current) setOpen(false); }} title="Inventory outflows" subtitle="Record stock leaving a batch without creating a sale." size="lg">
+    <OverlayPortal><Modal open={open} busy={busy} onClose={() => { if (!lock.current) setOpen(false); }} title="Inventory outflows" subtitle="Record stock leaving a batch without creating a sale." size="lg">
       <div className="space-y-4"><div className="flex gap-2"><Btn variant={tab === "record" ? "primary" : "secondary"} disabled={busy} onClick={() => setTab("record")}>Record outflow</Btn><Btn variant={tab === "history" ? "primary" : "secondary"} disabled={busy} onClick={() => setTab("history")}>History</Btn></div>
         {tab === "record" ? <fieldset disabled={busy} className="space-y-3">
           {pending && <p role="alert" className="text-xs text-amber-700">A previous stock adjustment is unconfirmed. Check History before recording more stock deductions. <button type="button" className="underline" onClick={() => setTab("history")}>Review history</button>{outflowsService.canRecover(pending) && <> · <button type="button" className="underline" disabled={busy} onClick={() => void recover()}>Recover saved adjustment</button></>}</p>}
@@ -80,7 +80,7 @@ export function InventoryOutflows() {
           {pending && !history.error && !history.loading && <><Btn variant="secondary" disabled={busy} onClick={() => void history.refresh({ force: true })}>Refresh history</Btn><Btn variant="secondary" disabled={busy} onClick={() => setReviewOpen(true)}>History checked — start a new outflow</Btn></>}
         </div>}
       </div>
-    </Modal>
+    </Modal></OverlayPortal>
     <OverlayPortal><ConfirmDialog open={reviewOpen} loading={busy} onClose={() => setReviewOpen(false)} variant="warning" title="Have you checked outflow history?"
       description="An interrupted request may already have deducted stock. Confirm whether the previous outflow was recorded before starting a new one. The previous request will not be sent again."
       confirmLabel="History checked — start new outflow" onConfirm={async () => {

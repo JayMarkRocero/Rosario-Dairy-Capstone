@@ -71,7 +71,7 @@ export function Modal({ open, onClose, title, subtitle, size = "md", children, f
         aria-modal="true"
         aria-busy={busy}
         aria-label={title || "Confirmation"}
-        className={`overlay-panel relative min-w-0 w-full ${SIZE_CLASS[size]} flex flex-col max-h-[90dvh] bg-white rounded-3xl shadow-2xl transition-all duration-200`}
+        className={`overlay-panel relative min-w-0 w-full ${SIZE_CLASS[size]} flex flex-col max-h-[90vh] supports-[height:100dvh]:max-h-[90dvh] bg-white rounded-3xl shadow-2xl transition-all duration-200`}
         style={{
           opacity:   visible ? 1 : 0,
           transform: visible ? "scale(1) translateY(0)" : "scale(0.96) translateY(12px)",

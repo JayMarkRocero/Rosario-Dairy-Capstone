@@ -42,8 +42,8 @@ export function StaffSalesHistory() {
 
   const paymentOptions = useMemo(() => {
     const unique = Array.from(new Set(myRecords.map(r => r.payment)));
-    return ["All", ...unique];
-  }, [myRecords]);
+    return ["All", ...new Set([...unique, payment].filter(value => value !== "All"))];
+  }, [myRecords, payment]);
 
   const filteredRecords = useMemo(() => {
     return myRecords.filter(s => {
@@ -103,7 +103,7 @@ export function StaffSalesHistory() {
       <TableCard className="viewport-table-card">
         {!!query.refreshError && <QueryErrorMessage error={query.refreshError} onRetry={() => void query.refresh({ force: true })} />}
         {query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} /> : <EnhancedTable measurementKey={`sales-history:single-payment-placeholder:mine:${userId}:${payment}:${date}`} responsivePageSize measureRenderedRows fitActualRows autoPageSize={false} pageCapacity={undefined} contentHeight reserveTableHeight={false} pageSize={5} rowHeight={52} columns={columns} data={filteredRecords} rowKey={s=>s.transaction.id} renderMobileRow={sale => <MobileSaleCard sale={sale} onView={setSelected} deduplicatePayment />} searchable searchKeys={s=>[s.receipt,s.customer]} searchPlaceholder="Search SI number or customer…" showExport={false} loading={recordsLoading} emptyTitle="No transactions found" emptyDesc="No transactions match your filters." onRowClick={setSelected}
-          extraControls={<div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-row"><select aria-label="Payment method" value={payment} onChange={e=>setPayment(e.target.value)} className={`${filterSelectClass} w-full min-w-0 md:w-auto`}>{paymentOptions.map(p=><option key={p} value={p}>{p === "All" ? "All Payment Methods" : p}</option>)}</select><input aria-label="Transaction date" type="date" value={date} onChange={e=>setDate(e.target.value)} className={`${filterSelectClass} w-full min-w-0 md:w-auto`}/></div>}/>}
+          extraControls={<div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-row"><label className="flex w-full min-w-0 flex-col gap-1 md:contents"><span className="text-xs text-slate-500 md:sr-only">Payment method</span><select aria-label="Payment method" value={payment} onChange={e=>setPayment(e.target.value)} className={`${filterSelectClass} w-full min-w-0 md:w-auto`}>{paymentOptions.map(p=><option key={p} value={p}>{p === "All" ? "All Payment Methods" : p}</option>)}</select></label><label className="flex w-full min-w-0 flex-col gap-1 md:contents"><span className="text-xs text-slate-500 md:sr-only">Transaction date</span><input aria-label="Transaction date" type="date" value={date} onChange={e=>setDate(e.target.value)} className={`${filterSelectClass} w-full min-w-0 md:w-auto`}/></label></div>}/>}
       </TableCard>
       <TransactionDetails unavailable={!!selected && !selectedRecord} sale={selectedRecord} onClose={() => setSelected(null)}/>
     </div>

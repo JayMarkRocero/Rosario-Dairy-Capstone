@@ -3651,9 +3651,143 @@ test('both shared overlay components attach focus handling and expose named clos
   }
 });
 
+test('Stock Outflows opens outside page-action styling and keeps a bounded scrollable modal', () => {
+  let tree = render(ui.InventoryOutflows);
+  elements(tree, node => node.type === ui.Btn && node.props.children === 'Stock outflows')[0].props.onClick();
+  tree = render(ui.InventoryOutflows);
+  const portal = elements(tree, node => node.type?.name === 'OverlayPortal'
+    && elements(node, child => child.type === ui.Modal && child.props.title === 'Inventory outflows').length)[0];
+  assert.ok(portal, 'The modal must not inherit the Inventory action grid’s descendant button widths');
+  let modal = elements(portal, node => node.type === ui.Modal)[0];
+  assert.equal(modal.props.open, true); assert.equal(modal.props.size, 'lg');
+  assert.equal(elements(modal, node => node.props['aria-label'] === 'Outflow reason').length, 1);
+  elements(modal, node => node.type === ui.Btn && node.props.children === 'History')[0].props.onClick();
+  tree = render(ui.InventoryOutflows);
+  modal = elements(tree, node => node.type === ui.Modal && node.props.title === 'Inventory outflows')[0];
+  assert.equal(elements(modal, node => node.props['aria-label'] === 'Outflow history type').length, 1);
+  states = [true, true]; refs = []; effects = [];
+  const markup = render(ui.Modal, modal.props);
+  const panel = elements(markup, node => node.props.role === 'dialog')[0];
+  assert.match(panel.props.className, /min-w-0 w-full max-w-2xl/);
+  assert.match(panel.props.className, /max-h-\[90vh\].*supports-\[height:100dvh\]:max-h-\[90dvh\]/);
+  assert.match(elements(panel, node => node.props['aria-label'] === 'Close dialog')[0].props.className, /w-8.*flex-shrink-0/);
+  assert.ok(elements(panel, node => node.props.className?.includes('overlay-body') && node.props.className.includes('overflow-y-auto')).length);
+});
+
+for (const Page of [ui.AdminSalesHistory, ui.StaffSalesHistory]) test(`${Page.name} gives mobile payment/date controls visible labels and preserves desktop flow`, () => {
+  const tree = render(Page);
+  const controls = elements(tree, node => node.type === ui.EnhancedTable)[0].props.extraControls;
+  for (const text of ['Payment method', 'Transaction date']) {
+    const label = elements(controls, node => node.type === 'label'
+      && elements(node, child => child.props['aria-label'] === text).length)[0];
+    assert.ok(label); assert.match(label.props.className, /min-w-0.*md:contents/);
+    assert.ok(elements(label, node => node.type === 'span' && node.props.children === text && node.props.className.includes('md:sr-only')).length);
+  }
+  const payment = elements(controls, node => node.type === 'select')[0];
+  assert.equal(payment.props.value, 'All');
+  assert.equal(elements(payment, node => node.type === 'option' && node.props.value === payment.props.value)[0].props.children, 'All Payment Methods');
+  elements(controls, node => node.props['aria-label'] === 'Transaction date')[0].props.onChange({ target: { value: '2026-10-25' } });
+  const updated = elements(render(Page), node => node.type === ui.EnhancedTable)[0].props.extraControls;
+  assert.equal(elements(updated, node => node.props['aria-label'] === 'Transaction date')[0].props.value, '2026-10-25');
+});
+
+test('Staff Sales History retains its selected payment option when refreshed records no longer contain it', async () => {
+  authState = { user: { id: 7, username: 'staff', role: 'staff' }, loading: false };
+  const key = `${ui.dataCacheEpoch()}:sales:mine:7`;
+  ui.writeDataCache(key, [{ ...ui.toSale(liveReceipt()), payment: 'Cash' }], ['sales']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:sales:mine-summary:7`, transactionSummary('100.00', 1), ['sales']);
+  const controls = tree => elements(tree, node => node.type === ui.EnhancedTable)[0].props.extraControls;
+  let tree = render(ui.StaffSalesHistory); const cleanup = effects[0]();
+  try {
+    elements(controls(tree), node => node.type === 'select')[0].props.onChange({ target: { value: 'Cash' } });
+    ui.writeDataCache(key, [], ['sales']); await settle(); tree = render(ui.StaffSalesHistory);
+    const payment = elements(controls(tree), node => node.type === 'select')[0];
+    assert.equal(payment.props.value, 'Cash');
+    assert.equal(elements(payment, node => node.type === 'option' && node.props.value === 'Cash')[0].props.children, 'Cash');
+    assert.equal(elements(tree, node => node.type === ui.EnhancedTable)[0].props.data.length, 0);
+  } finally { cleanup?.(); }
+});
+
+test('Sales Encoding stacks From and To independently on narrow screens while preserving date values and desktop groups', () => {
+  const controls = () => elements(render(ui.SalesEncoding), node => node.type === ui.EnhancedTable)[0].props.extraControls;
+  const group = elements(controls(), node => node.type === 'div' && node.props.className?.includes('grid-cols-1'))[0];
+  assert.match(group.props.className, /grid.*w-full.*min-w-0.*grid-cols-1.*md:grid-cols-2/);
+  for (const [name, value] of [['Encoding start date', '2026-10-01'], ['Encoding end date', '2026-10-31']]) {
+    const label = elements(controls(), node => node.type === 'label' && elements(node, child => child.props['aria-label'] === name).length)[0];
+    assert.match(label.props.className, /flex.*min-w-0.*flex-col.*md:flex-row/);
+    const input = elements(label, node => node.type === 'input')[0];
+    assert.match(input.props.className, /w-full min-w-0/);
+    assert.match(input.props.className, /md:w-\[8\.5rem\]/);
+    input.props.onChange({ target: { value } });
+    assert.equal(elements(controls(), node => node.props['aria-label'] === name)[0].props.value, value);
+  }
+  assert.equal(elements(controls(), node => node.props['aria-label'] === 'Encoding start date')[0].props.value, '2026-10-01');
+  assert.equal(elements(controls(), node => node.props['aria-label'] === 'Encoding end date')[0].props.value, '2026-10-31');
+});
+
+test('Staff Recent Orders uses immutable ownership and separate account caches, excluding other and uncertain historical orders', () => {
+  authState = { user: { id: 7, username: 'current-name', role: 'staff' }, loading: false };
+  const base = { status: 'Fulfilled', date: '2026-10-30', isHistorical: false };
+  const own = { ...base, id: 1, staffId: 7, staff: 'old-name', customer: 'Own customer' };
+  const other = { ...base, id: 2, staffId: 8, staff: 'current-name', customer: 'Other customer' };
+  const unknown = { ...base, id: 3, staffId: null, staff: 'current-name', customer: 'Unknown handler' };
+  const historical = { ...own, id: 4, isHistorical: true, customer: 'Imported customer' };
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:recent-orders:5`, [other], ['dashboard', 'orders']);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:recent-orders:7:5`, [own, other, unknown, historical], ['dashboard', 'orders']);
+  const table = tree => elements(tree, node => Array.isArray(node.props.headers) && Array.isArray(node.props.rows))[0];
+  let tree = render(ui.StaffRecentOrders);
+  assert.equal(table(tree).props.rows.length, 1); assert.match(JSON.stringify(table(tree).props.rows), /Own customer/);
+  assert.doesNotMatch(JSON.stringify(table(tree).props.rows), /Other customer|Unknown handler|Imported customer/);
+  authState.user = { ...authState.user, username: 'renamed' };
+  assert.equal(table(render(ui.StaffRecentOrders)).props.rows.length, 1);
+  ui.writeDataCache(`${ui.dataCacheEpoch()}:dashboard:recent-orders:8:5`, [other], ['dashboard', 'orders']);
+  authState.user = { id: 8, username: 'current-name', role: 'staff' }; tree = render(ui.StaffRecentOrders);
+  assert.match(JSON.stringify(table(tree).props.rows), /Other customer/);
+  assert.doesNotMatch(JSON.stringify(table(tree).props.rows), /Own customer/);
+});
+
+test('Staff Recent Orders waits for authenticated identity and sends only the scoped cancellable GET', async () => {
+  const requests = [];
+  ui.http.defaults.adapter = async config => { requests.push(config); return { status: 200, config, headers: {}, data: { count: 0, results: [], next: null } }; };
+  authState = { user: { id: 7, username: 'staff' }, loading: true };
+  render(ui.StaffRecentOrders); effects.at(-1)(); await settle(); assert.equal(requests.length, 0);
+  authState = { user: null, loading: false };
+  const unknown = render(ui.StaffRecentOrders); effects.at(-1)(); await settle();
+  assert.equal(requests.length, 0); assert.ok(elements(unknown, node => node.props.title === 'Account information unavailable').length);
+  authState = { user: { id: 7, username: 'staff' }, loading: false };
+  render(ui.StaffRecentOrders); const cleanup = effects.at(-1)();
+  try {
+    await settle(); assert.equal(requests.length, 1);
+    assert.equal(requests[0].method, 'get'); assert.equal(requests[0].url, '/sales/orders/');
+    assert.deepEqual(requests[0].params, { page: 1, page_size: 5, handled_by: 7 });
+    assert.equal(requests[0].signal.aborted, false);
+    assert.ok(elements(render(ui.StaffRecentOrders), node => node.props.title === 'No recent orders').length);
+  } finally { cleanup?.(); }
+});
+
+test('an obsolete Staff Recent Orders response cannot replace the newly authenticated account’s records', async () => {
+  const requests = [];
+  ui.http.defaults.adapter = config => new Promise(resolve => requests.push({ config, resolve }));
+  authState = { user: { id: 7, username: 'first' }, loading: false };
+  render(ui.StaffRecentOrders); const leaveFirst = effects.at(-1)(); await settle();
+  leaveFirst(); authState = { user: { id: 8, username: 'second' }, loading: false };
+  render(ui.StaffRecentOrders); const leaveSecond = effects.at(-1)(); await settle();
+  const response = request => ({ status: 200, config: request.config, headers: {}, data: { count: 1, next: null,
+    results: [{ id: request.config.params.handled_by, customer: { id: 1, name: `Account ${request.config.params.handled_by}` },
+      handled_by: { id: request.config.params.handled_by, username: 'staff' }, status: 'fulfilled', transaction: null, items: [], created_at: '2026-10-30T00:00:00Z' }] } });
+  try {
+    assert.equal(requests[0].config.signal.aborted, true);
+    requests[1].resolve(response(requests[1])); await settle(); requests[0].resolve(response(requests[0])); await settle();
+    const tree = render(ui.StaffRecentOrders);
+    const rows = elements(tree, node => Array.isArray(node.props.rows))[0].props.rows;
+    assert.match(JSON.stringify(rows), /Account 8/); assert.doesNotMatch(JSON.stringify(rows), /Account 7/);
+    assert.equal(toastErrors.length, 0);
+  } finally { leaveSecond?.(); }
+});
+
 test('staff sales and recent orders keep persistent retry states on failed initial requests', async () => {
   authState = { user: { id: 7, username: 'staff' }, loading: false };
-  for (const [Page, key] of [[ui.StaffSalesHistory, 'sales:mine:7'], [ui.StaffRecentOrders, 'dashboard:recent-orders:5']]) {
+  for (const [Page, key] of [[ui.StaffSalesHistory, 'sales:mine:7'], [ui.StaffRecentOrders, 'dashboard:recent-orders:7:5']]) {
     states = []; refs = []; effects = [];
     await ui.fetchDataCache(`${ui.dataCacheEpoch()}:${key}`, () => Promise.reject(new Error('Server offline')), ['sales', 'orders', 'dashboard']).catch(() => {});
     ui.http.defaults.adapter = async () => { throw new Error('Server offline'); };

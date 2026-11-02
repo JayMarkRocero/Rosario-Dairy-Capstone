@@ -18,8 +18,8 @@ import { TransactionDetails } from "../components/TransactionDetails";
 import { MobileSaleCard } from "../components/MobileSaleCard";
 import { filterSelectClass } from "@/styles/controlClasses";
 
-const dateFilterClass = "encoding-date-filter text-xs text-slate-500 md:flex md:h-10 md:min-w-0 md:items-center md:gap-2 md:rounded-lg md:border md:border-slate-200 md:bg-slate-50/50 md:px-3 md:transition-all md:duration-150 md:focus-within:border-primary md:focus-within:ring-1 md:focus-within:ring-primary/20";
-const dateInputClass = `${filterSelectClass} md:h-full md:w-[8.5rem] md:min-w-0 md:flex-1 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:focus:ring-0`;
+const dateFilterClass = "encoding-date-filter flex min-w-0 flex-col gap-1 text-xs text-slate-500 md:h-10 md:flex-row md:items-center md:gap-2 md:rounded-lg md:border md:border-slate-200 md:bg-slate-50/50 md:px-3 md:transition-all md:duration-150 md:focus-within:border-primary md:focus-within:ring-1 md:focus-within:ring-primary/20";
+const dateInputClass = `${filterSelectClass} w-full min-w-0 md:h-full md:w-[8.5rem] md:flex-1 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:focus:ring-0`;
 export function SalesEncoding() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -50,7 +50,7 @@ export function SalesEncoding() {
         <select aria-label="Filter encoding payment status" className={`${filterSelectClass} md:min-w-[9.5rem] md:flex-1 xl:w-[9.5rem] xl:flex-none`} value={payment} onChange={e => setPayment(e.target.value)}>
           <option value="">All payments</option><option value="pending">Pending</option><option value="paid">Paid</option>
         </select>
-        <div className="contents md:grid md:min-w-0 md:flex-1 md:basis-[24rem] md:grid-cols-2 md:gap-2 xl:flex-none xl:basis-auto">
+        <div className="grid w-full min-w-0 grid-cols-1 gap-2 md:w-auto md:flex-1 md:basis-[24rem] md:grid-cols-2 xl:flex-none xl:basis-auto">
           <label className={dateFilterClass}>
             <span className="md:shrink-0">From</span>
             <input aria-label="Encoding start date" type="date" className={dateInputClass} value={startDate} onChange={e => setStartDate(e.target.value)}/>

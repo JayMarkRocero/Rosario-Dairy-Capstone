@@ -62,8 +62,8 @@ export const ordersService = {
     return data;
   },
 
-  getRecent: async (limit = 5, signal?: AbortSignal): Promise<OrderListItem[]> => {
-    const { data } = await http.get<PaginatedResponse<OrderListResponse>>("/sales/orders/", { params: { page: 1, page_size: limit }, signal });
+  getRecent: async (limit = 5, signal?: AbortSignal, handledBy?: number): Promise<OrderListItem[]> => {
+    const { data } = await http.get<PaginatedResponse<OrderListResponse>>("/sales/orders/", { params: { page: 1, page_size: limit, ...(handledBy !== undefined && { handled_by: handledBy }) }, signal });
     return data.results.map(mapOrder);
   },
 };
@@ -85,7 +85,7 @@ export function mapOrder(o: OrderListResponse): OrderListItem {
     customerEmail: o.customer.email ?? "",
     status: toDisplayStatus(o.status),
     staff: recordedCashierName(transaction ?? {}, o.handled_by),
-    staffId: transaction?.source_reference ? null : o.handled_by.id,
+    staffId: transaction?.source_reference ? null : o.handled_by?.id ?? null,
     date: transaction?.transaction_date || (Number.isFinite(new Date(o.created_at).getTime()) ? businessDate(new Date(o.created_at)) : ""),
     total: amount(transaction?.total_amount),
     subtotal: amount(transaction?.subtotal),

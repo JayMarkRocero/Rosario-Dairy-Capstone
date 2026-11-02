@@ -170,6 +170,19 @@ test('orders map compact nested and flat product names without requiring a produ
   assert.equal(api.mapOrder({ ...base, transaction: { ...base.transaction, source_reference: 'imported' }, items: [] }).staffId, null);
 });
 
+test('recent-order reads support exact handler filtering and preserve unknown attribution as null', async () => {
+  const controller = new AbortController();
+  const base = { id: 1, customer: { id: 1, name: 'Customer' }, handled_by: { id: 7, username: 'staff' },
+    status: 'fulfilled', created_at: '2026-10-18T10:00:00+08:00', transaction: null, items: [] };
+  responseData = { count: 1, next: null, results: [base] };
+  assert.equal((await api.ordersService.getRecent(5, controller.signal, 7))[0].staffId, 7);
+  assert.deepEqual(calls[0].params, { page: 1, page_size: 5, handled_by: 7 });
+  assert.equal(calls[0].method, 'get'); assert.equal(calls[0].signal, controller.signal);
+  assert.equal(api.mapOrder({ ...base, handled_by: null }).staffId, null);
+  assert.equal(api.mapOrder({ ...base, handled_by: undefined }).staffId, null);
+  assert.equal(api.mapOrder({ ...base, transaction: { source_reference: 'imported', recorded_cashier: null } }).staffId, null);
+});
+
 test('sales dates use the Manila business day across UTC midnight and timestamp offsets', () => {
   const transaction = { id: 1, handled_by: { id: 7, username: 'staff' }, payment_method: 'cash', total_amount: '120' };
   for (const [created_at, expected] of [

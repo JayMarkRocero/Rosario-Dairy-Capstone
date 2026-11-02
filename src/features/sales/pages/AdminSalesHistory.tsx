@@ -118,6 +118,8 @@ export function AdminSalesHistory() {
             showExport={false}
             extraControls={
               <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-row md:flex-wrap">
+                <label className="flex w-full min-w-0 flex-col gap-1 md:contents">
+                  <span className="text-xs text-slate-500 md:sr-only">Payment method</span>
                 <select
                   aria-label="Payment method"
                   value={paymentFilter}
@@ -128,6 +130,9 @@ export function AdminSalesHistory() {
                   <option value="All">All Payment Methods</option>
                   {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
+                </label>
+                <label className="flex w-full min-w-0 flex-col gap-1 md:contents">
+                  <span className="text-xs text-slate-500 md:sr-only">Transaction date</span>
                 <input
                   aria-label="Transaction date"
                   type="date"
@@ -136,6 +141,7 @@ export function AdminSalesHistory() {
                   className="w-full min-w-0 md:w-auto px-3 py-2 rounded-xl text-sm outline-none border"
                   style={{ borderColor: C.border, color: C.text, backgroundColor: "var(--input-background)" }}
                 />
+                </label>
                 {dateFilter && (
                   <button
                     onClick={() => setDateFilter("")}

@@ -7,20 +7,25 @@ import { StatusBadge } from "@/components/data-display/StatusBadge";
 import { C } from "@/styles/tokens/colors";
 import { ordersService } from "@/features/orders/api/orders.service";
 import { QueryErrorMessage } from "@/components/feedback/QueryErrorMessage";
+import { useAuth } from "@/features/auth/context/AuthContext";
+import { getSessionUserId } from "@/features/auth/api/auth.service";
 
 const RECENT_ORDER_LIMIT = 5;
 
 export function StaffRecentOrders() {
-  const query = useCachedQuery("dashboard:recent-orders:5", signal => ordersService.getRecent(RECENT_ORDER_LIMIT, signal), ["dashboard", "orders"], true, { cancelable: true });
-  const orders = (query.data ?? []).slice(0, RECENT_ORDER_LIMIT);
-  const loading = query.loading;
+  const { user, loading: authLoading } = useAuth();
+  const userId = user ? getSessionUserId(user) : null;
+  const enabled = !authLoading && userId !== null;
+  const query = useCachedQuery(`dashboard:recent-orders:${userId}:5`, signal => ordersService.getRecent(RECENT_ORDER_LIMIT, signal, userId!), ["dashboard", "orders"], enabled, { cancelable: true });
+  const orders = (query.data ?? []).filter(order => !order.isHistorical && order.staffId === userId).slice(0, RECENT_ORDER_LIMIT);
+  const loading = authLoading || query.loading;
 
   return (
     <Card className="p-4 sm:p-5 h-full min-w-0">
       <div className="flex-shrink-0">
         <SectionHeader title="Recent Orders" subtitle="Recent customer transactions" />
       </div>
-      {query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} /> : loading ? (
+      {!authLoading && !enabled ? <EmptyState compact title="Account information unavailable" description="Sign in again to load your recent orders." /> : query.error ? <QueryErrorMessage error={query.error} onRetry={() => void query.refresh({ force: true })} /> : loading ? (
         <EmptyState compact loading title="Gathering recent orders" />
       ) : orders.length === 0 ? (
         <EmptyState compact title="No recent orders" description="New orders will show up here." />
